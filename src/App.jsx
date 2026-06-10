@@ -272,7 +272,7 @@ ${presta.resultats?.length ? `Résultat : ${presta.resultats.join(", ")}` : ""}
 
 Sois concis, professionnel et naturel en français.`;
 
-  const response = await fetch("https://corsproxy.io/?https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
