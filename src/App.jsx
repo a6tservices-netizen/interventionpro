@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
 
@@ -246,7 +246,7 @@ Règles :
 - Maximum 5-6 phrases
 - NE PAS lister les prestations séparément, faire un texte coulant`;
 
-  const response = await fetch("https://corsproxy.io/?https://api.anthropic.com/v1/messages", {
+fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": "sk-ant-api03-H15PcQvrlsxTR7Sq9mEL-BgU6D10KXiTePcSpXDD6iqX20-RcQM5DqiVqpBqSgXjP6WP7GVW2H4OwnXjeqCCQQ-Kcz1WQAA", "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
@@ -1918,4 +1918,4 @@ function CarteView({ fiches, positions, theme }) {
 
 function Empty({ icon, text, T }) {
   return <div style={{textAlign:"center",padding:"60px 0",color:T?.textFaint||"#1E3A5F"}}><div style={{fontSize:44,marginBottom:12}}>{icon}</div><div style={{fontWeight:700,color:T?.textMuted||"#334155"}}>{text}</div></div>;
-}
+}seState, u
