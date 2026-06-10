@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
 
@@ -246,9 +246,9 @@ Règles :
 - Maximum 5-6 phrases
 - NE PAS lister les prestations séparément, faire un texte coulant`;
 
-fetch("/api/claude", {
+  const response = await fetch("/api/claude", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": "sk-ant-api03-H15PcQvrlsxTR7Sq9mEL-BgU6D10KXiTePcSpXDD6iqX20-RcQM5DqiVqpBqSgXjP6WP7GVW2H4OwnXjeqCCQQ-Kcz1WQAA", "anthropic-version": "2023-06-01" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
@@ -256,6 +256,7 @@ fetch("/api/claude", {
     }),
   });
   const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || data?.error || "Erreur API");
   return data.content?.[0]?.text || "";
 }
 
@@ -282,6 +283,7 @@ Sois concis, professionnel et naturel en français.`;
     }),
   });
   const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || data?.error || "Erreur API");
   return data.content?.[0]?.text || "";
 }
 
