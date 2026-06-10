@@ -1920,4 +1920,4 @@ function CarteView({ fiches, positions, theme }) {
 
 function Empty({ icon, text, T }) {
   return <div style={{textAlign:"center",padding:"60px 0",color:T?.textFaint||"#1E3A5F"}}><div style={{fontSize:44,marginBottom:12}}>{icon}</div><div style={{fontWeight:700,color:T?.textMuted||"#334155"}}>{text}</div></div>;
-}seState, u
+}
