@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { watchFiches, saveFiche, deleteFiche, watchPositions, updatePosition, watchSocietes, saveSocietes } from "./firebase";
 
 /* ═══════════════════════════════════════════
    THÈMES
@@ -263,7 +264,7 @@ Sois concis, professionnel et naturel en français.`;
 /* ═══════════════════════════════════════════
    RAPPORT PDF
 ═══════════════════════════════════════════ */
-function buildReportHTML(fiche) {
+function buildReportHTML(fiche, hideInternal = false) {
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
   const presta = fiche.prestations.map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
   const status = STATUTS[fiche.status] || STATUTS.planifie;
@@ -356,8 +357,8 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 .preco-list li{font-size:11px;font-weight:600;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;padding:6px 10px}
 .preco-list li::before{content:"▸ ";opacity:.6}
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0}
-.photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:160px}
+.photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:160px}
 .sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
 .sig-box{border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;min-height:100px;background:#fafafa}
 .sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#94a3b8;margin-bottom:12px}
@@ -368,6 +369,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 .internal-title{font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c2410c;margin-bottom:10px}
 .internal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .int-card{background:#fff;border:1px solid #fed7aa;border-radius:6px;padding:8px 11px}
+@media print{.internal{display:none!important}}
 .footer{margin-top:20px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
 .footer-logo{font-family:'Fraunces',serif;font-size:11px;font-weight:700;color:#cbd5e1}
 .footer-logo em{color:#38bdf8;font-style:normal}
@@ -415,7 +417,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
       ${fiche.nomSignataire?`<div class="sig-name">${fiche.nomSignataire}</div>`:""}
     </div>
   </div>
-  <div class="internal">
+  ${!hideInternal ? `<div class="internal">
     <div class="internal-title">🔒 Usage interne — Non transmis au client</div>
     <div class="internal-grid">
       <div class="int-card"><div class="info-label">Matériel</div><div class="info-value" style="font-size:11px">${fiche.materiels?.join(", ")||"—"}</div></div>
@@ -424,7 +426,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
       ${fiche.tarifHoraire&&fiche.tempsInterne?`<div class="int-card"><div class="info-label">Montant estimé</div><div class="info-value" style="font-size:11px">${calculerMontant(fiche.tempsInterne, fiche.tarifHoraire)} €</div></div>`:""}
       ${fiche.notesInternes?`<div class="int-card" style="grid-column:1/-1"><div class="info-label">Notes</div><div class="info-value" style="font-size:11px;font-weight:400">${fiche.notesInternes}</div></div>`:""}
     </div>
-  </div>
+  </div>` : ""}
   <div class="footer">
     <div class="footer-logo">${fiche.societe||"Rapport d'intervention"}</div>
     <div>Généré le ${ts()}</div>
@@ -1183,16 +1185,39 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme }) {
    APERÇU RAPPORT
 ═══════════════════════════════════════════ */
 function ReportPreview({ fiche, onClose }) {
-  const html = buildReportHTML(fiche);
+  const [versionInterne, setVersionInterne] = useState(false);
   const [dl, setDl] = useState(false);
   const [showSendOptions, setShowSendOptions] = useState(false);
+
+  const currentHtml = buildReportHTML(fiche, !versionInterne);
   const tryPrint = () => { const f=document.getElementById("rif"); try{f?.contentWindow?.focus();f?.contentWindow?.print();}catch(e){} };
-  const download = () => { downloadReport(fiche); setDl(true); setTimeout(()=>setDl(false),2500); };
+  const download = () => {
+    const html = buildReportHTML(fiche, !versionInterne);
+    const blob = new Blob([html],{type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download=`Rapport_${fiche.id}${versionInterne?"_interne":""}.html`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    setDl(true); setTimeout(()=>setDl(false),2500);
+  };
+
   return (
     <div style={{position:"fixed",inset:0,background:"#050C18",zIndex:800,display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",background:"#0A1525",borderBottom:"1px solid #1a3050",flexShrink:0,flexWrap:"wrap"}}>
         <button onClick={onClose} style={{background:"none",border:"1px solid #1a3050",color:"#94A3B8",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>← Fermer</button>
         <span style={{fontWeight:800,fontSize:14}}>Rapport — {fiche.id}</span>
+
+        {/* Toggle version client / interne */}
+        <div style={{display:"flex",gap:4,background:"#070F1C",border:"1px solid #1a3050",borderRadius:8,padding:3}}>
+          <button onClick={()=>setVersionInterne(false)} style={{padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"inherit",background:!versionInterne?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:!versionInterne?"#fff":"#64748B"}}>
+            👤 Client
+          </button>
+          <button onClick={()=>setVersionInterne(true)} style={{padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"inherit",background:versionInterne?"linear-gradient(135deg,#F97316,#EF4444)":"transparent",color:versionInterne?"#fff":"#64748B"}}>
+            🔒 Interne
+          </button>
+        </div>
+
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>setShowSendOptions(v=>!v)} style={{background:"#0B1829",border:"1px solid #1a3050",color:"#E2E8F0",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>
           <button onClick={download} style={{background:"#0B1829",border:"1px solid #10B981",color:"#10B981",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{dl?"✓ Téléchargé":"⬇ Fichier"}</button>
@@ -1205,8 +1230,14 @@ function ReportPreview({ fiche, onClose }) {
           <button onClick={()=>envoyerRapportSMS(fiche)} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
         </div>
       )}
+      {!versionInterne&&<div style={{background:"rgba(14,165,233,0.08)",borderBottom:"1px solid rgba(14,165,233,0.2)",padding:"8px 16px",fontSize:12,color:"#38BDF8"}}>
+        👤 Version <b>client</b> — section interne masquée
+      </div>}
+      {versionInterne&&<div style={{background:"rgba(249,115,22,0.08)",borderBottom:"1px solid rgba(249,115,22,0.2)",padding:"8px 16px",fontSize:12,color:"#FB923C"}}>
+        🔒 Version <b>interne</b> — toutes les informations visibles
+      </div>}
       <div style={{flex:1,background:"#1e2d3d",overflow:"auto",padding:16}}>
-        <iframe id="rif" title="Rapport" srcDoc={html} style={{width:"100%",minHeight:"100%",height:1600,border:"none",borderRadius:10,background:"#fff",boxShadow:"0 12px 60px rgba(0,0,0,0.5)"}}/>
+        <iframe id="rif" title="Rapport" srcDoc={currentHtml} style={{width:"100%",minHeight:"100%",height:1600,border:"none",borderRadius:10,background:"#fff",boxShadow:"0 12px 60px rgba(0,0,0,0.5)"}}/>
       </div>
       <div style={{padding:"10px 16px",background:"#0A1525",borderTop:"1px solid #1a3050",fontSize:12,color:"#475569",flexShrink:0}}>
         📱 Sur mobile : <b style={{color:"#94A3B8"}}>🖨 Imprimer / PDF</b> → « Enregistrer en PDF »
@@ -1218,7 +1249,7 @@ function ReportPreview({ fiche, onClose }) {
 /* ═══════════════════════════════════════════
    TABLEAU DE BORD
 ═══════════════════════════════════════════ */
-function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, theme }) {
+function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilterStatus, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   const rdvPlanifies = fiches.filter(f=>f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length));
@@ -1235,19 +1266,22 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, theme })
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {/* KPIs */}
+      {/* KPIs cliquables */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
         {[
-          {label:"Total fiches",val:fiches.length,icon:"📋",color:"#0EA5E9"},
-          {label:"RDV planifiés",val:rdvPlanifies.length,icon:"📅",color:"#3B82F6"},
-          {label:"En cours",val:byStatus.en_cours||0,icon:"⚡",color:"#F59E0B"},
-          {label:"Terminées",val:byStatus.termine||0,icon:"✅",color:"#10B981"},
-          {label:"Signées",val:fiches.filter(f=>f.signature).length,icon:"✍️",color:"#A78BFA"},
+          {label:"Total fiches",val:fiches.length,icon:"📋",color:"#0EA5E9",action:()=>onFilterStatus("")},
+          {label:"RDV planifiés",val:rdvPlanifies.length,icon:"📅",color:"#3B82F6",action:()=>onFilterStatus("planifie")},
+          {label:"En cours",val:byStatus.en_cours||0,icon:"⚡",color:"#F59E0B",action:()=>onFilterStatus("en_cours")},
+          {label:"Terminées",val:byStatus.termine||0,icon:"✅",color:"#10B981",action:()=>onFilterStatus("termine")},
+          {label:"Signées",val:fiches.filter(f=>f.signature).length,icon:"✍️",color:"#A78BFA",action:()=>onFilterStatus("")},
         ].map(k=>(
-          <div key={k.label} style={{...card,border:`1px solid ${k.color}22`,position:"relative",overflow:"hidden"}}>
+          <div key={k.label} onClick={k.action} style={{...card,border:`1px solid ${k.color}22`,position:"relative",overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=k.color;e.currentTarget.style.transform="translateY(-2px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=k.color+"22";e.currentTarget.style.transform="none";}}>
             <div style={{position:"absolute",top:-10,right:-10,fontSize:40,opacity:.06}}>{k.icon}</div>
             <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}}>{k.label}</div>
             <div style={{fontSize:28,fontWeight:800,color:k.color,lineHeight:1}}>{k.val}</div>
+            <div style={{fontSize:9,color:k.color,marginTop:4,opacity:.7}}>→ Voir la liste</div>
           </div>
         ))}
       </div>
@@ -1558,43 +1592,20 @@ export default function App() {
   const showToast = m => { setToast(m); setTimeout(()=>setToast(null),3200); };
 
   useEffect(()=>{
-    (async()=>{
-      try{
-        const [fichesRes, themeRes, societesRes] = await Promise.all([
-          window.storage.get("fiches_v3"),
-          window.storage.get("theme_v3"),
-          window.storage.get("societes_v3"),
-        ]);
-        if(fichesRes?.value) setFiches(JSON.parse(fichesRes.value));
-        if(themeRes?.value) setTheme(themeRes.value);
-        if(societesRes?.value) setSocietes(JSON.parse(societesRes.value));
-      }catch(e){}
-      setLoaded(true);
-    })();
+    // Firebase — écoute en temps réel
+    const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); });
+    const unsub2 = watchPositions(data => setPositions(data));
+    const unsub3 = watchSocietes(data => setSocietes(data));
+    return () => { unsub1(); unsub2(); unsub3(); };
   },[]);
 
-  useEffect(()=>{
-    if(!loaded)return;
-    (async()=>{try{await window.storage.set("fiches_v3",JSON.stringify(fiches));}catch(e){}})();
-  },[fiches,loaded]);
-
-  useEffect(()=>{
-    if(!loaded)return;
-    (async()=>{try{await window.storage.set("societes_v3",JSON.stringify(societes));}catch(e){}})();
-  },[societes,loaded]);
-
-  useEffect(()=>{
-    if(!loaded)return;
-    (async()=>{try{await window.storage.set("theme_v3",theme);}catch(e){}})();
-  },[theme,loaded]);
-
   const handleSave = fiche => {
-    setFiches(prev=>{const ex=prev.find(f=>f.id===fiche.id);return ex?prev.map(f=>f.id===fiche.id?fiche:f):[fiche,...prev];});
+    saveFiche(fiche); // Firebase
     setSelected(fiche); setView("detail"); showToast("✓ Fiche enregistrée");
   };
 
   const handleSaveRdv = rdv => {
-    setFiches(prev=>{const ex=prev.find(f=>f.id===rdv.id);return ex?prev.map(f=>f.id===rdv.id?rdv:f):[rdv,...prev];});
+    saveFiche(rdv); // Firebase
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
   };
 
@@ -1613,7 +1624,7 @@ export default function App() {
   };
 
   const handleDelete = id => {
-    setFiches(prev=>prev.filter(f=>f.id!==id));
+    deleteFiche(id); // Firebase
     setView("accueil"); setSelected(null); showToast("🗑️ Supprimé");
   };
 
@@ -1624,18 +1635,13 @@ export default function App() {
     return r;
   },[fiches,search,filterStatus]);
 
-  // Géolocalisation — envoie la position toutes les 2 min (sera connecté à Firebase)
+  // Géolocalisation — envoie la position toutes les 2 min via Firebase
   useEffect(() => {
     if (!navigator.geolocation) return;
+    const techNom = localStorage.getItem("techNom") || "Technicien";
     const sendPos = () => {
       navigator.geolocation.getCurrentPosition(pos => {
-        const data = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          updatedAt: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-          statut: "En intervention",
-        };
-        try { window.storage.set("pos_moi", JSON.stringify(data)); } catch(e) {}
+        updatePosition(techNom, pos.coords.latitude, pos.coords.longitude);
       }, null, { enableHighAccuracy: true });
     };
     sendPos();
@@ -1733,7 +1739,7 @@ export default function App() {
               </div>
             )}
 
-            {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}}/>}
+            {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}}/>}
             {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention}/>}
             {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}}/>}
             {nav==="carte"&&<CarteView fiches={fiches} positions={positions} theme={theme}/>}
