@@ -355,43 +355,38 @@ Sois concis, professionnel et naturel en français.`;
 /* ═══════════════════════════════════════════
    RAPPORT PDF
 ═══════════════════════════════════════════ */
-let _h2pLoading = null;
-function loadHtml2Pdf() {
-  if (window.html2pdf) return Promise.resolve();
-  if (_h2pLoading) return _h2pLoading;
-  _h2pLoading = new Promise((res, rej) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-    s.onload = res; s.onerror = () => rej(new Error("Chargement du module PDF impossible (connexion ?)"));
-    document.head.appendChild(s);
+function telechargerPDF(html, filename) {
+  const w = window.open("", "_blank");
+  if (!w) { alert("Veuillez autoriser les pop-ups pour générer le PDF."); return; }
+  const safeName = JSON.stringify(filename);
+  const inject = `
+<div id="pdfbar" data-html2canvas-ignore="true" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#0B1829;padding:10px 12px;display:flex;gap:10px;justify-content:center;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,.35);font-family:'Segoe UI',sans-serif;">
+  <button onclick="genPdf()" id="pdfbtn" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:800;font-size:14px;cursor:pointer;">&#128196; T&eacute;l&eacute;charger le PDF</button>
+  <button onclick="window.print()" style="background:none;border:1px solid #475569;color:#94A3B8;border-radius:8px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;">&#128424; Imprimer</button>
+</div>
+<div style="height:60px" data-html2canvas-ignore="true"></div>
+<scr`+`ipt src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></scr`+`ipt>
+<scr`+`ipt>
+function genPdf(){
+  var btn=document.getElementById("pdfbtn");
+  btn.textContent="\u23F3 G\u00E9n\u00E9ration en cours\u2026"; btn.disabled=true;
+  html2pdf().set({
+    margin:[8,8,10,8],
+    filename:${safeName},
+    image:{type:"jpeg",quality:0.9},
+    html2canvas:{scale:1.5,useCORS:true,backgroundColor:"#ffffff",logging:false},
+    jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},
+    pagebreak:{mode:["css","legacy"]}
+  }).from(document.body).save().then(function(){
+    btn.textContent="\u2705 PDF t\u00E9l\u00E9charg\u00E9 !"; btn.disabled=false;
+    setTimeout(function(){btn.innerHTML="&#128196; T\u00E9l\u00E9charger le PDF";},2500);
+  }).catch(function(e){
+    btn.textContent="\u274C \u00C9chec \u2014 utilisez \uD83D\uDDA8 Imprimer \u2192 Enregistrer en PDF"; btn.disabled=false;
   });
-  return _h2pLoading;
 }
-async function telechargerPDF(html, filename) {
-  let host = null;
-  try {
-    await loadHtml2Pdf();
-    // Zone de rendu isolée, fond blanc, largeur A4 — invisible pour l'utilisateur
-    host = document.createElement("div");
-    host.style.cssText = "position:absolute;left:-10000px;top:0;width:794px;background:#ffffff;color:#111;z-index:-1;";
-    host.innerHTML = html;
-    document.body.appendChild(host);
-    // Attendre le chargement des images (photos, logos) avant la capture
-    await Promise.all([...host.querySelectorAll("img")].map(img => img.complete ? Promise.resolve() :
-      new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 4000); })));
-    await window.html2pdf().set({
-      margin: [8,8,10,8],
-      filename,
-      image: { type: "jpeg", quality: 0.9 },
-      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: "#ffffff", logging: false },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "legacy"] },
-    }).from(host).save();
-  } catch(e) {
-    alert("La génération PDF a échoué (" + (e?.message||e) + ").\nAstuce : le bouton 🖨 Imprimer permet aussi d'« Enregistrer en PDF ».");
-  } finally {
-    if (host) try { host.remove(); } catch(e) {}
-  }
+</scr`+`ipt>`;
+  const doc = html.includes("</body>") ? html.replace("</body>", inject + "</body>") : html + inject;
+  w.document.open(); w.document.write(doc); w.document.close();
 }
 
 function buildReportHTML(fiche, hideInternal = false) {
