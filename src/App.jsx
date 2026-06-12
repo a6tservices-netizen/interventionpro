@@ -213,6 +213,15 @@ const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:
 const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.setMonth(d.getMonth() + (FREQUENCES[freq]?.mois||12)); return d.toISOString().split("T")[0]; };
 const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
 const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
+const lsGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+const stripLourd = (f) => { const {photos, signature, signatureTech, logoSociete, ...rest} = f; return {...rest, _nbPhotos:(photos||[]).length, _signee:!!signature}; };
+const nextDevisNum = (list=[]) => {
+  const y = new Date().getFullYear();
+  let max = 0;
+  list.forEach(d => { const m = /^DEV-(\d{4})-(\d+)$/.exec(d.id||""); if(m && +m[1]===y && +m[2]>max) max = +m[2]; });
+  return `DEV-${y}-${String(max+1).padStart(3,"0")}`;
+};
 const uid    = () => "INT-" + Math.random().toString(36).slice(2,8).toUpperCase();
 const ts     = () => new Date().toLocaleString("fr-FR");
 const today  = () => new Date().toISOString().split("T")[0];
@@ -346,6 +355,32 @@ Sois concis, professionnel et naturel en français.`;
 /* ═══════════════════════════════════════════
    RAPPORT PDF
 ═══════════════════════════════════════════ */
+let _h2pLoading = null;
+function loadHtml2Pdf() {
+  if (window.html2pdf) return Promise.resolve();
+  if (_h2pLoading) return _h2pLoading;
+  _h2pLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    s.onload = res; s.onerror = () => rej(new Error("Chargement du module PDF impossible (connexion ?)"));
+    document.head.appendChild(s);
+  });
+  return _h2pLoading;
+}
+async function telechargerPDF(html, filename) {
+  try {
+    await loadHtml2Pdf();
+    await window.html2pdf().set({
+      margin: [8,8,10,8],
+      filename,
+      image: { type: "jpeg", quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+    }).from(html).save();
+  } catch(e) { alert("Erreur PDF : " + (e?.message||e)); }
+}
+
 function buildReportHTML(fiche, hideInternal = false) {
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
   const presta = fiche.prestations.map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
@@ -1770,7 +1805,8 @@ function ReportPreview({ fiche, onClose }) {
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>setShowSendOptions(v=>!v)} style={{background:"#0B1829",border:"1px solid #1a3050",color:"#E2E8F0",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>
           <button onClick={download} style={{background:"#0B1829",border:"1px solid #10B981",color:"#10B981",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{dl?"✓ Téléchargé":"⬇ Fichier"}</button>
-          <button onClick={tryPrint} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Imprimer / PDF</button>
+          <button onClick={tryPrint} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Imprimer</button>
+          <button onClick={()=>telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 Télécharger PDF</button>
         </div>
       </div>
       {showSendOptions&&(
@@ -2013,17 +2049,17 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
             const evts = byDay[d]||[];
             const isToday = d===todayStr, isSel = d===selDay;
             return (
-              <div key={d} onClick={()=>setSelDay(d)}
-                style={{minHeight:52,borderRadius:9,padding:"5px 4px",cursor:"pointer",textAlign:"center",position:"relative",
+              <div key={d} onClick={()=>{setSelDay(d);if(!evts.length&&onNewRdv)onNewRdv(d);}}
+                style={{minHeight:68,borderRadius:9,padding:"4px 3px",cursor:"pointer",position:"relative",overflow:"hidden",
                   border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":"transparent"}`,
                   background:isSel?"rgba(14,165,233,0.12)":isToday?"rgba(16,185,129,0.07)":evts.length?T.surface2:"transparent"}}>
-                <div style={{fontSize:12.5,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":evts.length?T.text:T.textMuted}}>{parseInt(d.slice(8))}</div>
-                {evts.length>0&&(
-                  <div style={{display:"flex",justifyContent:"center",gap:2,marginTop:3,flexWrap:"wrap"}}>
-                    {evts.slice(0,4).map((f,k)=><span key={k} style={{width:6,height:6,borderRadius:"50%",background:colorOf(f),display:"inline-block"}}/>)}
+                <div style={{fontSize:12,fontWeight:isToday||isSel?800:600,textAlign:"center",marginBottom:2,color:isToday?"#10B981":isSel?"#0EA5E9":evts.length?T.text:T.textMuted}}>{parseInt(d.slice(8))}</div>
+                {evts.slice(0,3).map((f,k)=>(
+                  <div key={k} style={{fontSize:8.5,fontWeight:700,color:"#fff",background:colorOf(f),borderRadius:4,padding:"1.5px 4px",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left",lineHeight:1.5}}>
+                    {f.heureRdv?f.heureRdv+" ":""}{f.client||f.adresse||"—"}
                   </div>
-                )}
-                {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:T.textMuted,marginTop:1}}>{evts.length}</div>}
+                ))}
+                {evts.length>3&&<div style={{fontSize:8.5,fontWeight:800,color:T.textMuted,textAlign:"center"}}>+{evts.length-3} autre(s)</div>}
               </div>
             );
           })}
@@ -2273,7 +2309,8 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
         <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <div style={{fontWeight:800,fontSize:17,color:T.text}}>📄 Devis {d.id}</div>
         <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-          <button onClick={()=>previewDevis(d)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"9px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Aperçu PDF</button>
+          <button onClick={()=>previewDevis(d)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"9px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Aperçu</button>
+          <button onClick={()=>telechargerPDF(buildDevisHTML(d),`Devis-${d.id}.pdf`)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"9px 14px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 PDF</button>
           <button onClick={handleSave} style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>💾 Enregistrer</button>
         </div>
       </div>
@@ -2423,7 +2460,8 @@ function DevisList({ devisList, onOpen, onDelete, onChangeStatut, onCreate, them
               style={{padding:"6px 9px",background:T.surface2,border:`1.5px solid ${st.color}55`,borderRadius:8,color:st.color,fontSize:11.5,fontWeight:700,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
               {Object.entries(DEVIS_STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
             </select>
-            <button onClick={()=>previewDevis(dv)} title="PDF" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🖨</button>
+            <button onClick={()=>previewDevis(dv)} title="Aperçu" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🖨</button>
+            <button onClick={()=>telechargerPDF(buildDevisHTML(dv),`Devis-${dv.id}.pdf`)} title="Télécharger PDF" style={{background:"none",border:`1px solid rgba(167,139,250,0.4)`,borderRadius:8,color:"#A78BFA",padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>📄</button>
             <button onClick={()=>onDelete(dv)} title="Supprimer" style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
           </div>
         );
@@ -2606,7 +2644,7 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
 }
 
 export default function App() {
-  const [fiches, setFiches] = useState([]);
+  const [fiches, setFiches] = useState(()=>lsGet("cache_fiches")||[]);
   const [societes, setSocietes] = useState(["A6T Services"]);
   const [techniciens, setTechniciens] = useState([]);
   const [logos, setLogos] = useState({});
@@ -2630,13 +2668,21 @@ export default function App() {
   const [showMailImport, setShowMailImport] = useState(false);
   const [techTels, setTechTels] = useState({});
   const [champsCustom, setChampsCustom] = useState({});
+  const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
+  useEffect(()=>{
+    const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
+    window.addEventListener("online",on); window.addEventListener("offline",off);
+    try { if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{}); } catch(e){}
+    setTimeout(flushPending, 3000);
+    return ()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
 
   const T = THEMES[theme] || THEMES.dark;
   const showToast = m => { setToast(m); setTimeout(()=>setToast(null),3200); };
 
   useEffect(()=>{
     // Firebase — écoute en temps réel
-    const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); });
+    const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); lsSet("cache_fiches", data.map(stripLourd)); });
     const unsub2 = watchPositions(data => setPositions(data));
     const unsub3 = watchSocietes(data => setSocietes(data));
     const unsub4 = watchTechniciens(data => setTechniciens(data));
@@ -2658,7 +2704,21 @@ export default function App() {
     setTechniciens(next); saveTechniciens(next); // Firebase
   };
 
+  const flushPending = () => {
+    const q = lsGet("pending_saves")||[];
+    if(!q.length || (typeof navigator!=="undefined" && !navigator.onLine)) return;
+    q.forEach(fi=>{ try{ saveFiche(fi); }catch(e){} });
+    lsSet("pending_saves", []);
+    showToast(`📡 ${q.length} fiche(s) synchronisée(s)`);
+  };
   const handleSave = fiche => {
+    if(typeof navigator!=="undefined" && !navigator.onLine){
+      lsSet("pending_saves", [...(lsGet("pending_saves")||[]).filter(x=>x.id!==fiche.id), fiche]);
+      setFiches(p=>[...p.filter(x=>x.id!==fiche.id), fiche]);
+      setSelected(fiche); setView("detail");
+      showToast("📴 Hors ligne — fiche mise en attente, envoi automatique au retour du réseau");
+      return;
+    }
     saveFiche(fiche); // Firebase
     try {
       if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
@@ -2669,6 +2729,13 @@ export default function App() {
 
   const handleSaveRdv = rdv => {
     setRdvPrefill(null);
+    if(typeof navigator!=="undefined" && !navigator.onLine){
+      lsSet("pending_saves", [...(lsGet("pending_saves")||[]).filter(x=>x.id!==rdv.id), rdv]);
+      setFiches(p=>[...p.filter(x=>x.id!==rdv.id), rdv]);
+      setShowRdvForm(false);
+      showToast("📴 Hors ligne — RDV mis en attente, envoi automatique au retour du réseau");
+      return;
+    }
     saveFiche(rdv); // Firebase
     if (rdv.technicien?.trim() && !techniciens.includes(rdv.technicien.trim())) ajouterTechnicien(rdv.technicien.trim());
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
@@ -2719,7 +2786,7 @@ export default function App() {
   const handleSaveClient = (c) => saveClient(c);
   const handleCreateDevis = (fiche) => {
     const lignes = (fiche.preconisations||[]).map(p=>({label:p.replace(/ recommandé| à prévoir| à planifier| à établir| requise|Prévoir /gi,"").trim().replace(/^./,m=>m.toUpperCase()), qte:1, pu:""}));
-    setEditingDevis({ id:uid2("DEV"), ficheId:fiche.id, client:fiche.client||"", site:"", adresse:fiche.adresse||"",
+    setEditingDevis({ id:nextDevisNum(devisList), ficheId:fiche.id, client:fiche.client||"", site:"", adresse:fiche.adresse||"",
       date:today(), tva:10, statut:"brouillon", lignes: lignes.length?lignes:[{label:"",qte:1,pu:""}],
       photos:[], notes:"", societe:fiche.societe||"", logoSociete:fiche.logoSociete||null, _photosDispo:fiche.photos||[] });
     setView("devisform");
@@ -2754,6 +2821,12 @@ export default function App() {
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
   const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
+  const offlineBanner = !online && (
+    <div style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
+      📴 Mode hors ligne — consultation possible, vos enregistrements seront synchronisés au retour du réseau
+    </div>
+  );
+
   const mailImportModal = showMailImport && (
     <MailImport theme={theme} onCancel={()=>setShowMailImport(false)}
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
@@ -2762,6 +2835,7 @@ export default function App() {
   // Formulaire RDV plein écran
   if(showRdvForm) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      {offlineBanner}
       <header style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:300}}>
         <button onClick={()=>setShowRdvForm(false)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <div style={{fontWeight:800,fontSize:16,color:T.text}}>📅 Nouveau RDV</div>
@@ -2774,6 +2848,7 @@ export default function App() {
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      {offlineBanner}
       {mailImportModal}
 
       {/* HEADER */}
@@ -2906,7 +2981,7 @@ export default function App() {
             {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
-            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:uid2("DEV"),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
+            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
             {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
             {nav==="carte"&&<CarteView fiches={fiches} positions={positions} theme={theme}/>}
           </>
