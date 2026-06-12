@@ -24,6 +24,21 @@ const watchPositions = (cb) => onValue(ref(db, "positions"), snap => cb(snap.val
 const updatePosition = (nom, lat, lng) => set(ref(db, `positions/${nom}`), { lat, lng, updatedAt: new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}), statut:"En intervention" });
 const watchSocietes = (cb) => onValue(ref(db, "societes"), snap => cb(snap.val()||["A6T Services"]));
 const saveSocietes = (list) => set(ref(db, "societes"), list);
+const watchTechniciens = (cb) => onValue(ref(db, "techniciens"), snap => cb(snap.val()||[]));
+const saveTechniciens = (list) => set(ref(db, "techniciens"), list);
+const saveClient = (c) => set(ref(db, `clients/${c.id}`), c);
+const deleteClient = (id) => remove(ref(db, `clients/${id}`));
+const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), d);
+const deleteDevisFb = (id) => remove(ref(db, `devis/${id}`));
+const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const saveContrat = (c) => set(ref(db, `contrats/${c.id}`), c);
+const deleteContrat = (id) => remove(ref(db, `contrats/${id}`));
+const watchContrats = (cb) => onValue(ref(db, "contrats"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const logoKey = (nom) => (nom||"").replace(/[.#$/\[\]]/g, "_");
+const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}));
+const saveLogo = (nom, dataUrl) => set(ref(db, `logos/${logoKey(nom)}`), dataUrl);
+const removeLogo = (nom) => remove(ref(db, `logos/${logoKey(nom)}`));
 
 /* ═══════════════════════════════════════════
    THÈMES
@@ -73,10 +88,10 @@ const THEMES = {
 const PRESTATIONS = [
   {
     id: "degorgement", label: "Débouchage", icon: "🔧", color: "#F97316",
-    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Colonne commune","Branchement principal"],
-    problemes: ["Bouchon total","Bouchon partiel","Odeurs","Remontée d'eaux usées","Débordement"],
-    causes: ["Corps étranger","Lingettes / serviettes","Accumulation de graisses","Dépôts calcaires / tartre","Racines / végétation","Effondrement / casse de canalisation","Joint défaillant","Mauvaise pente","Chute de débris (travaux)","Remontée de nappes","Cause indéterminée"],
-    actions: ["Par débouchage manuel","Par furet électrique","Par camion hydrocureur","Pompage","Ouverture tampon existant","Remplacement tampon hermétique","Création ouverture sur colonne","Fourniture et pose tampon hermétique neuf","Fermeture colonne","Extraction de corps étranger"],
+    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Colonne commune","Branchement principal","Regard","Siphon de sol","Vide-ordures","Horizontal","Vertical"],
+    problemes: ["Bouchon total","Mauvais écoulement","Odeurs","Remontée d'eaux usées","Débordement"],
+    causes: ["Corps étranger","Lingettes","Papier épais","Accumulation de graisses","Dépôts calcaires / tartre","Racines / végétation","Effondrement / casse de canalisation","Joint défaillant","Mauvaise pente","Chute de débris (travaux)","Remontée de nappes","Cause indéterminée"],
+    actions: ["Par débouchage manuel","Par furet électrique","Par camion hydrocureur","Pompage","Ouverture tampon existant","Remplacement tampon hermétique","Création ouverture sur colonne","Fourniture et pose tampon hermétique neuf","Fermeture colonne","Extraction de corps étranger","Débouchage de vide-ordures","Ramassage des ordures"],
     resultats: ["Écoulement rétabli","Écoulement amélioré","Problème persistant","Colonne refermée — tampon existant reposé","Colonne refermée — tampon neuf posé"],
   },
   {
@@ -110,17 +125,10 @@ const PRESTATIONS = [
   },
   {
     id: "nettoyage", label: "Nettoyage / Pompage", icon: "🧽", color: "#14B8A6",
-    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cave","Cour","Parking","Local technique","Parties communes"],
-    problemes: ["Débordement","Refoulement eaux usées","Inondation","Stagnation","Dépôt de boue","Contamination"],
-    actions: ["Pompage eaux refoulées","Aspiration","Nettoyage des sols","Désinfection","Évacuation déchets","Assèchement"],
+    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Parking","Local technique","Parties communes","Vide sanitaire"],
+    problemes: ["Débordement","Refoulement eaux usées","Inondation","Stagnation","Dépôt de boue","Infiltration"],
+    actions: ["Pompage eaux refoulées","Aspiration","Nettoyage des sols","Désinfection","Évacuation déchets","Assèchement","Descente d'homme dans regard","Descente d'homme dans vide sanitaire"],
     resultats: ["Zone nettoyée","Eaux évacuées","Surface désinfectée","Assèchement réalisé","Intervention à poursuivre"],
-  },
-  {
-    id: "syndic", label: "Constat / Parties communes", icon: "🏢", color: "#F59E0B",
-    localisations: ["Parties communes","Cave","Parking","Colonne montante","Toiture-terrasse","Local poubelles","Hall"],
-    problemes: ["Fuite parties communes","Bouchon colonne","Désordre plomberie","Sinistre","Constat contradictoire"],
-    actions: ["Constat","Débouchage","Réparation provisoire","Mise en sécurité","Rapport technique"],
-    resultats: ["Résolu","Partiellement résolu","Devis nécessaire","Entreprise spécialisée requise"],
   },
 ];
 
@@ -132,16 +140,16 @@ const RESPONSABILITES = [
 ];
 
 const PRECONISATIONS = [
-  "Passage caméra recommandé","Détartrage recommandé","Traitement dégraissant périodique",
-  "Traitement racinaire à prévoir","Remplacement tampon hermétique à prévoir",
-  "Remplacement canalisations à prévoir","Inspection annuelle recommandée",
-  "Travaux de reprise à planifier","Pompage préventif recommandé",
-  "Vérification étanchéité à prévoir","Mise aux normes recommandée",
-  "Entretien régulier recommandé","Contrôle dans 6 mois",
-  "Devis travaux à établir","Intervention urgente requise","Aucune préconisation",
+  "Passage caméra recommandé","Détartrage recommandé",
+  "Prévoir remplacement de tampon de visite",
+  "Remplacement canalisations à prévoir",
+  "Travaux de reprise à planifier",
+  "Vérification étanchéité à prévoir",
+  "Entretien régulier recommandé",
+  "Devis travaux à établir","Intervention urgente requise",
 ];
 
-const MATERIELS = ["Furet électrique","Furet manuel","Pompe à vidanger","Camion hydrocureur","Caméra d'inspection","Haute pression","Outillage plomberie","Tampon hermétique"];
+const MATERIELS = ["Furet électrique","Camion hydrocureur","Caméra d'inspection","Haute pression"];
 
 const SOCIETES_DEFAUT = ["A6T Services"];
 
@@ -159,6 +167,47 @@ const POSITIONS = ["Côté gauche","Côté droit","Central","Façade rue","Faça
 const EMPTY_LOC = { batimentLettre:"", batimentNom:"", etage:"", cage:"", appartement:"", position:"" };
 
 // ─── Helpers ─────────────────────────────────────────
+const resizeLogo = (file) => new Promise(res => {
+  const r = new FileReader();
+  r.onload = e => { const img = new Image(); img.onload = () => {
+    const max = 320; const sc = Math.min(1, max / img.width);
+    const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    res(c.toDataURL("image/png"));
+  }; img.src = e.target.result; };
+  r.readAsDataURL(file);
+});
+
+const DIAMETRES = ["32","40","50","75","80","100","125","150","200","300"];
+const PRESTA_DIAMETRE = ["degorgement","hydrocurage","inspection"];
+const DEVIS_CATALOGUE = [
+  {label:"Curage de colonne EU/EP", unite:"colonne"},
+  {label:"Curage réseau horizontal", unite:"ml"},
+  {label:"Détartrage de colonne", unite:"colonne"},
+  {label:"Détartrage réseau", unite:"ml"},
+  {label:"Nettoyage de siphon de parcours", unite:"u"},
+  {label:"Nettoyage de regard", unite:"u"},
+  {label:"Pompage / nettoyage bac à graisse", unite:"u"},
+  {label:"Inspection caméra", unite:"u"},
+  {label:"Remplacement tampon de visite", unite:"u"},
+  {label:"Débouchage canalisation", unite:"u"},
+];
+const resizePhoto = (file) => new Promise(res => {
+  const r = new FileReader();
+  r.onload = e => { const img = new Image(); img.onload = () => {
+    const max = 1024; const sc = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    res({ name: file.name, data: c.toDataURL("image/jpeg", 0.82) });
+  }; img.src = e.target.result; };
+  r.readAsDataURL(file);
+});
+const CONTRAT_TYPES = ["Bac à graisse","Poste de relevage","Curage annuel","Entretien copropriété","Autre entretien"];
+const FREQUENCES = { mensuel:{label:"Mensuel",mois:1}, trimestriel:{label:"Trimestriel",mois:3}, semestriel:{label:"Semestriel",mois:6}, annuel:{label:"Annuel",mois:12} };
+const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:{label:"Facturé",color:"#10B981"} };
+const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.setMonth(d.getMonth() + (FREQUENCES[freq]?.mois||12)); return d.toISOString().split("T")[0]; };
+const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
+const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
 const uid    = () => "INT-" + Math.random().toString(36).slice(2,8).toUpperCase();
 const ts     = () => new Date().toLocaleString("fr-FR");
 const today  = () => new Date().toISOString().split("T")[0];
@@ -187,16 +236,13 @@ function suggestPreconisations(prestations) {
     const causes = p.causes || [];
     const resultats = p.resultats || [];
     if (causes.some(c => c.includes("calcaire") || c.includes("tartre"))) s.add("Détartrage recommandé");
-    if (causes.some(c => c.includes("graisse"))) s.add("Traitement dégraissant périodique");
-    if (causes.some(c => c.includes("racine"))) { s.add("Passage caméra recommandé"); s.add("Traitement racinaire à prévoir"); }
+    if (causes.some(c => c.includes("racine"))) s.add("Passage caméra recommandé");
     if (causes.some(c => c.includes("effondrement") || c.includes("casse"))) { s.add("Passage caméra recommandé"); s.add("Travaux de reprise à planifier"); }
     if (causes.some(c => c.includes("pente"))) s.add("Travaux de reprise à planifier");
     if (causes.some(c => c.includes("joint"))) s.add("Vérification étanchéité à prévoir");
-    if (causes.some(c => c.includes("tampon"))) s.add("Remplacement tampon hermétique à prévoir");
+    if (causes.some(c => c.includes("tampon"))) s.add("Prévoir remplacement de tampon de visite");
     if (resultats.some(r => r.includes("persistant"))) { s.add("Intervention urgente requise"); s.add("Passage caméra recommandé"); }
-    if (resultats.some(r => r.includes("amélioré"))) s.add("Contrôle dans 6 mois");
     if (resultats.some(r => r.includes("rétabli") || r.includes("opérationnel"))) s.add("Entretien régulier recommandé");
-    if (p.id === "fosse") { s.add("Pompage préventif recommandé"); s.add("Inspection annuelle recommandée"); }
     if (p.id === "inspection") s.add("Passage caméra recommandé");
   });
   return [...s];
@@ -205,7 +251,7 @@ function suggestPreconisations(prestations) {
 /* ═══════════════════════════════════════════
    GÉNÉRATION CONCLUSION IA
 ═══════════════════════════════════════════ */
-async function generateConclusionIA(prestations, locStr, responsabilite) {
+async function generateConclusionIA(prestations, locStr, responsabilite, preconisations = []) {
   const details = prestations.map(p => {
     const meta = PRESTATIONS.find(x => x.id === p.id);
     return {
@@ -236,12 +282,16 @@ ${d.note ? `Note : ${d.note}` : ""}
 
 ${resp && resp.id !== "na" ? `Responsabilité : ${resp.label} — ${resp.desc}` : ""}
 
+${preconisations.length ? `Préconisations pour l'avenir (travaux ou contrôles RECOMMANDÉS, PAS encore réalisés) : ${preconisations.join(", ")}` : ""}
+
 Règles :
 - Rédige UN seul paragraphe fluide et professionnel
 - Utilise un français courant et naturel, pas de jargon
 - Commence par "Suite à notre intervention"
 - Mentionne le lieu si disponible
 - Résume les actions et résultats de manière claire
+- TRÈS IMPORTANT : ne présente JAMAIS une préconisation comme une action réalisée. Seules les lignes "Actions" ont été effectuées. Les préconisations doivent être introduites par "nous préconisons", "nous recommandons" ou équivalent, au futur ou au conditionnel
+- Si aucune inspection caméra ne figure dans les Actions, n'affirme pas qu'un passage caméra a eu lieu
 - Termine par une formule de politesse courte
 - Maximum 5-6 phrases
 - NE PAS lister les prestations séparément, faire un texte coulant`;
@@ -330,7 +380,7 @@ function buildReportHTML(fiche, hideInternal = false) {
       <div class="presta-card" style="border-left-color:${p.meta?.color||'#0ea5e9'}">
         <div class="presta-header">
           <span class="presta-icon">${p.meta?.icon||'🔧'}</span>
-          <span class="presta-title" style="color:${p.meta?.color}">${p.meta?.label}</span>
+          <span class="presta-title" style="color:${p.meta?.color}">${p.meta?.label}${p.diametre?` — Ø ${p.diametre} mm`:""}</span>
         </div>
         <div class="presta-body">
           ${sentences.map(s=>`<p class="phrase">${s}</p>`).join("")}
@@ -342,8 +392,10 @@ function buildReportHTML(fiche, hideInternal = false) {
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
        <div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div></div>` : "";
 
-  const sigClientBlock = fiche.signature ? `<img src="${fiche.signature}" class="sig-img"/>` : `<div class="sig-line"></div>`;
-  const sigTechBlock = fiche.signatureTech ? `<img src="${fiche.signatureTech}" class="sig-img"/>` : `<div class="sig-line"></div>`;
+  const sigBoxes = [];
+  if (fiche.signatureTech) sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature technicien</div><img src="${fiche.signatureTech}" class="sig-img"/><div class="sig-name">${fiche.technicien||"Technicien"}</div></div>`);
+  if (fiche.signature) sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature client — Bon pour accord</div><img src="${fiche.signature}" class="sig-img"/>${fiche.nomSignataire?`<div class="sig-name">${fiche.nomSignataire}</div>`:""}</div>`);
+  const sigZone = sigBoxes.length ? `<div class="sig-zone" style="grid-template-columns:repeat(${sigBoxes.length},1fr)">${sigBoxes.join("")}</div>` : "";
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
 <title>Rapport ${fiche.id}</title>
@@ -403,6 +455,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 </style></head><body>
 <div class="header">
   <div class="header-left">
+    ${fiche.logoSociete?`<img src="${fiche.logoSociete}" alt="" style="max-height:46px;max-width:190px;display:block;margin-bottom:6px;background:#fff;border-radius:6px;padding:3px 8px"/>`:""}
     ${fiche.societe?`<div class="logo">${fiche.societe}</div>`:""}
     <div class="report-title">Rapport d'intervention technique</div>
   </div>
@@ -431,18 +484,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
   ${fiche.preconisations?.length?`<div class="section-block"><div class="section-title">💡 Préconisations</div><ul class="preco-list">${fiche.preconisations.map(p=>`<li>${p}</li>`).join("")}</ul></div>`:""}
   <div class="section-block"><div class="section-title">📝 Conclusion</div><div class="conclusion-box">${fiche.conclusion||"—"}</div></div>
   ${photoGrid}
-  <div class="sig-zone">
-    <div class="sig-box">
-      <div class="sig-box-label">Signature technicien</div>
-      ${sigTechBlock}
-      <div class="sig-name">${fiche.technicien||"Technicien"}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-box-label">Signature client — Bon pour accord</div>
-      ${sigClientBlock}
-      ${fiche.nomSignataire?`<div class="sig-name">${fiche.nomSignataire}</div>`:""}
-    </div>
-  </div>
+  ${sigZone}
   ${!hideInternal ? `<div class="internal">
     <div class="internal-title">🔒 Usage interne — Non transmis au client</div>
     <div class="internal-grid">
@@ -513,6 +555,93 @@ function envoyerRapportSMS(fiche) {
 }
 
 /* ═══════════════════════════════════════════
+   DEVIS — document HTML
+═══════════════════════════════════════════ */
+function devisTotaux(devis) {
+  const ht = (devis.lignes||[]).reduce((s,l)=>s+(parseFloat(l.qte)||0)*(parseFloat(l.pu)||0),0);
+  const tva = ht*((parseFloat(devis.tva)||0)/100);
+  return { ht, tva, ttc: ht+tva };
+}
+
+function buildDevisHTML(devis) {
+  const { ht, tva, ttc } = devisTotaux(devis);
+  const lignesHTML = (devis.lignes||[]).filter(l=>l.label?.trim()).map(l=>{
+    const tot=(parseFloat(l.qte)||0)*(parseFloat(l.pu)||0);
+    return `<tr><td>${l.label}</td><td class="c">${l.qte}</td><td class="r">${euro(parseFloat(l.pu)||0)}</td><td class="r">${euro(tot)}</td></tr>`;
+  }).join("");
+  const photosHTML = devis.photos?.length
+    ? `<div class="section-title">📷 Photos</div><div class="pgrid">${devis.photos.map(p=>`<div class="pitem"><img src="${p.data||p}"/></div>`).join("")}</div>` : "";
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Devis ${devis.id}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12px;line-height:1.7}
+.header{background:#0a1628;display:grid;grid-template-columns:1fr auto}
+.hl{padding:26px 32px}.logo{font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:#94a3b8}
+.title{font-family:'Fraunces',serif;font-size:24px;font-weight:900;color:#fff;margin-top:4px}
+.hr{background:#38bdf8;padding:26px 32px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;min-width:190px}
+.lab{font-size:8px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(10,22,40,.6)}
+.num{font-family:'Fraunces',serif;font-size:18px;font-weight:900;color:#0a1628}
+.dat{font-size:11px;font-weight:600;color:#0a1628;margin-top:4px;opacity:.75}
+.body{padding:28px 32px}
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
+.icard{background:#f8fafc;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0}
+.ilab{font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#94a3b8;margin-bottom:3px}
+.ival{font-size:12px;font-weight:600}
+.section-title{font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#64748b;padding-bottom:7px;border-bottom:1.5px solid #e2e8f0;margin:18px 0 12px}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+th{text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;padding:8px 10px;border-bottom:2px solid #e2e8f0}
+td{padding:9px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
+.c{text-align:center}.r{text-align:right}
+.totaux{margin-left:auto;width:260px}
+.totaux div{display:flex;justify-content:space-between;padding:6px 10px;font-size:12px}
+.totaux .ttc{background:#0a1628;color:#fff;border-radius:8px;font-weight:800;font-size:14px;padding:10px 14px;margin-top:4px}
+.notes{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;font-size:12px;color:#334155;margin-top:14px}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pitem{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:150px}
+.pitem img{width:100%;height:100%;object-fit:cover}
+.footer{margin-top:24px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<div class="header">
+  <div class="hl">
+    ${devis.logoSociete?`<img src="${devis.logoSociete}" alt="" style="max-height:46px;max-width:190px;display:block;margin-bottom:6px;background:#fff;border-radius:6px;padding:3px 8px"/>`:""}
+    ${devis.societe?`<div class="logo">${devis.societe}</div>`:""}
+    <div class="title">DEVIS</div>
+  </div>
+  <div class="hr">
+    <div class="lab">Numéro</div><div class="num">${devis.id}</div>
+    <div class="dat">${dateFr(devis.date)}</div>
+  </div>
+</div>
+<div class="body">
+  <div class="cgrid">
+    ${devis.client?`<div class="icard"><div class="ilab">Client</div><div class="ival">${devis.client}</div></div>`:""}
+    ${devis.site?`<div class="icard"><div class="ilab">Site</div><div class="ival">${devis.site}</div></div>`:""}
+    ${devis.adresse?`<div class="icard" style="grid-column:1/-1"><div class="ilab">Adresse des travaux</div><div class="ival">${devis.adresse}</div></div>`:""}
+    ${devis.ficheId?`<div class="icard"><div class="ilab">Suite à l'intervention</div><div class="ival">${devis.ficheId}</div></div>`:""}
+  </div>
+  <div class="section-title">Détail des prestations proposées</div>
+  <table><thead><tr><th>Désignation</th><th class="c" style="width:60px">Qté</th><th class="r" style="width:90px">P.U. HT</th><th class="r" style="width:100px">Total HT</th></tr></thead>
+  <tbody>${lignesHTML||'<tr><td colspan="4" style="color:#94a3b8;font-style:italic">Aucune ligne</td></tr>'}</tbody></table>
+  <div class="totaux">
+    <div><span>Total HT</span><b>${euro(ht)}</b></div>
+    <div><span>TVA ${devis.tva}%</span><b>${euro(tva)}</b></div>
+    <div class="ttc"><span>Total TTC</span><span>${euro(ttc)}</span></div>
+  </div>
+  ${devis.notes?`<div class="notes">${devis.notes.replace(/\n/g,"<br/>")}</div>`:""}
+  ${photosHTML}
+  <div class="footer"><div>${devis.societe||""}</div><div>Devis ${devis.id} — validité 30 jours</div></div>
+</div></body></html>`;
+}
+
+function previewDevis(devis) {
+  const html = buildDevisHTML(devis);
+  const w = window.open("", "_blank");
+  if (w?.document) { w.document.open(); w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},900); }
+}
+
+/* ═══════════════════════════════════════════
    SIGNATURE CANVAS
 ═══════════════════════════════════════════ */
 function SignatureCanvas({ onSave, onCancel, title = "Signature client" }) {
@@ -579,12 +708,12 @@ function TempsPopup({ onSave, tarifHoraire }) {
 /* ═══════════════════════════════════════════
    FORMULAIRE FICHE — SCROLL UNIQUE
 ═══════════════════════════════════════════ */
-function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete }) {
+function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [] }) {
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
 
   const [f, setF] = useState(() => ({
-    client:"", adresse:"", tel:"", email:"", technicien:"",
+    client:"", adresse:"", tel:"", email:"", technicien:"", clientId:null, siteId:null, facturation:"",
     dateRdv:today(), heureRdv:"", diametreCanalisation:"",
     societe:"A6T Services",
     prestations:[], responsabilite:"na", preconisations:[],
@@ -599,6 +728,9 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const [showSigTech, setShowSigTech] = useState(false);
   const [showTemps, setShowTemps] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [precoOpen, setPrecoOpen] = useState(false);
+  const [interneOpen, setInterneOpen] = useState(false);
+  const [locOpen, setLocOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [acOpen, setAcOpen] = useState(false);
   const [acAdresseOpen, setAcAdresseOpen] = useState(false);
@@ -606,6 +738,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const [generatingConclusion, setGeneratingConclusion] = useState(false);
   const [generatingNote, setGeneratingNote] = useState(null);
   const fileRef = useRef();
+  const logoRef = useRef();
   const acRef = useRef();
   const acAdresseRef = useRef();
 
@@ -648,7 +781,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const hasPresta = id => f.prestations.some(p=>p.id===id);
   const togglePresta = id => setF(p=>{
     if(p.prestations.some(x=>x.id===id)) return{...p,prestations:p.prestations.filter(x=>x.id!==id)};
-    return{...p,prestations:[...p.prestations,{id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:""}]};
+    return{...p,prestations:[...p.prestations,{id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:"",...(PRESTA_DIAMETRE.includes(id)?{diametre:"100"}:{})}]};
   });
   const updatePresta = (id,key,val) => setF(p=>({...p,prestations:p.prestations.map(x=>x.id===id?{...x,[key]:val}:x)}));
   const togglePrestaItem = (id,key,val) => setF(p=>({...p,prestations:p.prestations.map(x=>{
@@ -664,9 +797,9 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     setGeneratingConclusion(true);
     try {
       const locStr = formatLoc(f.loc);
-      const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite);
+      const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite, f.preconisations);
       set("conclusion", text);
-    } catch(e) { alert("Erreur lors de la génération. Vérifiez votre connexion."); }
+    } catch(e) { alert("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingConclusion(false); }
   };
 
@@ -678,7 +811,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
       const locStr = formatLoc(f.loc);
       const text = await generateNotePrestation(presta, locStr);
       updatePresta(prestaId, "note", text);
-    } catch(e) { alert("Erreur lors de la génération."); }
+    } catch(e) { alert("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingNote(null); }
   };
 
@@ -689,7 +822,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
   const handleTempsValidated = (temps) => {
     setShowTemps(false);
-    const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne };
+    const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
     onSave(fiche);
     setSaving(false);
   };
@@ -746,9 +879,47 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
             {societes.map(s=><option key={s} value={s}>{s}</option>)}
             <option value="__new__">➕ Ajouter une société…</option>
           </select>
+          {/* Logo de la société (optionnel) */}
+          {(()=>{ const lk=(f.societe||"").replace(/[.#$/\[\]]/g,"_"); const logo=logos[lk];
+          return (
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
+              {logo
+                ? <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"4px 10px"}}><img src={logo} alt="logo" style={{height:36,display:"block"}}/></div>
+                : <span style={{fontSize:11.5,color:T.textMuted}}>Pas de logo — le rapport affichera un bandeau avec le nom (idéal sous-traitance)</span>}
+              <button onClick={()=>logoRef.current?.click()} style={{padding:"6px 12px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📷 {logo?"Changer":"Ajouter"} le logo</button>
+              {logo&&<button onClick={()=>onRemoveLogo&&onRemoveLogo(f.societe)} style={{padding:"6px 10px",background:"none",border:"1px solid rgba(239,68,68,0.4)",borderRadius:8,color:"#EF4444",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕ Retirer</button>}
+              <input ref={logoRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0]; if(file){const d=await resizeLogo(file); onSaveLogo&&onSaveLogo(f.societe,d);} e.target.value="";}}/>
+            </div>
+          );})()}
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          {/* Client enregistré → Site (remplit l'adresse) */}
+          {clients.length>0&&(
+            <div style={{gridColumn:"1/-1",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,background:"rgba(14,165,233,0.06)",border:"1px solid rgba(14,165,233,0.2)",borderRadius:10,padding:"12px"}}>
+              <div><div style={lblStyle}>Client enregistré</div>
+                <select value={f.clientId||""} onChange={e=>{
+                  const v=e.target.value; const c=clients.find(x=>x.id===v);
+                  setF(p=>({...p,clientId:v||null,siteId:null,
+                    client:c?c.nom:p.client, tel:c?(c.tel||""):p.tel, email:c?(c.email||""):p.email}));
+                }} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light"}}>
+                  <option value="">— Saisie libre —</option>
+                  {clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+                </select>
+              </div>
+              <div><div style={lblStyle}>Site d'intervention</div>
+                <select value={f.siteId||""} disabled={!f.clientId} onChange={e=>{
+                  const v=e.target.value; const c=clients.find(x=>x.id===f.clientId);
+                  const s=Object.values(c?.sites||{}).find(x=>x.id===v);
+                  setF(p=>({...p,siteId:v||null, adresse:s?s.adresse:p.adresse}));
+                }} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light",opacity:f.clientId?1:.5}}>
+                  <option value="">{f.clientId?"— Choisir un site —":"Choisissez d'abord un client"}</option>
+                  {Object.values(clients.find(x=>x.id===f.clientId)?.sites||{}).map(s=><option key={s.id} value={s.id}>{s.nom||s.adresse}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
           {/* Client avec autocomplétion */}
           <div style={{gridColumn:"1/-1",position:"relative"}} ref={acRef}>
             <div style={lblStyle}>Client / Société</div>
@@ -790,7 +961,18 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
           <div><div style={lblStyle}>Téléphone</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
           <div><div style={lblStyle}>Email</div><input value={f.email} onChange={e=>set("email",e.target.value)} placeholder="email@exemple.fr" style={inpStyle()}/></div>
-          <div><div style={lblStyle}>Technicien</div><input value={f.technicien} onChange={e=>set("technicien",e.target.value)} placeholder="Prénom Nom" style={inpStyle()}/></div>
+          <div><div style={lblStyle}>Technicien</div>
+            <select value={f.technicien||""} onChange={e=>{
+              if(e.target.value==="__new__"){
+                const nom=prompt("Nom du technicien :");
+                if(nom?.trim()){onAddTechnicien&&onAddTechnicien(nom.trim());set("technicien",nom.trim());}
+              } else {set("technicien",e.target.value);}
+            }} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light"}}>
+              <option value="">— Choisir —</option>
+              {[...new Set([...techniciens, ...(f.technicien?[f.technicien]:[])])].map(t=><option key={t} value={t}>{t}</option>)}
+              <option value="__new__">➕ Ajouter un technicien…</option>
+            </select>
+          </div>
           <div><div style={lblStyle}>Statut</div>
             <select value={f.status} onChange={e=>set("status",e.target.value)} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light"}}>
               {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
@@ -798,13 +980,15 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           </div>
           <div><div style={lblStyle}>Date</div><input type="date" value={f.dateRdv} onChange={e=>set("dateRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
           <div><div style={lblStyle}>Heure</div><input type="time" value={f.heureRdv} onChange={e=>set("heureRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
-          <div><div style={lblStyle}>Diamètre canalisation (optionnel)</div><input value={f.diametreCanalisation} onChange={e=>set("diametreCanalisation",e.target.value)} placeholder="Ex : DN 100, DN 150…" style={inpStyle()}/></div>
         </div>
-      </div>
-
-      {/* ── LOCALISATION PRÉCISE ── */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>📍 Localisation précise <span style={{fontSize:11,fontWeight:400,color:T.textMuted}}>(optionnel)</span></div>
+        {/* Localisation précise (repliable) */}
+        <div style={{marginTop:16,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+          <div onClick={()=>setLocOpen(!locOpen)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontWeight:800,fontSize:13,color:T.text}}>
+            📍 Localisation précise
+            {formatLoc(f.loc)&&<span style={{fontSize:11,fontWeight:700,color:"#38BDF8",background:"rgba(14,165,233,0.13)",padding:"2px 9px",borderRadius:12,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{formatLoc(f.loc)}</span>}
+            <span style={{marginLeft:"auto",fontSize:12,color:"#38BDF8",fontWeight:700}}>{locOpen?"▲":"▼ Appuyer si besoin"}</span>
+          </div>
+          {locOpen&&(<div style={{marginTop:12}}>
         {formatLoc(f.loc)&&(
           <div style={{background:"rgba(14,165,233,0.08)",border:"1px solid rgba(14,165,233,0.2)",borderRadius:8,padding:"9px 14px",marginBottom:12,fontSize:13,color:"#38BDF8",fontWeight:600}}>
             📍 {formatLoc(f.loc)}
@@ -835,6 +1019,8 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           </div>
         </div>
         {formatLoc(f.loc)&&<button onClick={()=>setF(p=>({...p,loc:{...EMPTY_LOC}}))} style={{marginTop:10,fontSize:11,color:T.textMuted,background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>✕ Effacer</button>}
+          </div>)}
+        </div>
       </div>
 
       {/* ── PRESTATIONS ── */}
@@ -899,6 +1085,15 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                     ))}
 
                     {/* Note + bouton IA */}
+                  {PRESTA_DIAMETRE.includes(presta.id)&&(
+                    <div style={{marginBottom:12}}>
+                      <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:6}}>📏 Diamètre canalisation</div>
+                      <select value={data.diametre||"100"} onChange={e=>updatePresta(presta.id,"diametre",e.target.value)}
+                        style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light",maxWidth:220}}>
+                        {DIAMETRES.map(dn=><option key={dn} value={dn}>Ø {dn} mm</option>)}
+                      </select>
+                    </div>
+                  )}
                     <div style={{fontSize:10,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",margin:"14px 0 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span>🖊 Note (optionnel)</span>
                       <button onClick={()=>handleGenererNote(presta.id)} disabled={generatingNote===presta.id}
@@ -921,8 +1116,8 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>⚖️ Responsabilité <span style={{fontSize:11,fontWeight:400,color:T.textMuted}}>(Syndic / Copropriété)</span></div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6}}>
-          {RESPONSABILITES.map(r=>(
-            <button key={r.id} onClick={()=>set("responsabilite",r.id)}
+          {RESPONSABILITES.filter(r=>r.id==="privative"||r.id==="commune").map(r=>(
+            <button key={r.id} onClick={()=>set("responsabilite",f.responsabilite===r.id?"na":r.id)}
               style={{padding:"10px 8px",borderRadius:8,cursor:"pointer",background:f.responsabilite===r.id?r.color+"22":T.surface2,border:`1.5px solid ${f.responsabilite===r.id?r.color:T.border}`,color:f.responsabilite===r.id?r.color:T.textMuted,fontWeight:700,fontSize:11,textAlign:"center",lineHeight:1.4,fontFamily:"inherit"}}>
               <div style={{fontSize:18,marginBottom:3}}>{r.icon}</div>{r.label}
             </button>
@@ -930,9 +1125,14 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
         </div>
       </div>
 
-      {/* ── PRÉCONISATIONS ── */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>💡 Préconisations</div>
+      {/* ── PRÉCONISATIONS (repliable) ── */}
+      <div style={{...sectionStyle,cursor:precoOpen?"default":"pointer"}} onClick={()=>!precoOpen&&setPrecoOpen(true)}>
+        <div style={{...sectionTitleStyle,cursor:"pointer",borderBottom:precoOpen?sectionTitleStyle.borderBottom:"none",paddingBottom:precoOpen?10:0,marginBottom:precoOpen?14:0}} onClick={e=>{e.stopPropagation();setPrecoOpen(!precoOpen);}}>
+          💡 Préconisations
+          {f.preconisations.length>0&&<span style={{fontSize:11,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.15)",padding:"2px 9px",borderRadius:12}}>{f.preconisations.length} cochée(s)</span>}
+          <span style={{marginLeft:"auto",fontSize:12,color:"#A78BFA",fontWeight:700}}>{precoOpen?"▲":"▼ Appuyer si besoin"}</span>
+        </div>
+        {precoOpen&&(<>
         {suggested.length>0&&(
           <div style={{background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.25)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:"#A78BFA",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
@@ -967,6 +1167,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
             );
           })}
         </div>
+      </>)}
       </div>
 
       {/* ── CONCLUSION ── */}
@@ -1017,7 +1218,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {f.signature
                 ?<div style={{background:"#fff",borderRadius:8,padding:8,border:"1px solid #e2e8f0"}}><img src={f.signature} style={{height:56,display:"block",maxWidth:"100%"}} alt="sig"/></div>
-                :<div style={{border:`2px dashed ${T.border}`,borderRadius:8,padding:"14px",color:T.textMuted,fontSize:12,textAlign:"center"}}>Aucune signature</div>}
+                :<div onClick={()=>setShowSig(true)} style={{border:`2px dashed ${T.border}`,borderRadius:8,padding:"14px",color:T.textMuted,fontSize:12,textAlign:"center",cursor:"pointer"}}>✍️ Touchez ici pour signer</div>}
               <button onClick={()=>setShowSig(true)} style={{padding:"8px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✍️ {f.signature?"Modifier":"Signer"}</button>
               {f.signature&&<button onClick={()=>set("signature",null)} style={{padding:"7px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#EF4444",fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Effacer</button>}
             </div>
@@ -1029,7 +1230,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {f.signatureTech
                 ?<div style={{background:"#fff",borderRadius:8,padding:8,border:"1px solid #e2e8f0"}}><img src={f.signatureTech} style={{height:56,display:"block",maxWidth:"100%"}} alt="sig-tech"/></div>
-                :<div style={{border:`2px dashed ${T.border}`,borderRadius:8,padding:"14px",color:T.textMuted,fontSize:12,textAlign:"center"}}>Aucune signature</div>}
+                :<div onClick={()=>setShowSigTech(true)} style={{border:`2px dashed ${T.border}`,borderRadius:8,padding:"14px",color:T.textMuted,fontSize:12,textAlign:"center",cursor:"pointer"}}>✍️ Touchez ici pour signer</div>}
               <button onClick={()=>setShowSigTech(true)} style={{padding:"8px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✍️ {f.signatureTech?"Modifier":"Signer"}</button>
               {f.signatureTech&&<button onClick={()=>set("signatureTech",null)} style={{padding:"7px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#EF4444",fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Effacer</button>}
             </div>
@@ -1037,9 +1238,14 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
         </div>
       </div>
 
-      {/* ── INTERNE ── */}
-      <div style={{...sectionStyle,background:isDark?"rgba(249,115,22,0.06)":theme==="light"?"#FFF7ED":"#FDF2E9",border:`1px dashed rgba(249,115,22,0.4)`}}>
-        <div style={{...sectionTitleStyle,color:"#F97316",borderBottomColor:"rgba(249,115,22,0.2)"}}>🔒 Usage interne — Non transmis au client</div>
+      {/* ── INTERNE (repliable) ── */}
+      <div style={{...sectionStyle,background:isDark?"rgba(249,115,22,0.06)":theme==="light"?"#FFF7ED":"#FDF2E9",border:`1px dashed rgba(249,115,22,0.4)`,cursor:interneOpen?"default":"pointer"}} onClick={()=>!interneOpen&&setInterneOpen(true)}>
+        <div style={{...sectionTitleStyle,color:"#F97316",cursor:"pointer",borderBottom:interneOpen?"1px solid rgba(249,115,22,0.2)":"none",paddingBottom:interneOpen?10:0,marginBottom:interneOpen?14:0}} onClick={e=>{e.stopPropagation();setInterneOpen(!interneOpen);}}>
+          🔒 Usage interne
+          {(f.materiels.length>0||f.difficulte||f.tarifHoraire||f.notesInternes)&&<span style={{fontSize:11,fontWeight:700,color:"#F97316",background:"rgba(249,115,22,0.15)",padding:"2px 9px",borderRadius:12}}>renseigné</span>}
+          <span style={{marginLeft:"auto",fontSize:12,color:"#F97316",fontWeight:700}}>{interneOpen?"▲":"▼ Appuyer si besoin"}</span>
+        </div>
+        {interneOpen&&(<>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
           <div style={{gridColumn:"1/-1"}}>
             <div style={{...lblStyle,color:"#7C3D12"}}>Matériel utilisé</div>
@@ -1076,6 +1282,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div style={{...lblStyle,color:"#7C3D12"}}>Notes internes</div>
           <textarea value={f.notesInternes} onChange={e=>set("notesInternes",e.target.value)} placeholder="Observations, à prévoir, notes pour devis…" rows={3} style={{...inpStyle(),resize:"vertical",lineHeight:1.6}}/>
         </div>
+        </>)}
       </div>
 
       {/* Bouton final */}
@@ -1092,7 +1299,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    FORMULAIRE RDV RAPIDE
 ═══════════════════════════════════════════ */
-function RdvForm({ initial, onSave, onBack, fiches = [], theme }) {
+function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = [], onAddTechnicien }) {
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
   const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", status:"planifie", type:"rdv" });
@@ -1167,7 +1374,18 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme }) {
           </div>
           <div style={{gridColumn:"1/-1"}}><div style={lblStyle}>Adresse</div><input value={f.adresse} onChange={e=>set("adresse",e.target.value)} placeholder="Adresse complète" style={inpStyle()}/></div>
           <div><div style={lblStyle}>Téléphone client</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
-          <div><div style={lblStyle}>Technicien assigné</div><input value={f.technicien} onChange={e=>set("technicien",e.target.value)} placeholder="Prénom Nom" style={inpStyle()}/></div>
+          <div><div style={lblStyle}>Technicien assigné</div>
+            <select value={f.technicien||""} onChange={e=>{
+              if(e.target.value==="__new__"){
+                const nom=prompt("Nom du technicien :");
+                if(nom?.trim()){onAddTechnicien&&onAddTechnicien(nom.trim());set("technicien",nom.trim());}
+              } else {set("technicien",e.target.value);}
+            }} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light"}}>
+              <option value="">— Choisir —</option>
+              {[...new Set([...techniciens, ...(f.technicien?[f.technicien]:[])])].map(t=><option key={t} value={t}>{t}</option>)}
+              <option value="__new__">➕ Ajouter un technicien…</option>
+            </select>
+          </div>
           <div><div style={lblStyle}>Date *</div><input type="date" value={f.dateRdv} onChange={e=>set("dateRdv",e.target.value)} style={{...inpStyle(errors.dateRdv),colorScheme:isDark?"dark":"light"}}/>{errors.dateRdv&&<div style={{color:"#EF4444",fontSize:11,marginTop:4}}>{errors.dateRdv}</div>}</div>
           <div><div style={lblStyle}>Heure</div><input type="time" value={f.heureRdv} onChange={e=>set("heureRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
           <div style={{gridColumn:"1/-1"}}>
@@ -1299,7 +1517,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
           {label:"RDV planifiés",val:rdvPlanifies.length,icon:"📅",color:"#3B82F6",action:()=>onFilterStatus("planifie")},
           {label:"En cours",val:byStatus.en_cours||0,icon:"⚡",color:"#F59E0B",action:()=>onFilterStatus("en_cours")},
           {label:"Terminées",val:byStatus.termine||0,icon:"✅",color:"#10B981",action:()=>onFilterStatus("termine")},
-          {label:"Signées",val:fiches.filter(f=>f.signature).length,icon:"✍️",color:"#A78BFA",action:()=>onFilterStatus("")},
+          {label:"Signées",val:fiches.filter(f=>f.signature).length,icon:"✍️",color:"#A78BFA",action:()=>onFilterStatus("__signees")},
         ].map(k=>(
           <div key={k.label} onClick={k.action} style={{...card,border:`1px solid ${k.color}22`,position:"relative",overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor=k.color;e.currentTarget.style.transform="translateY(-2px)";}}
@@ -1467,7 +1685,7 @@ function Agenda({ fiches, onSelect, onDemarrer, theme }) {
 /* ═══════════════════════════════════════════
    LISTE CARTES
 ═══════════════════════════════════════════ */
-function ListeCartes({ fiches, onSelect, theme }) {
+function ListeCartes({ fiches, onSelect, onDelete, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   if(fiches.length===0) return <Empty icon="📭" text="Aucune fiche trouvée" T={T}/>;
   return (
@@ -1492,6 +1710,7 @@ function ListeCartes({ fiches, onSelect, theme }) {
               <span style={{display:"flex",gap:6,alignItems:"center"}}>
                 <span style={{fontSize:11,fontWeight:700,color:STATUTS[fiche.status]?.color}}>● {STATUTS[fiche.status]?.label}</span>
                 {fiche.signature&&"· ✍️"}
+                {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
               </span>
             </div>
           </div>
@@ -1504,7 +1723,7 @@ function ListeCartes({ fiches, onSelect, theme }) {
 /* ═══════════════════════════════════════════
    DÉTAIL FICHE
 ═══════════════════════════════════════════ */
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, theme }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
@@ -1536,6 +1755,9 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, theme }) {
           ):(
             <button onClick={()=>setShowPreview(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 Voir le rapport</button>
           )}
+          {!isRdv&&onCreateDevis&&(
+            <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
+          )}
         </div>
       </div>
 
@@ -1559,6 +1781,19 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, theme }) {
           <span>📅 {dateFr(fiche.dateRdv)} {fiche.heureRdv}</span>
           <span style={{color:STATUTS[fiche.status]?.color,fontWeight:700}}>● {STATUTS[fiche.status]?.label}</span>
           {fiche.signature&&<span style={{color:"#10B981",fontWeight:700}}>✍️ Signé{fiche.nomSignataire?` — ${fiche.nomSignataire}`:""}</span>}
+          {!isRdv&&onToggleFacturation&&(
+            <span style={{display:"flex",gap:5}}>
+              {Object.entries(FACTURATION).map(([k,v])=>(
+                <button key={k} onClick={()=>onToggleFacturation(fiche, fiche.facturation===k?"":k)}
+                  style={{fontSize:10.5,fontWeight:700,padding:"3px 10px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",
+                    background:fiche.facturation===k?v.color+"22":"transparent",
+                    border:`1.5px solid ${fiche.facturation===k?v.color:T.border}`,
+                    color:fiche.facturation===k?v.color:T.textMuted}}>
+                  {k==="facture"?"✅ ":"💶 "}{v.label}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
         {fiche.noteRdv&&isRdv&&<div style={{marginTop:10,background:"rgba(59,130,246,0.08)",borderRadius:8,padding:"9px 12px",fontSize:13,color:"#93C5FD"}}>💬 {fiche.noteRdv}</div>}
       </div>
@@ -1599,9 +1834,398 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, theme }) {
 /* ═══════════════════════════════════════════
    APP PRINCIPALE
 ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   DEVIS — formulaire & liste
+═══════════════════════════════════════════ */
+function DevisForm({ initial, onSave, onBack, theme, clients = [] }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [d, setD] = useState(()=>({ tva:10, lignes:[], photos:[], notes:"", statut:"brouillon", ...(initial||{}) }));
+  const photosDispo = initial?._photosDispo || [];
+  const photoRef = useRef();
+  const [genIA, setGenIA] = useState(false);
+  const genererDescriptifIA = async () => {
+    const lignesValides = d.lignes.filter(l=>l.label?.trim());
+    if(!lignesValides.length){alert("Ajoutez d'abord des lignes au devis.");return;}
+    setGenIA(true);
+    try {
+      const prompt = `Tu rédiges le descriptif d'un devis pour une entreprise d'assainissement/plomberie. Rédige un court paragraphe professionnel (3 à 5 phrases, français soigné, ton commercial sobre) décrivant les travaux proposés ci-dessous. Utilise "nous proposons" / "notre intervention comprendra". Ne donne AUCUN prix, AUCUN montant. Ne liste pas ligne par ligne : fais des phrases fluides qui regroupent les travaux. Termine par une phrase sur le résultat attendu (rétablissement du bon écoulement, prévention des obstructions...).
+${d.client?`Client : ${d.client}`:""}
+${d.adresse?`Adresse : ${d.adresse}`:""}
+Travaux prévus :
+${lignesValides.map(l=>`- ${l.label}${l.qte>1?` (quantité : ${l.qte})`:""}`).join("\n")}
+Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
+      const r = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}] })
+      });
+      if(!r.ok) throw new Error("API "+r.status);
+      const data = await r.json();
+      const text = (data.content||[]).map(c=>c.text||"").join("").trim();
+      if(!text) throw new Error(data.error?.message||"Réponse vide");
+      set("notes", text);
+    } catch(e) { alert("Erreur lors de la génération : "+(e?.message||e)); }
+    setGenIA(false);
+  };
+  const set = (k,v)=>setD(p=>({...p,[k]:v}));
+  const sitesCli = Object.values(clients.find(x=>x.id===d.clientId)?.sites||{});
+  const setLigne = (i,k,v)=>setD(p=>({...p,lignes:p.lignes.map((l,j)=>j===i?{...l,[k]:v}:l)}));
+  const { ht, tva, ttc } = devisTotaux(d);
+  const inp = {width:"100%",padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+  const lbl = {display:"block",fontSize:9.5,fontWeight:700,color:T.textMuted,letterSpacing:".08em",textTransform:"uppercase",marginBottom:6};
+  const sec = {background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"18px 20px",marginBottom:16};
+  const togglePhoto = (p)=>setD(prev=>{
+    const has = prev.photos.some(x=>(x.data||x)===(p.data||p));
+    return {...prev, photos: has ? prev.photos.filter(x=>(x.data||x)!==(p.data||p)) : [...prev.photos, p]};
+  });
+  const handleSave = ()=>{ const clean={...d}; Object.keys(clean).forEach(k=>{if(k.startsWith("_"))delete clean[k];}); onSave(clean); };
+  return (
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+        <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
+        <div style={{fontWeight:800,fontSize:17,color:T.text}}>📄 Devis {d.id}</div>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <button onClick={()=>previewDevis(d)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"9px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Aperçu PDF</button>
+          <button onClick={handleSave} style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>💾 Enregistrer</button>
+        </div>
+      </div>
+
+      <div style={sec}>
+        {clients.length>0&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12,background:"rgba(14,165,233,0.06)",border:"1px solid rgba(14,165,233,0.2)",borderRadius:10,padding:"10px"}}>
+            <div><div style={lbl}>Client enregistré</div>
+              <select value={d.clientId||""} onChange={e=>{const v=e.target.value;const c=clients.find(x=>x.id===v);
+                setD(p=>({...p,clientId:v||null,siteId:null,client:c?c.nom:p.client}));}}
+                style={{...inp,cursor:"pointer"}}>
+                <option value="">— Saisie libre —</option>
+                {clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+              </select>
+            </div>
+            <div><div style={lbl}>Site</div>
+              <select value={d.siteId||""} disabled={!sitesCli.length} onChange={e=>{const v=e.target.value;const s=sitesCli.find(x=>x.id===v);
+                setD(p=>({...p,siteId:v||null,site:s?(s.nom||""):p.site,adresse:s?s.adresse:p.adresse}));}}
+                style={{...inp,cursor:"pointer",opacity:sitesCli.length?1:.5}}>
+                <option value="">{sitesCli.length?"— Choisir —":"—"}</option>
+                {sitesCli.map(s=><option key={s.id} value={s.id}>{s.nom||s.adresse}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><div style={lbl}>Client</div><input value={d.client||""} onChange={e=>set("client",e.target.value)} style={inp}/></div>
+          <div><div style={lbl}>Site</div><input value={d.site||""} onChange={e=>set("site",e.target.value)} style={inp}/></div>
+          <div style={{gridColumn:"1/-1"}}><div style={lbl}>Adresse des travaux</div><input value={d.adresse||""} onChange={e=>set("adresse",e.target.value)} style={inp}/></div>
+          <div><div style={lbl}>Date</div><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={{...inp,colorScheme:theme==="dark"?"dark":"light"}}/></div>
+          <div><div style={lbl}>TVA</div>
+            <select value={d.tva} onChange={e=>set("tva",parseFloat(e.target.value))} style={{...inp,cursor:"pointer",colorScheme:theme==="dark"?"dark":"light"}}>
+              <option value={10}>10 %</option><option value={20}>20 %</option><option value={0}>0 %</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style={sec}>
+        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>Lignes du devis</div>
+        <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {DEVIS_CATALOGUE.map(item=>(
+            <button key={item.label} onClick={()=>setD(p=>({...p,lignes:[...p.lignes.filter(l=>l.label||l.pu),{label:`${item.label} (${item.unite})`,qte:1,pu:""}]}))}
+              style={{fontSize:11.5,fontWeight:600,padding:"6px 11px",borderRadius:16,cursor:"pointer",fontFamily:"inherit",background:"rgba(14,165,233,0.08)",border:"1px solid rgba(14,165,233,0.3)",color:"#38BDF8"}}>
+              + {item.label}
+            </button>
+          ))}
+        </div>
+        {d.lignes.map((l,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 64px 90px 90px 32px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <input value={l.label} onChange={e=>setLigne(i,"label",e.target.value)} placeholder="Désignation" style={inp}/>
+            <input type="number" value={l.qte} onChange={e=>setLigne(i,"qte",e.target.value)} placeholder="Qté" style={{...inp,textAlign:"center"}}/>
+            <input type="number" value={l.pu} onChange={e=>setLigne(i,"pu",e.target.value)} placeholder="P.U. HT" style={{...inp,textAlign:"right"}}/>
+            <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right"}}>{euro((parseFloat(l.qte)||0)*(parseFloat(l.pu)||0))}</div>
+            <button onClick={()=>setD(p=>({...p,lignes:p.lignes.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>✕</button>
+          </div>
+        ))}
+        <button onClick={()=>setD(p=>({...p,lignes:[...p.lignes,{label:"",qte:1,pu:""}]}))} style={{marginTop:6,padding:"8px 14px",background:"none",border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>➕ Ajouter une ligne</button>
+        <div style={{marginTop:14,marginLeft:"auto",width:240,fontSize:13}}>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",color:T.textMuted}}><span>Total HT</span><b style={{color:T.text}}>{euro(ht)}</b></div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",color:T.textMuted}}><span>TVA {d.tva}%</span><b style={{color:T.text}}>{euro(tva)}</b></div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"9px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",borderRadius:8,color:"#fff",fontWeight:800,marginTop:4}}><span>Total TTC</span><span>{euro(ttc)}</span></div>
+        </div>
+      </div>
+
+      <div style={sec}>
+        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>📷 Photos jointes au devis ({d.photos.length})</div>
+        {d.photos.length>0&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:10}}>
+            {d.photos.map((p,i)=>(
+              <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"4/3"}}>
+                <img src={p.data||p} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
+                <button onClick={()=>setD(prev=>({...prev,photos:prev.photos.filter((_,j)=>j!==i)}))} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={()=>photoRef.current?.click()} style={{width:"100%",padding:"12px",background:"none",border:`2px dashed ${T.border}`,borderRadius:10,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📸 Ajouter des photos</button>
+        <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={async e=>{
+          const files=[...(e.target.files||[])].filter(x=>x.type.startsWith("image/"));
+          const imgs=await Promise.all(files.map(resizePhoto));
+          setD(p=>({...p,photos:[...p.photos,...imgs]})); e.target.value="";
+        }}/>
+      </div>
+
+      {photosDispo.length>0&&(
+        <div style={sec}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>🗂️ Photos de la fiche d'intervention</div>
+          <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10}}>Touchez les photos à joindre au devis (justification des travaux)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8}}>
+            {photosDispo.map((p,i)=>{
+              const sel = d.photos.some(x=>(x.data||x)===(p.data||p));
+              return (
+                <div key={i} onClick={()=>togglePhoto(p)} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"4/3",cursor:"pointer",border:`2.5px solid ${sel?"#10B981":T.border}`,opacity:sel?1:.6}}>
+                  <img src={p.data||p} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
+                  {sel&&<div style={{position:"absolute",top:4,right:4,background:"#10B981",color:"#fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800}}>✓</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={sec}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{...lbl,marginBottom:0}}>Descriptif / notes (optionnel)</div>
+          <button onClick={genererDescriptifIA} disabled={genIA}
+            style={{background:genIA?"rgba(167,139,250,0.3)":"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:800,fontSize:12,cursor:genIA?"wait":"pointer",fontFamily:"inherit"}}>
+            {genIA?"⏳ Rédaction…":"✨ Rédiger le descriptif (IA)"}
+          </button>
+        </div>
+        <textarea value={d.notes||""} onChange={e=>set("notes",e.target.value)} rows={5} placeholder="Descriptif des travaux, délais, conditions d'accès… (ou touchez ✨ pour une rédaction automatique à partir des lignes)" style={{...inp,resize:"vertical",lineHeight:1.6}}/>
+      </div>
+    </div>
+  );
+}
+
+const DEVIS_STATUTS = { brouillon:{label:"Brouillon",color:"#94A3B8"}, envoye:{label:"Envoyé",color:"#0EA5E9"}, accepte:{label:"Accepté",color:"#10B981"}, refuse:{label:"Refusé",color:"#EF4444"} };
+
+function DevisList({ devisList, onOpen, onDelete, onChangeStatut, onCreate, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const sorted = [...devisList].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const btnNew = (
+    <button onClick={onCreate} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:800,fontSize:13.5,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>➕ Nouveau devis</button>
+  );
+  if(!sorted.length) return (
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>{btnNew}</div>
+      <Empty icon="📄" text="Aucun devis — créez-en un ici ou depuis une fiche d'intervention" T={T}/>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}>{btnNew}</div>
+      {sorted.map(dv=>{
+        const { ttc } = devisTotaux(dv);
+        const st = DEVIS_STATUTS[dv.statut]||DEVIS_STATUTS.brouillon;
+        return (
+          <div key={dv.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"13px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160,cursor:"pointer"}} onClick={()=>onOpen(dv)}>
+              <div style={{fontWeight:800,fontSize:14,color:T.text}}>{dv.client||"Client ?"} <code style={{fontSize:10.5,color:"#0EA5E9"}}>{dv.id}</code></div>
+              <div style={{fontSize:11.5,color:T.textMuted}}>{dateFr(dv.date)}{dv.site?` · ${dv.site}`:""}</div>
+            </div>
+            <div style={{fontWeight:800,fontSize:14,color:T.text}}>{euro(ttc)}</div>
+            <select value={dv.statut||"brouillon"} onChange={e=>onChangeStatut(dv,e.target.value)} onClick={e=>e.stopPropagation()}
+              style={{padding:"6px 9px",background:T.surface2,border:`1.5px solid ${st.color}55`,borderRadius:8,color:st.color,fontSize:11.5,fontWeight:700,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
+              {Object.entries(DEVIS_STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <button onClick={()=>previewDevis(dv)} title="PDF" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🖨</button>
+            <button onClick={()=>onDelete(dv)} title="Supprimer" style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   CLIENTS & SITES
+═══════════════════════════════════════════ */
+function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFiche, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [sel, setSel] = useState(null);
+  const [search, setSearch] = useState("");
+  const [newSite, setNewSite] = useState({nom:"",adresse:""});
+  const [siteFilter, setSiteFilter] = useState("");
+  const client = clients.find(c=>c.id===sel);
+  const inp = {width:"100%",padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+  const lbl = {display:"block",fontSize:9.5,fontWeight:700,color:T.textMuted,letterSpacing:".08em",textTransform:"uppercase",marginBottom:5};
+  const sec = {background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14};
+
+  if (client) {
+    const sites = Object.values(client.sites||{});
+    const histo = fiches.filter(f=>f.clientId===client.id && (!siteFilter || f.siteId===siteFilter))
+      .sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||""));
+    return (
+      <div style={{maxWidth:720,margin:"0 auto"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+          <button onClick={()=>{setSel(null);setSiteFilter("");}} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Clients</button>
+          <div style={{fontWeight:800,fontSize:18,color:T.text}}>🏢 {client.nom}</div>
+          <button onClick={()=>{if(window.confirm(`Supprimer le client ${client.nom} ? (les fiches existantes sont conservées)`)){onDeleteClient(client.id);setSel(null);}}} style={{marginLeft:"auto",background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>🗑️ Supprimer</button>
+        </div>
+        <div style={sec}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{gridColumn:"1/-1"}}><div style={lbl}>Nom / Raison sociale</div><input value={client.nom} onChange={e=>onSaveClient({...client,nom:e.target.value})} style={inp}/></div>
+            <div><div style={lbl}>Téléphone</div><input value={client.tel||""} onChange={e=>onSaveClient({...client,tel:e.target.value})} style={inp}/></div>
+            <div><div style={lbl}>Email</div><input value={client.email||""} onChange={e=>onSaveClient({...client,email:e.target.value})} style={inp}/></div>
+          </div>
+        </div>
+        <div style={sec}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>📍 Sites d'intervention ({sites.length})</div>
+          {sites.map(s=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.surface2,border:`1.5px solid ${siteFilter===s.id?"#0EA5E9":T.border}`,borderRadius:9,marginBottom:6,cursor:"pointer"}} onClick={()=>setSiteFilter(siteFilter===s.id?"":s.id)}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.nom||"Site"}</div>
+                <div style={{fontSize:11.5,color:T.textMuted}}>{s.adresse}</div>
+              </div>
+              <span style={{fontSize:10.5,color:T.textMuted}}>{fiches.filter(f=>f.siteId===s.id).length} fiche(s)</span>
+              <button onClick={e=>{e.stopPropagation();if(window.confirm(`Supprimer le site ${s.nom||s.adresse} ?`)){const ns={...client.sites};delete ns[s.id];onSaveClient({...client,sites:ns});if(siteFilter===s.id)setSiteFilter("");}}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
+            </div>
+          ))}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1.6fr auto",gap:6,marginTop:10}}>
+            <input value={newSite.nom} onChange={e=>setNewSite(p=>({...p,nom:e.target.value}))} placeholder="Nom du site (ex : Résidence Les Lilas)" style={inp}/>
+            <input value={newSite.adresse} onChange={e=>setNewSite(p=>({...p,adresse:e.target.value}))} placeholder="Adresse complète" style={inp}/>
+            <button onClick={()=>{if(!newSite.adresse.trim())return;const id=uid2("SITE");onSaveClient({...client,sites:{...(client.sites||{}),[id]:{id,...newSite}}});setNewSite({nom:"",adresse:""});}} style={{padding:"9px 14px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>➕</button>
+          </div>
+        </div>
+        <div style={sec}>
+          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>
+            🗂️ Historique {siteFilter?`— ${sites.find(s=>s.id===siteFilter)?.nom||"site"}`:"(tous sites)"} · {histo.length} fiche(s)
+            {siteFilter&&<button onClick={()=>setSiteFilter("")} style={{marginLeft:8,background:"none",border:`1px solid ${T.border}`,borderRadius:6,color:T.textMuted,fontSize:10.5,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>✕ tous</button>}
+          </div>
+          {histo.length===0&&<div style={{fontSize:12.5,color:T.textFaint,fontStyle:"italic"}}>Aucune intervention pour le moment.</div>}
+          {histo.map(f=>(
+            <div key={f.id} onClick={()=>onSelectFiche(f)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderBottom:`1px solid ${T.border}`,cursor:"pointer"}}>
+              <code style={{fontSize:10.5,color:"#0EA5E9"}}>{f.id}</code>
+              <span style={{fontSize:12,color:T.text,flex:1}}>{dateFr(f.dateRdv)}</span>
+              <span style={{fontSize:11,fontWeight:700,color:STATUTS[f.status]?.color}}>● {STATUTS[f.status]?.label}</span>
+              {f.facturation&&<span style={{fontSize:10.5,fontWeight:700,color:FACTURATION[f.facturation]?.color}}>{FACTURATION[f.facturation]?.label}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const list = clients.filter(c=>!search||c.nom.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.nom.localeCompare(b.nom));
+  return (
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+        <input placeholder="🔍 Rechercher un client…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,flex:1,minWidth:160,width:"auto"}}/>
+        <button onClick={()=>{const nom=prompt("Nom du nouveau client :");if(nom?.trim()){const c={id:uid2("CLI"),nom:nom.trim(),tel:"",email:"",sites:{}};onSaveClient(c);setSel(c.id);}}}
+          style={{padding:"9px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>➕ Nouveau client</button>
+      </div>
+      {list.length===0&&<Empty icon="👥" text="Aucun client enregistré" T={T}/>}
+      {list.map(c=>{
+        const nbSites = Object.keys(c.sites||{}).length;
+        const nbFiches = fiches.filter(f=>f.clientId===c.id).length;
+        return (
+          <div key={c.id} onClick={()=>setSel(c.id)} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"13px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:20}}>🏢</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800,fontSize:14,color:T.text}}>{c.nom}</div>
+              <div style={{fontSize:11.5,color:T.textMuted}}>{nbSites} site(s) · {nbFiches} intervention(s){c.tel?` · 📞 ${c.tel}`:""}</div>
+            </div>
+            <span style={{color:T.textMuted}}>›</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   CONTRATS D'ENTRETIEN
+═══════════════════════════════════════════ */
+function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteContrat, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [showForm, setShowForm] = useState(false);
+  const [c, setC] = useState({clientId:"",siteId:"",type:CONTRAT_TYPES[0],frequence:"annuel",dateDebut:today(),technicien:"",actif:true});
+  const inp = {width:"100%",padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"};
+  const lbl = {display:"block",fontSize:9.5,fontWeight:700,color:T.textMuted,letterSpacing:".08em",textTransform:"uppercase",marginBottom:5};
+  const cli = clients.find(x=>x.id===c.clientId);
+  const sites = Object.values(cli?.sites||{});
+  const creer = ()=>{
+    if(!c.clientId){alert("Choisissez un client (créez-le dans l'onglet Clients si besoin).");return;}
+    const site = sites.find(s=>s.id===c.siteId);
+    onSaveContrat({ id:uid2("CTR"), clientId:c.clientId, client:cli?.nom||"", siteId:c.siteId||null, site:site?.nom||"", adresse:site?.adresse||"", tel:cli?.tel||"", type:c.type, frequence:c.frequence, dateDebut:c.dateDebut, prochaine:c.dateDebut, technicien:c.technicien, actif:true });
+    setShowForm(false);
+    setC({clientId:"",siteId:"",type:CONTRAT_TYPES[0],frequence:"annuel",dateDebut:today(),technicien:"",actif:true});
+  };
+  return (
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+        <button onClick={()=>setShowForm(!showForm)} style={{padding:"9px 16px",background:showForm?"none":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:showForm?`1px solid ${T.border}`:"none",borderRadius:8,color:showForm?T.textMuted:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"✕ Annuler":"➕ Nouveau contrat"}</button>
+      </div>
+      {showForm&&(
+        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div><div style={lbl}>Client</div>
+              <select value={c.clientId} onChange={e=>setC(p=>({...p,clientId:e.target.value,siteId:""}))} style={{...inp,cursor:"pointer"}}>
+                <option value="">— Choisir —</option>
+                {clients.map(x=><option key={x.id} value={x.id}>{x.nom}</option>)}
+              </select>
+            </div>
+            <div><div style={lbl}>Site</div>
+              <select value={c.siteId} onChange={e=>setC(p=>({...p,siteId:e.target.value}))} disabled={!sites.length} style={{...inp,cursor:"pointer",opacity:sites.length?1:.5}}>
+                <option value="">{sites.length?"— Choisir —":"Aucun site pour ce client"}</option>
+                {sites.map(s=><option key={s.id} value={s.id}>{s.nom||s.adresse}</option>)}
+              </select>
+            </div>
+            <div><div style={lbl}>Type d'entretien</div>
+              <select value={c.type} onChange={e=>setC(p=>({...p,type:e.target.value}))} style={{...inp,cursor:"pointer"}}>
+                {CONTRAT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div><div style={lbl}>Fréquence</div>
+              <select value={c.frequence} onChange={e=>setC(p=>({...p,frequence:e.target.value}))} style={{...inp,cursor:"pointer"}}>
+                {Object.entries(FREQUENCES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            <div><div style={lbl}>Première intervention</div><input type="date" value={c.dateDebut} onChange={e=>setC(p=>({...p,dateDebut:e.target.value}))} style={inp}/></div>
+            <div><div style={lbl}>Technicien (optionnel)</div>
+              <select value={c.technicien} onChange={e=>setC(p=>({...p,technicien:e.target.value}))} style={{...inp,cursor:"pointer"}}>
+                <option value="">—</option>
+                {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <button onClick={creer} style={{marginTop:14,width:"100%",padding:"11px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>✓ Créer le contrat</button>
+          <div style={{fontSize:11,color:T.textMuted,marginTop:8}}>💡 Les interventions seront créées automatiquement dans l'agenda à chaque échéance (30 jours à l'avance).</div>
+        </div>
+      )}
+      {contrats.length===0&&!showForm&&<Empty icon="🔁" text="Aucun contrat d'entretien" T={T}/>}
+      {contrats.map(ct=>(
+        <div key={ct.id} style={{background:T.surface,border:`1px solid ${ct.actif!==false?T.border:"rgba(239,68,68,0.3)"}`,borderRadius:12,padding:"13px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",opacity:ct.actif!==false?1:.6}}>
+          <span style={{fontSize:20}}>🔁</span>
+          <div style={{flex:1,minWidth:170}}>
+            <div style={{fontWeight:800,fontSize:14,color:T.text}}>{ct.type} — {ct.client}</div>
+            <div style={{fontSize:11.5,color:T.textMuted}}>{ct.site||ct.adresse||"—"} · {FREQUENCES[ct.frequence]?.label}{ct.technicien?` · 👤 ${ct.technicien}`:""}</div>
+          </div>
+          <div style={{fontSize:11.5,fontWeight:700,color:"#3B82F6"}}>📅 Prochaine : {dateFr(ct.prochaine)}</div>
+          <button onClick={()=>onSaveContrat({...ct,actif:ct.actif===false})} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:ct.actif!==false?"#F59E0B":"#10B981",padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{ct.actif!==false?"⏸ Suspendre":"▶ Réactiver"}</button>
+          <button onClick={()=>{if(window.confirm(`Supprimer le contrat ${ct.type} de ${ct.client} ? Les interventions déjà créées sont conservées.`))onDeleteContrat(ct.id);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [fiches, setFiches] = useState([]);
   const [societes, setSocietes] = useState(["A6T Services"]);
+  const [techniciens, setTechniciens] = useState([]);
+  const [logos, setLogos] = useState({});
+  const [clients, setClients] = useState([]);
+  const [devisList, setDevisList] = useState([]);
+  const [contrats, setContrats] = useState([]);
+  const [editingDevis, setEditingDevis] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [positions, setPositions] = useState({}); // { nomTech: { lat, lng, updatedAt, statut } }
   const [view, setView] = useState("accueil");
@@ -1622,16 +2246,33 @@ export default function App() {
     const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); });
     const unsub2 = watchPositions(data => setPositions(data));
     const unsub3 = watchSocietes(data => setSocietes(data));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = watchTechniciens(data => setTechniciens(data));
+    const unsub5 = watchLogos(data => setLogos(data));
+    const unsub6 = watchClients(data => setClients(data));
+    const unsub7 = watchDevis(data => setDevisList(data));
+    const unsub8 = watchContrats(data => setContrats(data));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); };
   },[]);
+
+  const ajouterSociete = (nom) => {
+    const next = [...new Set([...societes, nom])];
+    setSocietes(next); saveSocietes(next); // Firebase
+  };
+  const ajouterTechnicien = (nom) => {
+    const next = [...new Set([...techniciens, nom])];
+    setTechniciens(next); saveTechniciens(next); // Firebase
+  };
 
   const handleSave = fiche => {
     saveFiche(fiche); // Firebase
+    if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
+    if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
     setSelected(fiche); setView("detail"); showToast("✓ Fiche enregistrée");
   };
 
   const handleSaveRdv = rdv => {
     saveFiche(rdv); // Firebase
+    if (rdv.technicien?.trim() && !techniciens.includes(rdv.technicien.trim())) ajouterTechnicien(rdv.technicien.trim());
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
   };
 
@@ -1654,10 +2295,47 @@ export default function App() {
     setView("accueil"); setSelected(null); showToast("🗑️ Supprimé");
   };
 
+  // Contrats : créer automatiquement les prochaines interventions (horizon 30 jours)
+  useEffect(()=>{
+    if(!loaded) return;
+    const horizon = new Date(); horizon.setDate(horizon.getDate()+30);
+    contrats.forEach(c=>{
+      if(c.actif===false || !c.prochaine) return;
+      let next = c.prochaine, guard = 0, advanced = false;
+      while(new Date(next+"T12:00:00") <= horizon && guard < 13){
+        guard++;
+        const exists = fiches.some(f=>f.contratId===c.id && f.dateRdv===next);
+        if(!exists){
+          saveFiche({ id:uid(), type:"rdv", contratId:c.id, client:c.client||"", clientId:c.clientId||null, siteId:c.siteId||null,
+            adresse:c.adresse||"", tel:c.tel||"", technicien:c.technicien||"", dateRdv:next, heureRdv:"",
+            status:"planifie", prestations:[], typesRdv:[], preconisations:[], photos:[], materiels:[],
+            conclusion:"", responsabilite:"na", urgent:false, loc:{...EMPTY_LOC},
+            note:`🔁 Contrat ${c.type} — ${FREQUENCES[c.frequence]?.label||""}`, createdAt:ts() });
+        }
+        next = addFreq(next, c.frequence); advanced = true;
+      }
+      if(advanced && next !== c.prochaine) saveContrat({...c, prochaine: next});
+    });
+  },[loaded, contrats, fiches]);
+
+  const handleSaveClient = (c) => saveClient(c);
+  const handleCreateDevis = (fiche) => {
+    const lignes = (fiche.preconisations||[]).map(p=>({label:p.replace(/ recommandé| à prévoir| à planifier| à établir| requise|Prévoir /gi,"").trim().replace(/^./,m=>m.toUpperCase()), qte:1, pu:""}));
+    setEditingDevis({ id:uid2("DEV"), ficheId:fiche.id, client:fiche.client||"", site:"", adresse:fiche.adresse||"",
+      date:today(), tva:10, statut:"brouillon", lignes: lignes.length?lignes:[{label:"",qte:1,pu:""}],
+      photos:[], notes:"", societe:fiche.societe||"", logoSociete:fiche.logoSociete||null, _photosDispo:fiche.photos||[] });
+    setView("devisform");
+  };
+  const handleSaveDevis = (d) => { saveDevisFb(d); setEditingDevis(null); setView("accueil"); setNav("devis"); showToast("📄 Devis enregistré"); };
+  const handleToggleFacturation = (fiche, val) => { const nf={...fiche, facturation: val}; saveFiche(nf); setSelected(nf); };
+
   const filtered = useMemo(()=>{
     let r=fiches;
     if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien}`.toLowerCase().includes(search.toLowerCase()));
-    if(filterStatus) r=r.filter(f=>f.status===filterStatus);
+    if(filterStatus==="__signees") r=r.filter(f=>f.signature);
+    else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
+    else if(filterStatus==="__facture") r=r.filter(f=>f.facturation==="facture");
+    else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
     return r;
   },[fiches,search,filterStatus]);
 
@@ -1675,7 +2353,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"liste",label:"🗂️ Liste"},{id:"carte",label:"🗺️ Carte"}];
+  const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
+  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"}];
 
   // Formulaire RDV plein écran
   if(showRdvForm) return (
@@ -1685,7 +2364,7 @@ export default function App() {
         <div style={{fontWeight:800,fontSize:16,color:T.text}}>📅 Nouveau RDV</div>
       </header>
       <div style={{maxWidth:800,margin:"0 auto",padding:"20px 16px"}}>
-        <RdvForm fiches={fiches} onSave={handleSaveRdv} onBack={()=>setShowRdvForm(false)} theme={theme}/>
+        <RdvForm fiches={fiches} onSave={handleSaveRdv} onBack={()=>setShowRdvForm(false)} theme={theme} techniciens={techniciens} onAddTechnicien={ajouterTechnicien}/>
       </div>
     </div>
   );
@@ -1699,17 +2378,6 @@ export default function App() {
         <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"0 4px 14px rgba(14,165,233,0.3)",flexShrink:0}}>🔧</div>
 
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {/* Sélecteur de thème */}
-          <div style={{display:"flex",gap:2,background:T.surface2,borderRadius:8,padding:3,border:`1px solid ${T.border}`}}>
-            {Object.values(THEMES).map(t=>(
-              <button key={t.id} onClick={()=>setTheme(t.id)} title={t.label}
-                style={{width:24,height:24,borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,
-                  background:theme===t.id?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",
-                  color:theme===t.id?"#fff":T.textMuted}}>
-                {t.id==="dark"?"🌙":t.id==="light"?"☀️":"🌫️"}
-              </button>
-            ))}
-          </div>
           <button onClick={()=>setShowRdvForm(true)} style={{padding:"7px 10px",background:"none",border:`1px solid #3B82F6`,borderRadius:8,color:"#3B82F6",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📅</button>
           <button onClick={()=>{setEditing(null);setView("form");}} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(14,165,233,0.25)"}}>
             + Nouvelle
@@ -1722,13 +2390,17 @@ export default function App() {
 
       <div style={{maxWidth:1240,margin:"0 auto",padding:"20px 16px"}}>
 
+        {view==="devisform"&&editingDevis&&(
+          <DevisForm initial={editingDevis} theme={theme} clients={clients} onSave={handleSaveDevis} onBack={()=>{setEditingDevis(null);setView("accueil");setNav("devis");}}/>
+        )}
+
         {view==="form"&&(
-          <FicheForm initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={s=>setSocietes(prev=>[...new Set([...prev,s])])}/>
+          <FicheForm initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients}/>
         )}
 
         {view==="rdv"&&editing&&(
           <div style={{maxWidth:800,margin:"0 auto"}}>
-            <RdvForm initial={editing} fiches={fiches} onSave={handleSaveRdv} onBack={()=>setView("detail")} theme={theme}/>
+            <RdvForm initial={editing} fiches={fiches} onSave={handleSaveRdv} onBack={()=>setView("detail")} theme={theme} techniciens={techniciens} onAddTechnicien={ajouterTechnicien}/>
           </div>
         )}
 
@@ -1737,7 +2409,7 @@ export default function App() {
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
-            onDemarrer={()=>demarrerIntervention(selected)}/>
+            onDemarrer={()=>demarrerIntervention(selected)} onCreateDevis={handleCreateDevis} onToggleFacturation={handleToggleFacturation}/>
         )}
 
         {view==="accueil"&&(
@@ -1745,10 +2417,47 @@ export default function App() {
             {/* Navigation */}
             <div style={{display:"flex",gap:3,marginBottom:20,background:T.surface,borderRadius:10,padding:4,border:`1px solid ${T.border}`}}>
               {NAV.map(n=>(
-                <button key={n.id} onClick={()=>setNav(n.id)} style={{flex:1,padding:"9px 6px",border:"none",borderRadius:7,fontWeight:700,fontSize:12.5,cursor:"pointer",transition:"all .2s",fontFamily:"inherit",
+                <button key={n.id} onClick={()=>{setNav(n.id);setMenuOpen(false);}} style={{flex:1,padding:"9px 6px",border:"none",borderRadius:7,fontWeight:700,fontSize:12.5,cursor:"pointer",transition:"all .2s",fontFamily:"inherit",
                   background:nav===n.id?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",
                   color:nav===n.id?"#fff":T.textMuted}}>{n.label}</button>
               ))}
+              {/* Bouton menu ☰ */}
+              <div style={{position:"relative",flex:1}}>
+                <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:"100%",padding:"9px 6px",border:"none",borderRadius:7,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",
+                  background:NAV_MENU.some(n=>n.id===nav)?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",
+                  color:NAV_MENU.some(n=>n.id===nav)?"#fff":T.textMuted}}>
+                  ☰ {NAV_MENU.find(n=>n.id===nav)?.label.split(" ")[0]||"Menu"} {menuOpen?"▲":"▼"}
+                </button>
+                {menuOpen&&(
+                  <>
+                    <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:390}}/>
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:400,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:8,minWidth:230,boxShadow:"0 16px 48px rgba(0,0,0,0.35)"}}>
+                      {NAV_MENU.map(n=>(
+                        <button key={n.id} onClick={()=>{setNav(n.id);setMenuOpen(false);}}
+                          style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",
+                            background:nav===n.id?"rgba(14,165,233,0.14)":"transparent",
+                            color:nav===n.id?"#0EA5E9":T.text}}>
+                          {n.label}
+                        </button>
+                      ))}
+                      <div style={{borderTop:`1px solid ${T.border}`,margin:"8px 4px",paddingTop:10}}>
+                        <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>🎨 Couleur de l'écran</div>
+                        <div style={{display:"flex",gap:6,paddingLeft:8,paddingBottom:4}}>
+                          {Object.values(THEMES).map(t=>(
+                            <button key={t.id} onClick={()=>setTheme(t.id)} title={t.label}
+                              style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,
+                                border:`1.5px solid ${theme===t.id?"#0EA5E9":T.border}`,
+                                background:theme===t.id?"rgba(14,165,233,0.14)":"transparent",
+                                color:theme===t.id?"#0EA5E9":T.textMuted}}>
+                              {t.id==="dark"?"🌙":t.id==="light"?"☀️":"🌫️"} {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Barre recherche */}
@@ -1760,14 +2469,30 @@ export default function App() {
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous statuts</option>
                   {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                  <option value="__signees">✍️ Signées</option>
+                  <option value="__afacturer">💶 À facturer</option>
+                  <option value="__facture">✅ Facturé</option>
                 </select>
                 <span style={{fontSize:12,color:T.textMuted}}>{filtered.length}/{fiches.length}</span>
               </div>
             )}
 
+            {/* Bandeau filtre actif */}
+            {nav==="liste"&&filterStatus&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#0EA5E9"}}>
+                  Filtre : {filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label} — {filtered.length} fiche(s)
+                </span>
+                <button onClick={()=>setFilterStatus("")} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
+              </div>
+            )}
+
             {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}}/>}
             {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention}/>}
-            {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}}/>}
+            {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
+            {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
+            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:uid2("DEV"),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
+            {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
             {nav==="carte"&&<CarteView fiches={fiches} positions={positions} theme={theme}/>}
           </>
         )}
