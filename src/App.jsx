@@ -368,17 +368,30 @@ function loadHtml2Pdf() {
   return _h2pLoading;
 }
 async function telechargerPDF(html, filename) {
+  let host = null;
   try {
     await loadHtml2Pdf();
+    // Zone de rendu isolée, fond blanc, largeur A4 — invisible pour l'utilisateur
+    host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:-10000px;top:0;width:794px;background:#ffffff;color:#111;z-index:-1;";
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    // Attendre le chargement des images (photos, logos) avant la capture
+    await Promise.all([...host.querySelectorAll("img")].map(img => img.complete ? Promise.resolve() :
+      new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 4000); })));
     await window.html2pdf().set({
       margin: [8,8,10,8],
       filename,
-      image: { type: "jpeg", quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true },
+      image: { type: "jpeg", quality: 0.9 },
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: "#ffffff", logging: false },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-    }).from(html).save();
-  } catch(e) { alert("Erreur PDF : " + (e?.message||e)); }
+      pagebreak: { mode: ["css", "legacy"] },
+    }).from(host).save();
+  } catch(e) {
+    alert("La génération PDF a échoué (" + (e?.message||e) + ").\nAstuce : le bouton 🖨 Imprimer permet aussi d'« Enregistrer en PDF ».");
+  } finally {
+    if (host) try { host.remove(); } catch(e) {}
+  }
 }
 
 function buildReportHTML(fiche, hideInternal = false) {
