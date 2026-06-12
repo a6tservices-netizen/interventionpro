@@ -1160,7 +1160,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                       <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:6}}>📏 Diamètre canalisation</div>
                       <select value={data.diametre||"100"} onChange={e=>updatePresta(presta.id,"diametre",e.target.value)}
                         style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light",maxWidth:220}}>
-                        {DIAMETRES.map(dn=><option key={dn} value={dn}>Ø {dn} mm</option>)}
+                        {(champsCustom?._global?.diametres?.length ? champsCustom._global.diametres : DIAMETRES).map(dn=><option key={dn} value={dn}>Ø {dn} mm</option>)}
                       </select>
                     </div>
                   )}
@@ -1316,7 +1316,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div style={{gridColumn:"1/-1"}}>
             <div style={{...lblStyle,color:"#7C3D12"}}>Matériel utilisé</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-              {MATERIELS.map(v=>{
+              {(champsCustom?._global?.materiels?.length ? champsCustom._global.materiels : MATERIELS).map(v=>{
                 const on=f.materiels.includes(v);
                 return(
                   <button key={v} onClick={()=>toggleArr("materiels",v)}
@@ -1357,6 +1357,121 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:10,padding:"14px 36px",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 24px rgba(16,185,129,0.35)",fontFamily:"inherit"}}>
           💾 Enregistrer la fiche
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   ADMINISTRATION
+═══════════════════════════════════════════ */
+function AdminView({ societes, techniciens, techTels, logos, champs, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const logoRef = useRef();
+  const [logoTarget, setLogoTarget] = useState(null);
+  const card = {background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:14};
+  const head = {fontWeight:800,fontSize:14,color:T.text,marginBottom:10,display:"flex",alignItems:"center",gap:8};
+  const btn = {border:`1px solid ${T.border}`,background:T.surface2,color:T.textMuted,borderRadius:6,width:28,height:28,cursor:"pointer",fontFamily:"inherit",fontSize:12};
+  const addBtn = {border:"1px solid rgba(16,185,129,0.4)",background:T.surface2,color:"#10B981",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700};
+  const row = (last)=>({display:"flex",alignItems:"center",gap:8,padding:"8px 4px",borderBottom:last?"none":`1px solid ${T.border}`});
+
+  /* Listes simples éditables via champs/_global */
+  const simpleList = (key, def) => (champs?._global?.[key]?.length ? champs._global[key] : def);
+  const writeList = (key, l) => onSaveChamps("_global", key, l);
+  const SimpleEditor = ({title, icon, k, def, addLabel}) => {
+    const liste = simpleList(k, def);
+    return (
+      <div style={card}>
+        <div style={head}>{icon} {title}
+          <button onClick={()=>{const v=window.prompt(addLabel||"Nouvel élément :");if(v&&v.trim())writeList(k,[...liste,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+        </div>
+        {liste.map((item,i)=>(
+          <div key={i} style={row(i===liste.length-1)}>
+            <span style={{flex:1,fontSize:13,color:T.text}}>{item}</span>
+            <button onClick={()=>{if(i>0){const l=[...liste];[l[i-1],l[i]]=[l[i],l[i-1]];writeList(k,l);}}} disabled={i===0} style={{...btn,opacity:i===0?.3:1}}>↑</button>
+            <button onClick={()=>{if(i<liste.length-1){const l=[...liste];[l[i+1],l[i]]=[l[i],l[i+1]];writeList(k,l);}}} disabled={i===liste.length-1} style={{...btn,opacity:i===liste.length-1?.3:1}}>↓</button>
+            <button onClick={()=>{const v=window.prompt("Nouveau libellé :",item);if(v&&v.trim()){const l=[...liste];l[i]=v.trim();writeList(k,l);}}} style={btn}>✏️</button>
+            <button onClick={()=>{if(window.confirm(`Supprimer "${item}" ?`)){const l=[...liste];l.splice(i,1);writeList(k,l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  /* Catalogue devis : objets {label, unite} */
+  const cat = champs?._global?.devisCatalogue?.length ? champs._global.devisCatalogue : DEVIS_CATALOGUE;
+  const writeCat = (l) => onSaveChamps("_global","devisCatalogue",l);
+
+  return (
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
+        🛠️ <b>Administration</b> — gérez ici toutes les données de l'application, sans toucher au code. Les modifications sont immédiates pour toute l'équipe.
+      </div>
+
+      {/* Sociétés + logos */}
+      <div style={card}>
+        <div style={head}>🏢 Sociétés intervenantes
+          <button onClick={()=>{const v=window.prompt("Nom de la société :");if(v&&v.trim()&&!societes.includes(v.trim()))onSaveSocietes([...societes,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+        </div>
+        {societes.map((s,i)=>{
+          const lk = logoKey(s); const hasLogo = !!logos[lk];
+          return (
+            <div key={s} style={row(i===societes.length-1)}>
+              {hasLogo
+                ? <img src={logos[lk]} style={{height:26,maxWidth:64,objectFit:"contain",borderRadius:4,background:"#fff",padding:2}} alt=""/>
+                : <span style={{fontSize:10,color:T.textMuted,border:`1px dashed ${T.border}`,borderRadius:4,padding:"4px 7px"}}>sans logo</span>}
+              <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s}</span>
+              <button onClick={()=>{setLogoTarget(s);logoRef.current?.click();}} style={{...btn,width:"auto",padding:"0 8px",fontSize:11}}>📷 {hasLogo?"Changer":"Logo"}</button>
+              {hasLogo&&<button onClick={()=>{if(window.confirm(`Retirer le logo de ${s} ?`))onRemoveLogo(s);}} style={btn}>🚫</button>}
+              <button onClick={()=>{if(window.confirm(`Supprimer la société "${s}" ?\n(Les fiches existantes la gardent.)`))onSaveSocietes(societes.filter(x=>x!==s));}} style={{...btn,color:"#EF4444"}}>✕</button>
+            </div>
+          );
+        })}
+        <input ref={logoRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(file&&logoTarget){const d=await resizeLogo(file);onSaveLogo(logoTarget,d);}e.target.value="";}}/>
+      </div>
+
+      {/* Techniciens + numéros */}
+      <div style={card}>
+        <div style={head}>👤 Techniciens & numéros WhatsApp
+          <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+        </div>
+        {techniciens.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun technicien — ils s'ajoutent aussi automatiquement à la 1ʳᵉ fiche.</div>}
+        {techniciens.map((t,i)=>(
+          <div key={t} style={row(i===techniciens.length-1)}>
+            <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{t}</span>
+            <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
+              style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");}}} style={{...btn,color:"#EF4444"}}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Catalogue devis */}
+      <div style={card}>
+        <div style={head}>⚡ Prestations types des devis
+          <button onClick={()=>{const lab=window.prompt("Libellé de la prestation :");if(!lab||!lab.trim())return;const u=window.prompt("Unité (u, ml, colonne…) :","u")||"u";writeCat([...cat,{label:lab.trim(),unite:u.trim()||"u"}]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+        </div>
+        {cat.map((c2,i)=>(
+          <div key={i} style={row(i===cat.length-1)}>
+            <span style={{flex:1,fontSize:13,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{c2.label} <span style={{color:T.textMuted,fontSize:11}}>({c2.unite})</span></span>
+            <button onClick={()=>{if(i>0){const l=[...cat];[l[i-1],l[i]]=[l[i],l[i-1]];writeCat(l);}}} disabled={i===0} style={{...btn,opacity:i===0?.3:1}}>↑</button>
+            <button onClick={()=>{if(i<cat.length-1){const l=[...cat];[l[i+1],l[i]]=[l[i],l[i+1]];writeCat(l);}}} disabled={i===cat.length-1} style={{...btn,opacity:i===cat.length-1?.3:1}}>↓</button>
+            <button onClick={()=>{const lab=window.prompt("Libellé :",c2.label);if(!lab||!lab.trim())return;const u=window.prompt("Unité :",c2.unite)||c2.unite;const l=[...cat];l[i]={label:lab.trim(),unite:u.trim()||c2.unite};writeCat(l);}} style={btn}>✏️</button>
+            <button onClick={()=>{if(window.confirm(`Supprimer "${c2.label}" ?`)){const l=[...cat];l.splice(i,1);writeCat(l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      <SimpleEditor title="Matériels (usage interne)" icon="🧰" k="materiels" def={MATERIELS}/>
+      <SimpleEditor title="Diamètres de canalisation" icon="📏" k="diametres" def={DIAMETRES} addLabel="Diamètre (mm), ex : 60"/>
+
+      <div onClick={onGoChamps} style={{...card,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:20}}>⚙️</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,fontSize:13.5,color:T.text}}>Personnaliser les cases des fiches</div>
+          <div style={{fontSize:11.5,color:T.textMuted}}>Localisations, causes, actions, résultats, préconisations…</div>
+        </div>
+        <span style={{color:T.textMuted}}>›</span>
       </div>
     </div>
   );
@@ -1849,7 +1964,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T }) {
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, theme }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   const [cursor, setCursor] = useState(todayStr.slice(0,7)); // "YYYY-MM"
@@ -1922,9 +2037,10 @@ function Agenda({ fiches, onSelect, onDemarrer, theme }) {
         </div>
         <div style={{flex:1,height:1,background:T.border}}/>
         <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} entrée(s)</span>
+        {onNewRdv&&<button onClick={()=>onNewRdv(selDay)} style={{padding:"7px 13px",background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>➕ RDV ce jour</button>}
       </div>
       {dayFiches.length===0
-        ? <div style={{textAlign:"center",padding:"22px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Rien de prévu ce jour</div>
+        ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"22px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter un RDV ➕":""}</div>
         : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
 
       {/* Sans date */}
@@ -2109,7 +2225,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
 /* ═══════════════════════════════════════════
    DEVIS — formulaire & liste
 ═══════════════════════════════════════════ */
-function DevisForm({ initial, onSave, onBack, theme, clients = [] }) {
+function DevisForm({ initial, onSave, onBack, theme, clients = [], champsCustom = {} }) {
+  const catalogue = champsCustom?._global?.devisCatalogue?.length ? champsCustom._global.devisCatalogue : DEVIS_CATALOGUE;
   const T = THEMES[theme] || THEMES.dark;
   const [d, setD] = useState(()=>({ tva:10, lignes:[], photos:[], notes:"", statut:"brouillon", ...(initial||{}) }));
   const photosDispo = initial?._photosDispo || [];
@@ -2199,7 +2316,7 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
         <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>Lignes du devis</div>
         <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-          {DEVIS_CATALOGUE.map(item=>(
+          {catalogue.map(item=>(
             <button key={item.label} onClick={()=>setD(p=>({...p,lignes:[...p.lignes.filter(l=>l.label||l.pu),{label:`${item.label} (${item.unite})`,qte:1,pu:""}]}))}
               style={{fontSize:11.5,fontWeight:600,padding:"6px 11px",borderRadius:16,cursor:"pointer",fontFamily:"inherit",background:"rgba(14,165,233,0.08)",border:"1px solid rgba(14,165,233,0.3)",color:"#38BDF8"}}>
               + {item.label}
@@ -2635,7 +2752,7 @@ export default function App() {
   }, []);
 
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
-  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
+  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
   const mailImportModal = showMailImport && (
     <MailImport theme={theme} onCancel={()=>setShowMailImport(false)}
@@ -2678,7 +2795,7 @@ export default function App() {
       <div style={{maxWidth:1240,margin:"0 auto",padding:"20px 16px"}}>
 
         {view==="devisform"&&editingDevis&&(
-          <DevisForm initial={editingDevis} theme={theme} clients={clients} onSave={handleSaveDevis} onBack={()=>{setEditingDevis(null);setView("accueil");setNav("devis");}}/>
+          <DevisForm initial={editingDevis} theme={theme} clients={clients} champsCustom={champsCustom} onSave={handleSaveDevis} onBack={()=>{setEditingDevis(null);setView("accueil");setNav("devis");}}/>
         )}
 
         {view==="form"&&(
@@ -2776,12 +2893,17 @@ export default function App() {
 
             {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}}/>}
             {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} theme={theme}/>}
+            {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} logos={logos} champs={champsCustom}
+              onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
+              onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
+              onSaveTechTel={saveTechTel} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
+              onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} theme={theme}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
               </div>
             )}
-            {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention}/>}
+            {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:uid2("DEV"),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
