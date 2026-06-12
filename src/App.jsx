@@ -17,27 +17,28 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), fiche);
+const sanitize = (o) => JSON.parse(JSON.stringify(o ?? null));
+const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), sanitize(fiche));
 const deleteFiche = (id) => remove(ref(db, `fiches/${id}`));
 const watchFiches = (cb) => onValue(ref(db, "fiches"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const watchPositions = (cb) => onValue(ref(db, "positions"), snap => cb(snap.val()||{}));
 const updatePosition = (nom, lat, lng) => set(ref(db, `positions/${nom}`), { lat, lng, updatedAt: new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}), statut:"En intervention" });
 const watchSocietes = (cb) => onValue(ref(db, "societes"), snap => cb(snap.val()||["A6T Services"]));
-const saveSocietes = (list) => set(ref(db, "societes"), list);
+const saveSocietes = (list) => set(ref(db, "societes"), sanitize(list));
 const watchTechniciens = (cb) => onValue(ref(db, "techniciens"), snap => cb(snap.val()||[]));
-const saveTechniciens = (list) => set(ref(db, "techniciens"), list);
-const saveClient = (c) => set(ref(db, `clients/${c.id}`), c);
+const saveTechniciens = (list) => set(ref(db, "techniciens"), sanitize(list));
+const saveClient = (c) => set(ref(db, `clients/${c.id}`), sanitize(c));
 const deleteClient = (id) => remove(ref(db, `clients/${id}`));
 const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
-const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), d);
+const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), sanitize(d));
 const deleteDevisFb = (id) => remove(ref(db, `devis/${id}`));
 const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
-const saveContrat = (c) => set(ref(db, `contrats/${c.id}`), c);
+const saveContrat = (c) => set(ref(db, `contrats/${c.id}`), sanitize(c));
 const deleteContrat = (id) => remove(ref(db, `contrats/${id}`));
 const watchContrats = (cb) => onValue(ref(db, "contrats"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const logoKey = (nom) => (nom||"").replace(/[.#$/\[\]]/g, "_");
 const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}));
-const saveLogo = (nom, dataUrl) => set(ref(db, `logos/${logoKey(nom)}`), dataUrl);
+const saveLogo = (nom, dataUrl) => set(ref(db, `logos/${logoKey(nom)}`), dataUrl||null);
 const removeLogo = (nom) => remove(ref(db, `logos/${logoKey(nom)}`));
 
 /* ═══════════════════════════════════════════
@@ -822,8 +823,12 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
   const handleTempsValidated = (temps) => {
     setShowTemps(false);
-    const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
-    onSave(fiche);
+    try {
+      const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
+      onSave(fiche);
+    } catch(e) {
+      alert("Erreur lors de l'enregistrement : " + (e?.message||e));
+    }
     setSaving(false);
   };
 
@@ -1801,7 +1806,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       {!isRdv&&fiche.prestations?.length>0&&(
         <div style={card}>
           <div style={secHead}>🔧 Prestations ({fiche.prestations.length})</div>
-          {fiche.prestations.map(p=>{
+          {(fiche.prestations||[]).map(p=>{
             const meta=PRESTATIONS.find(x=>x.id===p.id);
             const hasContent=(p.localisations?.length||0)+(p.problemes?.length||0)+(p.causes?.length||0)+(p.constatCamera?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0)>0||p.note?.trim();
             if(!hasContent)return null;
@@ -2265,8 +2270,10 @@ export default function App() {
 
   const handleSave = fiche => {
     saveFiche(fiche); // Firebase
-    if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
-    if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
+    try {
+      if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
+      if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
+    } catch(e) { console.error(e); }
     setSelected(fiche); setView("detail"); showToast("✓ Fiche enregistrée");
   };
 
