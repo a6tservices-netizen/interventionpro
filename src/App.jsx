@@ -38,6 +38,10 @@ const deleteContrat = (id) => remove(ref(db, `contrats/${id}`));
 const watchContrats = (cb) => onValue(ref(db, "contrats"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const logoKey = (nom) => (nom||"").replace(/[.#$/\[\]]/g, "_");
 const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}));
+const watchTechTels = (cb) => onValue(ref(db, "techTels"), snap => cb(snap.val()||{}));
+const watchChamps = (cb) => onValue(ref(db, "champs"), snap => cb(snap.val()||{}));
+const saveChamps = (prestaId, cat, liste) => set(ref(db, `champs/${prestaId}/${cat}`), liste ? JSON.parse(JSON.stringify(liste)) : null);
+const saveTechTel = (nom, tel) => set(ref(db, `techTels/${logoKey(nom)}`), (tel||"").trim()||null);
 const saveLogo = (nom, dataUrl) => set(ref(db, `logos/${logoKey(nom)}`), dataUrl||null);
 const removeLogo = (nom) => remove(ref(db, `logos/${logoKey(nom)}`));
 
@@ -89,7 +93,7 @@ const THEMES = {
 const PRESTATIONS = [
   {
     id: "degorgement", label: "Débouchage", icon: "🔧", color: "#F97316",
-    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Colonne commune","Branchement principal","Regard","Siphon de sol","Vide-ordures","Horizontal","Vertical"],
+    localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Colonne commune","Gaine technique","Branchement principal","Regard","Siphon de sol","Vide-ordures","Horizontal","Vertical"],
     problemes: ["Bouchon total","Mauvais écoulement","Odeurs","Remontée d'eaux usées","Débordement"],
     causes: ["Corps étranger","Lingettes","Papier épais","Accumulation de graisses","Dépôts calcaires / tartre","Racines / végétation","Effondrement / casse de canalisation","Joint défaillant","Mauvaise pente","Chute de débris (travaux)","Remontée de nappes","Cause indéterminée"],
     actions: ["Par débouchage manuel","Par furet électrique","Par camion hydrocureur","Pompage","Ouverture tampon existant","Remplacement tampon hermétique","Création ouverture sur colonne","Fourniture et pose tampon hermétique neuf","Fermeture colonne","Extraction de corps étranger","Débouchage de vide-ordures","Ramassage des ordures"],
@@ -286,6 +290,7 @@ ${resp && resp.id !== "na" ? `Responsabilité : ${resp.label} — ${resp.desc}` 
 ${preconisations.length ? `Préconisations pour l'avenir (travaux ou contrôles RECOMMANDÉS, PAS encore réalisés) : ${preconisations.join(", ")}` : ""}
 
 Règles :
+- VOCABULAIRE ABSOLU : utilise EXACTEMENT le nom de prestation fourni ci-dessus, sans JAMAIS le remplacer par un synonyme. "Débouchage" reste "débouchage" (JAMAIS "curage" ni "désengorgement"), "Hydrocurage" reste "hydrocurage", "Détartrage" reste "détartrage", "Pompage" reste "pompage". Ce sont des prestations DIFFÉRENTES, facturées différemment : les confondre est une faute professionnelle grave.
 - Rédige UN seul paragraphe fluide et professionnel
 - Utilise un français courant et naturel, pas de jargon
 - Commence par "Suite à notre intervention"
@@ -528,6 +533,43 @@ function downloadReport(fiche) {
   setTimeout(()=>URL.revokeObjectURL(url),4000);
 }
 
+function ficheManques(fiche) {
+  const m = [];
+  if(!(fiche.prestations||[]).length) m.push("Aucune prestation renseignée");
+  (fiche.prestations||[]).forEach(p=>{
+    const meta = PRESTATIONS.find(x=>x.id===p.id);
+    if(!(p.resultats||[]).length && !(p.constatCamera||[]).length) m.push(`Résultat manquant — ${meta?.label||p.id}`);
+  });
+  if(!fiche.conclusion?.trim()) m.push("Conclusion manquante");
+  if(!fiche.signature) m.push("Signature client manquante");
+  if(!fiche.signatureTech) m.push("Signature technicien manquante");
+  if(!(fiche.photos||[]).length) m.push("Aucune photo");
+  if(!fiche.tempsInterne?.trim()) m.push("Temps passé non renseigné");
+  return m;
+}
+
+function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
+  const manques = ficheManques(fiche);
+  const msg = [
+    `🔔 Rappel — Fiche ${fiche.id} à compléter`,
+    `Client : ${fiche.client||"—"}`,
+    fiche.adresse ? `Adresse : ${fiche.adresse}` : "",
+    `Date : ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`,
+    fiche.technicien ? `Technicien : ${fiche.technicien}` : "",
+    ``,
+    manques.length ? `Il manque :` : `La fiche n'est pas validée.`,
+    ...manques.map(x=>`• ${x}`),
+    ``,
+    `Merci de compléter la fiche dès que possible 🙏`,
+  ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
+  let num = fiche.technicien ? (techTels[logoKey(fiche.technicien)]||"") : "";
+  if(!num && fiche.technicien && onSaveTel){
+    const saisie = window.prompt(`Numéro WhatsApp de ${fiche.technicien} ?\n(Format international conseillé : 33612345678)\nIl sera mémorisé pour les prochaines relances. Laissez vide pour choisir le contact à la main.`);
+    if(saisie&&saisie.trim()){ num = saisie.replace(/[^0-9+]/g,""); onSaveTel(fiche.technicien, num); }
+  }
+  window.open(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+}
+
 function envoyerRapportWhatsApp(fiche) {
   const locStr = formatLoc(fiche.loc);
   const msg = [
@@ -677,6 +719,7 @@ function SignatureCanvas({ onSave, onCancel, title = "Signature client" }) {
 function TempsPopup({ onSave, tarifHoraire }) {
   const [temps, setTemps] = useState("");
   const durees = ["30 min","1h","1h30","2h","2h30","3h","4h","Demi-journée","Journée complète"];
+  const isForfait = temps==="Forfait";
   const montant = tarifHoraire && temps ? (() => {
     const m = temps.match(/(\d+)h(\d+)?/);
     if (!m) return null;
@@ -695,7 +738,10 @@ function TempsPopup({ onSave, tarifHoraire }) {
             </button>
           ))}
         </div>
-        <input value={temps} onChange={e=>setTemps(e.target.value)} placeholder="Ou saisissez (ex: 2h15)" style={{width:"100%",padding:"10px 14px",background:"#070F1C",border:"1.5px solid #1E3A5F",borderRadius:8,color:"#E2E8F0",fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:10}}/>
+        <button onClick={()=>setTemps(isForfait?"":"Forfait")} style={{width:"100%",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:13,marginBottom:10,fontFamily:"inherit",border:`1.5px solid ${isForfait?"#A78BFA":"#1E3A5F"}`,background:isForfait?"rgba(167,139,250,0.14)":"#070F1C",color:isForfait?"#A78BFA":"#64748B"}}>
+          💼 Forfait — intervention au forfait (pas de décompte horaire)
+        </button>
+        <input value={isForfait?"":temps} onChange={e=>setTemps(e.target.value)} placeholder="Ou saisissez (ex: 2h15)" disabled={isForfait} style={{width:"100%",padding:"10px 14px",background:"#070F1C",border:"1.5px solid #1E3A5F",borderRadius:8,color:"#E2E8F0",fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:10,opacity:isForfait?.5:1}}/>
         {montant && <div style={{fontSize:13,color:"#10B981",fontWeight:600,marginBottom:10}}>💰 Montant estimé : {montant} €</div>}
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>onSave("")} style={{flex:1,padding:"11px",background:"#070F1C",border:"1px solid #1E3A5F",borderRadius:8,color:"#64748B",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Passer</button>
@@ -709,7 +755,8 @@ function TempsPopup({ onSave, tarifHoraire }) {
 /* ═══════════════════════════════════════════
    FORMULAIRE FICHE — SCROLL UNIQUE
 ═══════════════════════════════════════════ */
-function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [] }) {
+function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {} }) {
+  const co = (meta, cat) => (champsCustom?.[meta.id]?.[cat]?.length ? champsCustom[meta.id][cat] : meta[cat]);
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
 
@@ -790,8 +837,13 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     const arr=x[key]||[]; return{...x,[key]:arr.includes(val)?arr.filter(y=>y!==val):[...arr,val]};
   })}));
 
-  const readFiles = files => Promise.all([...files].filter(x=>x.type.startsWith("image/")).map(file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res({name:file.name,data:e.target.result});r.readAsDataURL(file);})));
-  const addPhotos = async files => { const imgs = await readFiles(files); setF(p=>({...p,photos:[...p.photos,...imgs]})); };
+  const addPhotos = async files => {
+    const all = [...files];
+    const videos = all.filter(x=>x.type.startsWith("video/"));
+    if(videos.length) alert("Les vidéos ne sont pas encore prises en charge (limite de stockage). Seules les photos ont été ajoutées.");
+    const imgs = await Promise.all(all.filter(x=>x.type.startsWith("image/")).map(resizePhoto));
+    setF(p=>({...p,photos:[...p.photos,...imgs]}));
+  };
 
   const handleGenererConclusion = async () => {
     if(f.prestations.length===0)return;
@@ -816,7 +868,18 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     finally { setGeneratingNote(null); }
   };
 
+  const [errors, setErrors] = useState({});
   const handleSave = () => {
+    const errs = {};
+    if(!f.client?.trim()) errs.client = true;
+    if(!f.adresse?.trim()) errs.adresse = true;
+    if(Object.keys(errs).length){
+      setErrors(errs);
+      alert("⚠️ Le nom du client et l'adresse sont obligatoires pour enregistrer la fiche.");
+      window.scrollTo({top:0,behavior:"smooth"});
+      return;
+    }
+    setErrors({});
     setSaving(true);
     setShowTemps(true);
   };
@@ -927,9 +990,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
           {/* Client avec autocomplétion */}
           <div style={{gridColumn:"1/-1",position:"relative"}} ref={acRef}>
-            <div style={lblStyle}>Client / Société</div>
-            <input value={f.client} onChange={e=>{set("client",e.target.value);setAcOpen(true);}} onFocus={()=>setAcOpen(true)}
-              placeholder="Nom ou raison sociale" style={inpStyle()} autoComplete="off"/>
+            <div style={lblStyle}>Client / Société <span style={{color:"#EF4444"}}>*</span></div>
+            <input value={f.client} onChange={e=>{set("client",e.target.value);setAcOpen(true);if(errors.client)setErrors(p=>({...p,client:false}));}} onFocus={()=>setAcOpen(true)}
+              placeholder="Nom ou raison sociale (obligatoire)" style={{...inpStyle(),...(errors.client?{border:"1.5px solid #EF4444",background:"rgba(239,68,68,0.06)"}:{})}} autoComplete="off"/>
+            {errors.client&&<div style={{fontSize:11,color:"#EF4444",fontWeight:700,marginTop:4}}>⚠️ Champ obligatoire</div>}
             {acOpen&&clientSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
                 {clientSuggestions.map((c,i)=>(
@@ -947,9 +1011,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
           {/* Adresse avec autocomplétion */}
           <div style={{gridColumn:"1/-1",position:"relative"}} ref={acAdresseRef}>
-            <div style={lblStyle}>Adresse d'intervention</div>
-            <input value={f.adresse} onChange={e=>{set("adresse",e.target.value);setAcAdresseOpen(true);}} onFocus={()=>setAcAdresseOpen(true)}
-              placeholder="Adresse complète" style={inpStyle()} autoComplete="off"/>
+            <div style={lblStyle}>Adresse d'intervention <span style={{color:"#EF4444"}}>*</span></div>
+            <input value={f.adresse} onChange={e=>{set("adresse",e.target.value);setAcAdresseOpen(true);if(errors.adresse)setErrors(p=>({...p,adresse:false}));}} onFocus={()=>setAcAdresseOpen(true)}
+              placeholder="Adresse complète (obligatoire)" style={{...inpStyle(),...(errors.adresse?{border:"1.5px solid #EF4444",background:"rgba(239,68,68,0.06)"}:{})}} autoComplete="off"/>
+            {errors.adresse&&<div style={{fontSize:11,color:"#EF4444",fontWeight:700,marginTop:4}}>⚠️ Champ obligatoire</div>}
             {acAdresseOpen&&adresseSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
                 {adresseSuggestions.map((a,i)=>(
@@ -1062,12 +1127,12 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
                     {/* Sections dynamiques */}
                     {[
-                      {key:"localisations",icon:"📍",label:"Localisation",opts:presta.localisations},
-                      {key:"problemes",icon:"⚠️",label:"Problème constaté",opts:presta.problemes},
-                      ...(presta.causes?[{key:"causes",icon:"🔍",label:"Cause du bouchon",opts:presta.causes,badge:"Débouchage"}]:[]),
-                      ...(presta.constatCamera?[{key:"constatCamera",icon:"📹",label:"Constat caméra",opts:presta.constatCamera,badge:"Inspection"}]:[]),
-                      {key:"actions",icon:"🔨",label:"Action réalisée",opts:presta.actions},
-                      {key:"resultats",icon:"✅",label:"Résultat",opts:presta.resultats},
+                      {key:"localisations",icon:"📍",label:"Localisation",opts:co(presta,"localisations")},
+                      {key:"problemes",icon:"⚠️",label:"Problème constaté",opts:co(presta,"problemes")},
+                      ...(presta.causes?[{key:"causes",icon:"🔍",label:"Cause du bouchon",opts:co(presta,"causes"),badge:"Débouchage"}]:[]),
+                      ...(presta.constatCamera?[{key:"constatCamera",icon:"📹",label:"Constat caméra",opts:co(presta,"constatCamera"),badge:"Inspection"}]:[]),
+                      {key:"actions",icon:"🔨",label:"Action réalisée",opts:co(presta,"actions")},
+                      {key:"resultats",icon:"✅",label:"Résultat",opts:co(presta,"resultats")},
                     ].map(sec=>(
                       <div key={sec.key}>
                         <div style={{fontSize:10,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",margin:"14px 0 8px",display:"flex",gap:6,alignItems:"center"}}>
@@ -1099,15 +1164,11 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                       </select>
                     </div>
                   )}
-                    <div style={{fontSize:10,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",margin:"14px 0 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span>🖊 Note (optionnel)</span>
-                      <button onClick={()=>handleGenererNote(presta.id)} disabled={generatingNote===presta.id}
-                        style={{fontSize:11,color:"#A78BFA",background:"rgba(167,139,250,0.1)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:6,padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
-                        {generatingNote===presta.id?"⏳ Génération…":"✨ Générer note IA"}
-                      </button>
+                    <div style={{fontSize:10,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",margin:"14px 0 8px"}}>
+                      🖊 Note (optionnel)
                     </div>
                     <textarea value={data.note||""} onChange={e=>updatePresta(presta.id,"note",e.target.value)}
-                      placeholder="Détail libre ou note générée par IA…" rows={2}
+                      placeholder="Détail libre…" rows={2}
                       style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,resize:"vertical",lineHeight:1.5,outline:"none",fontFamily:"inherit"}}/>
                   </div>
                 )}
@@ -1161,7 +1222,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           </div>
         )}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-          {PRECONISATIONS.map(v=>{
+          {(champsCustom?._global?.preconisations?.length ? champsCustom._global.preconisations : PRECONISATIONS).map(v=>{
             const on=f.preconisations.includes(v);
             return(
               <button key={v} onClick={()=>toggleArr("preconisations",v)}
@@ -1296,6 +1357,130 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:10,padding:"14px 36px",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 24px rgba(16,185,129,0.35)",fontFamily:"inherit"}}>
           💾 Enregistrer la fiche
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   PERSONNALISATION DES CASES
+═══════════════════════════════════════════ */
+const CHAMPS_CATS = [
+  {key:"localisations",icon:"📍",label:"Localisation"},
+  {key:"problemes",icon:"⚠️",label:"Problème constaté"},
+  {key:"causes",icon:"🔍",label:"Cause du bouchon"},
+  {key:"constatCamera",icon:"📹",label:"Constat caméra"},
+  {key:"actions",icon:"🔨",label:"Action réalisée"},
+  {key:"resultats",icon:"✅",label:"Résultat"},
+];
+function ChampsEditor({ champs, onSave, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
+  const isPreco = prestaId==="_global";
+  const meta = isPreco ? null : PRESTATIONS.find(p=>p.id===prestaId);
+  const cats = isPreco
+    ? [{key:"preconisations",icon:"💡",label:"Préconisations"}]
+    : CHAMPS_CATS.filter(c=>Array.isArray(meta?.[c.key]));
+  const defOf = (cat) => isPreco ? PRECONISATIONS : (meta?.[cat]||[]);
+  const listOf = (cat) => (champs?.[prestaId]?.[cat]?.length ? champs[prestaId][cat] : defOf(cat));
+  const isCustom = (cat) => !!champs?.[prestaId]?.[cat]?.length;
+  const write = (cat, liste) => onSave(prestaId, cat, liste);
+
+  const move = (cat,i,d) => { const l=[...listOf(cat)]; const j=i+d; if(j<0||j>=l.length)return; [l[i],l[j]]=[l[j],l[i]]; write(cat,l); };
+  const renameIt = (cat,i) => { const l=[...listOf(cat)]; const v=window.prompt("Nouveau libellé :",l[i]); if(v&&v.trim()){l[i]=v.trim(); write(cat,l);} };
+  const removeIt = (cat,i) => { const l=[...listOf(cat)]; if(!window.confirm(`Supprimer la case "${l[i]}" ?`))return; l.splice(i,1); write(cat,l); };
+  const addIt = (cat) => { const v=window.prompt("Libellé de la nouvelle case :"); if(v&&v.trim()) write(cat,[...listOf(cat),v.trim()]); };
+  const resetIt = (cat) => { if(window.confirm("Revenir à la liste d'origine ? Vos personnalisations de cette rubrique seront effacées.")) write(cat,null); };
+
+  const btn = {border:`1px solid ${T.border}`,background:T.surface2,color:T.textMuted,borderRadius:6,width:28,height:28,cursor:"pointer",fontFamily:"inherit",fontSize:12};
+  return (
+    <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{background:"rgba(14,165,233,0.07)",border:"1px solid rgba(14,165,233,0.25)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
+        ⚙️ Ici vous gérez vous-même les cases proposées dans les fiches : <b>ajoutez</b> ➕, <b>renommez</b> ✏️, <b>supprimez</b> ✕ ou <b>déplacez</b> ↑↓ les cases. Les modifications s'appliquent immédiatement pour toute l'équipe. Les fiches déjà enregistrées ne sont pas touchées.
+      </div>
+      <select value={prestaId} onChange={e=>setPrestaId(e.target.value)}
+        style={{width:"100%",padding:"12px 14px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",cursor:"pointer",marginBottom:16,boxSizing:"border-box"}}>
+        {PRESTATIONS.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
+        <option value="_global">💡 Préconisations (toutes fiches)</option>
+      </select>
+      {cats.map(cat=>(
+        <div key={cat.key} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <div style={{fontWeight:800,fontSize:13.5,color:T.text}}>{cat.icon} {cat.label}</div>
+            {isCustom(cat.key)&&<span style={{fontSize:10,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.14)",padding:"2px 8px",borderRadius:10}}>personnalisé</span>}
+            <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+              {isCustom(cat.key)&&<button onClick={()=>resetIt(cat.key)} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>↺ Origine</button>}
+              <button onClick={()=>addIt(cat.key)} style={{...btn,width:"auto",padding:"0 10px",fontSize:11,color:"#10B981",borderColor:"rgba(16,185,129,0.4)"}}>➕ Ajouter</button>
+            </div>
+          </div>
+          {listOf(cat.key).map((item,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 4px",borderBottom:i<listOf(cat.key).length-1?`1px solid ${T.border}`:"none"}}>
+              <span style={{flex:1,fontSize:13,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{item}</span>
+              <button onClick={()=>move(cat.key,i,-1)} disabled={i===0} style={{...btn,opacity:i===0?.3:1}}>↑</button>
+              <button onClick={()=>move(cat.key,i,1)} disabled={i===listOf(cat.key).length-1} style={{...btn,opacity:i===listOf(cat.key).length-1?.3:1}}>↓</button>
+              <button onClick={()=>renameIt(cat.key,i)} style={btn}>✏️</button>
+              <button onClick={()=>removeIt(cat.key,i)} style={{...btn,color:"#EF4444"}}>✕</button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   IMPORT MAIL → RDV (IA)
+═══════════════════════════════════════════ */
+function MailImport({ onExtracted, onCancel, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [texte, setTexte] = useState("");
+  const [img, setImg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef();
+  const analyser = async () => {
+    if(!texte.trim() && !img){alert("Collez le texte du mail ou ajoutez une capture d'écran.");return;}
+    setBusy(true);
+    try {
+      const prompt = `Tu extrais les informations d'une demande d'intervention (plomberie/assainissement) reçue par mail ou message, pour créer un rendez-vous. Date du jour : ${today()}.
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide si l'info est absente) :
+{"client":"nom du client ou de la société demandeuse","tel":"téléphone","email":"email","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","note":"résumé en 1-2 phrases du problème ou de la demande"}`;
+      const content = [];
+      if(img) content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:img.split(",")[1]}});
+      content.push({type:"text",text:prompt+(texte.trim()?`\n\nContenu du mail :\n${texte.trim()}`:"\n\nLes informations sont dans l'image ci-jointe.")});
+      const r = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content}] })
+      });
+      if(!r.ok) throw new Error("API "+r.status);
+      const data = await r.json();
+      const raw = (data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+      const j = JSON.parse(raw);
+      onExtracted({ client:j.client||"", tel:j.tel||"", email:j.email||"", adresse:j.adresse||"",
+        dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"" });
+    } catch(e) { alert("Erreur lors de l'analyse : "+(e?.message||e)); }
+    setBusy(false);
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🪄 Créer un RDV depuis un mail</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Collez le texte du mail ou ajoutez une capture d'écran — l'IA remplit le RDV pour vous.</div>
+        <textarea value={texte} onChange={e=>setTexte(e.target.value)} rows={7} placeholder="Collez ici le texte du mail / SMS / WhatsApp…"
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:10,lineHeight:1.5}}/>
+        {img
+          ? <div style={{position:"relative",marginBottom:10}}>
+              <img src={img} style={{width:"100%",borderRadius:8,maxHeight:200,objectFit:"contain",background:"#000"}} alt=""/>
+              <button onClick={()=>setImg(null)} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:24,height:24,cursor:"pointer",fontFamily:"inherit"}}>×</button>
+            </div>
+          : <button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"11px",background:"none",border:`2px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>📸 Ou ajouter une capture d'écran du mail</button>}
+        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+          const file=e.target.files?.[0]; if(!file)return;
+          const r=await resizePhoto(file); setImg(r.data); e.target.value="";
+        }}/>
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <button onClick={onCancel} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+          <button onClick={analyser} disabled={busy} style={{flex:2,padding:"12px",background:busy?"rgba(167,139,250,0.3)":"linear-gradient(135deg,#A78BFA,#7C3AED)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>{busy?"⏳ Analyse en cours…":"✨ Analyser et pré-remplir"}</button>
+        </div>
       </div>
     </div>
   );
@@ -1630,59 +1815,129 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 /* ═══════════════════════════════════════════
    AGENDA
 ═══════════════════════════════════════════ */
+function AgendaCarte({ fiche, onSelect, onDemarrer, T }) {
+  const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
+  const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${isRdv?"rgba(59,130,246,0.3)":T.border}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
+      <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
+        <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
+        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:isRdv?"#3B82F6":STATUTS[fiche.status]?.color}}>{isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`}</div>
+        {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
+      </div>
+      <div style={{width:1,height:36,background:T.border}}/>
+      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
+        <div style={{fontWeight:700,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
+        <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {fiche.adresse
+            ? <span onClick={e=>{e.stopPropagation();window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
+            : "📍 —"}
+          {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
+        </div>
+        {fiche.tel&&(
+          <a href={`tel:${fiche.tel}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
+        )}
+        {isRdv&&fiche.typesIntervention?.length>0&&(
+          <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
+            {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
+          </div>
+        )}
+      </div>
+      {!isRdv&&<div style={{display:"flex",gap:3}}>{prestas.slice(0,3).map((p,i)=><span key={i} style={{fontSize:17}}>{p.icon}</span>)}</div>}
+      {isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
+    </div>
+  );
+}
+
 function Agenda({ fiches, onSelect, onDemarrer, theme }) {
   const T = THEMES[theme] || THEMES.dark;
-  if(fiches.length===0) return <Empty icon="📅" text="Aucun rendez-vous planifié" T={T}/>;
-  const groups = {};
-  fiches.forEach(f=>{const k=f.dateRdv||"sans-date";(groups[k]=groups[k]||[]).push(f);});
-  const sorted = Object.keys(groups).sort((a,b)=>a==="sans-date"?1:b==="sans-date"?-1:new Date(a)-new Date(b));
   const todayStr = today();
+  const [cursor, setCursor] = useState(todayStr.slice(0,7)); // "YYYY-MM"
+  const [selDay, setSelDay] = useState(todayStr);
+
+  const [Y,M] = cursor.split("-").map(Number);
+  const firstDow = (new Date(Y, M-1, 1).getDay()+6)%7; // lundi=0
+  const nbJours = new Date(Y, M, 0).getDate();
+  const moisLabel = new Date(Y, M-1, 1).toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
+  const navMois = (d) => {
+    const dt = new Date(Y, M-1+d, 1);
+    setCursor(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`);
+  };
+
+  const byDay = {};
+  const sansDate = [];
+  fiches.forEach(f=>{ if(f.dateRdv) (byDay[f.dateRdv]=byDay[f.dateRdv]||[]).push(f); else sansDate.push(f); });
+
+  const cells = [];
+  for(let i=0;i<firstDow;i++) cells.push(null);
+  for(let j=1;j<=nbJours;j++) cells.push(`${cursor}-${String(j).padStart(2,"0")}`);
+
+  const dayFiches = (byDay[selDay]||[]).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
+  const colorOf = (f) => (f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length)) ? "#3B82F6" : (STATUTS[f.status]?.color||"#0EA5E9");
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {sorted.map(date=>(
-        <div key={date}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <div style={{background:date===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>
-              {date==="sans-date"?"📌 Sans date":date===todayStr?"📅 Aujourd'hui":dateFr(date)}
-            </div>
-            <div style={{flex:1,height:1,background:T.border}}/>
-            <span style={{fontSize:12,color:T.textMuted}}>{groups[date].length} entrée(s)</span>
-          </div>
-          {groups[date].sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||"")).map(fiche=>{
-            const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
-            const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
-            return(
-              <div key={fiche.id} style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${isRdv?"rgba(59,130,246,0.3)":T.border}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
-                <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
-                  <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
-                  <div style={{fontSize:9,fontWeight:700,marginTop:2,color:isRdv?"#3B82F6":STATUTS[fiche.status]?.color}}>{isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`}</div>
-                  {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
-                </div>
-                <div style={{width:1,height:36,background:T.border}}/>
-                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
-                  <div style={{fontWeight:700,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
-                  <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {fiche.adresse
-                      ? <span onClick={e=>{e.stopPropagation();window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
-                      : "📍 —"}
-                    {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
+    <div>
+      {/* En-tête mois */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <button onClick={()=>navMois(-1)} style={{width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>◀</button>
+        <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:16,color:T.text,textTransform:"capitalize"}}>{moisLabel}</div>
+        <button onClick={()=>navMois(1)} style={{width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
+        <button onClick={()=>{setCursor(todayStr.slice(0,7));setSelDay(todayStr);}} style={{padding:"8px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
+      </div>
+
+      {/* Grille calendrier */}
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:10,marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>
+          {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(j=>(
+            <div key={j} style={{textAlign:"center",fontSize:10,fontWeight:800,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",padding:"4px 0"}}>{j}</div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          {cells.map((d,i)=>{
+            if(!d) return <div key={"v"+i}/>;
+            const evts = byDay[d]||[];
+            const isToday = d===todayStr, isSel = d===selDay;
+            return (
+              <div key={d} onClick={()=>setSelDay(d)}
+                style={{minHeight:52,borderRadius:9,padding:"5px 4px",cursor:"pointer",textAlign:"center",position:"relative",
+                  border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":"transparent"}`,
+                  background:isSel?"rgba(14,165,233,0.12)":isToday?"rgba(16,185,129,0.07)":evts.length?T.surface2:"transparent"}}>
+                <div style={{fontSize:12.5,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":evts.length?T.text:T.textMuted}}>{parseInt(d.slice(8))}</div>
+                {evts.length>0&&(
+                  <div style={{display:"flex",justifyContent:"center",gap:2,marginTop:3,flexWrap:"wrap"}}>
+                    {evts.slice(0,4).map((f,k)=><span key={k} style={{width:6,height:6,borderRadius:"50%",background:colorOf(f),display:"inline-block"}}/>)}
                   </div>
-                  {fiche.tel&&(
-                    <a href={`tel:${fiche.tel}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
-                  )}
-                  {isRdv&&fiche.typesIntervention?.length>0&&(
-                    <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
-                      {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
-                    </div>
-                  )}
-                </div>
-                {!isRdv&&<div style={{display:"flex",gap:3}}>{prestas.slice(0,3).map((p,i)=><span key={i} style={{fontSize:17}}>{p.icon}</span>)}</div>}
-                {isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
+                )}
+                {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:T.textMuted,marginTop:1}}>{evts.length}</div>}
               </div>
             );
           })}
         </div>
-      ))}
+      </div>
+
+      {/* Jour sélectionné */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>
+          {selDay===todayStr?"📅 Aujourd'hui":dateFr(selDay)}
+        </div>
+        <div style={{flex:1,height:1,background:T.border}}/>
+        <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} entrée(s)</span>
+      </div>
+      {dayFiches.length===0
+        ? <div style={{textAlign:"center",padding:"22px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Rien de prévu ce jour</div>
+        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+
+      {/* Sans date */}
+      {sansDate.length>0&&(
+        <div style={{marginTop:18}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{background:"linear-gradient(135deg,#64748B,#475569)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>📌 Sans date</div>
+            <div style={{flex:1,height:1,background:T.border}}/>
+            <span style={{fontSize:12,color:T.textMuted}}>{sansDate.length} entrée(s)</span>
+          </div>
+          {sansDate.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+        </div>
+      )}
     </div>
   );
 }
@@ -1728,12 +1983,13 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
 /* ═══════════════════════════════════════════
    DÉTAIL FICHE
 ═══════════════════════════════════════════ */
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, theme }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, theme, techTels = {}, onSaveTechTel = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
+  const manques = isRdv ? [] : ficheManques(fiche);
   const card = { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"18px 22px", marginBottom:14 };
   const secHead = { fontSize:10, fontWeight:700, color:T.textMuted, textTransform:"uppercase", letterSpacing:".1em", paddingBottom:7, borderBottom:`1px solid ${T.border}`, marginBottom:12, display:"flex", gap:6 };
 
@@ -1763,8 +2019,19 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           {!isRdv&&onCreateDevis&&(
             <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
           )}
+          {!isRdv&&ficheManques(fiche).length>0&&(
+            <button onClick={()=>relancerTechnicien(fiche, techTels, onSaveTechTel)} title="Envoyer un rappel au technicien : fiche incomplète"
+              style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔔 Relancer ({ficheManques(fiche).length})</button>
+          )}
         </div>
       </div>
+
+      {manques.length>0&&(
+        <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:12,padding:"13px 18px",marginBottom:14}}>
+          <div style={{fontWeight:800,fontSize:13,color:"#F59E0B",marginBottom:6}}>⚠️ Fiche incomplète — {manques.length} élément(s) manquant(s)</div>
+          <div style={{fontSize:12.5,color:T.text,lineHeight:1.7}}>{manques.map(m=><div key={m}>• {m}</div>)}</div>
+        </div>
+      )}
 
       {/* Carte infos */}
       <div style={card}>
@@ -2242,6 +2509,10 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [showRdvForm, setShowRdvForm] = useState(false);
+  const [rdvPrefill, setRdvPrefill] = useState(null);
+  const [showMailImport, setShowMailImport] = useState(false);
+  const [techTels, setTechTels] = useState({});
+  const [champsCustom, setChampsCustom] = useState({});
 
   const T = THEMES[theme] || THEMES.dark;
   const showToast = m => { setToast(m); setTimeout(()=>setToast(null),3200); };
@@ -2253,6 +2524,8 @@ export default function App() {
     const unsub3 = watchSocietes(data => setSocietes(data));
     const unsub4 = watchTechniciens(data => setTechniciens(data));
     const unsub5 = watchLogos(data => setLogos(data));
+    const unsubT = watchTechTels(data => setTechTels(data));
+    const unsubCh = watchChamps(data => setChampsCustom(data));
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
@@ -2278,6 +2551,7 @@ export default function App() {
   };
 
   const handleSaveRdv = rdv => {
+    setRdvPrefill(null);
     saveFiche(rdv); // Firebase
     if (rdv.technicien?.trim() && !techniciens.includes(rdv.technicien.trim())) ajouterTechnicien(rdv.technicien.trim());
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
@@ -2361,7 +2635,12 @@ export default function App() {
   }, []);
 
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
-  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"}];
+  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
+
+  const mailImportModal = showMailImport && (
+    <MailImport theme={theme} onCancel={()=>setShowMailImport(false)}
+      onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
+  );
 
   // Formulaire RDV plein écran
   if(showRdvForm) return (
@@ -2371,13 +2650,14 @@ export default function App() {
         <div style={{fontWeight:800,fontSize:16,color:T.text}}>📅 Nouveau RDV</div>
       </header>
       <div style={{maxWidth:800,margin:"0 auto",padding:"20px 16px"}}>
-        <RdvForm fiches={fiches} onSave={handleSaveRdv} onBack={()=>setShowRdvForm(false)} theme={theme} techniciens={techniciens} onAddTechnicien={ajouterTechnicien}/>
+        <RdvForm initial={rdvPrefill} fiches={fiches} onSave={handleSaveRdv} onBack={()=>{setShowRdvForm(false);setRdvPrefill(null);}} theme={theme} techniciens={techniciens} onAddTechnicien={ajouterTechnicien}/>
       </div>
     </div>
   );
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      {mailImportModal}
 
       {/* HEADER */}
       <header style={{background:T.surface,backdropFilter:"blur(12px)",borderBottom:`1px solid ${T.border}`,padding:"0 16px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:300,boxShadow:theme!=="dark"?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
@@ -2402,7 +2682,7 @@ export default function App() {
         )}
 
         {view==="form"&&(
-          <FicheForm initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients}/>
+          <FicheForm champsCustom={champsCustom} initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients}/>
         )}
 
         {view==="rdv"&&editing&&(
@@ -2412,7 +2692,7 @@ export default function App() {
         )}
 
         {view==="detail"&&selected&&(
-          <DetailFiche fiche={selected} theme={theme}
+          <DetailFiche fiche={selected} theme={theme} techTels={techTels} onSaveTechTel={saveTechTel}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
@@ -2495,6 +2775,12 @@ export default function App() {
             )}
 
             {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}}/>}
+            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} theme={theme}/>}
+            {nav==="agenda"&&(
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+                <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
+              </div>
+            )}
             {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
