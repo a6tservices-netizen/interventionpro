@@ -165,6 +165,9 @@ const STATUTS = {
   annule:   { label:"Annulé",   color:"#EF4444", bg:"rgba(239,68,68,0.12)" },
 };
 
+// Une fiche "à programmer" = un RDV enregistré sans date
+const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
+
 const BATIMENTS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const ETAGES = ["Sous-sol 2","Sous-sol 1","Rez-de-chaussée","1er étage","2ème étage","3ème étage","4ème étage","5ème étage","6ème étage","7ème étage","8ème étage","9ème étage","10ème étage","11ème étage","12ème étage","13ème étage","14ème étage","15ème étage","16ème étage","17ème étage","18ème étage","19ème étage","20ème étage"];
 const CAGES = ["1","2","3","4","5","6","7","8","9","10"];
@@ -1976,15 +1979,16 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
-  const e = etat || (isRdv?"rdv":"complete");
-  const COUL = { rdv:"#3B82F6", complete:"#10B981" };
-  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"} };
+  const aProg = estAProgrammer(fiche);
+  const e = aProg ? "prog" : (etat || (isRdv?"rdv":"complete"));
+  const COUL = { rdv:"#3B82F6", complete:"#10B981", prog:"#64748B" };
+  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"}, prog:{t:"📌 À planifier",c:"#64748B"} };
   const accent = COUL[e];
   return(
     <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
         <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
-        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:isRdv?"#3B82F6":STATUTS[fiche.status]?.color}}>{isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`}</div>
+        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color)}}>{aProg?"📌 À planifier":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`)}</div>
         {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
       </div>
       <div style={{width:1,height:36,background:T.border}}/>
@@ -2133,38 +2137,68 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme })
   );
 }
 
+function CarteFiche({ fiche, onSelect, onDelete, T }) {
+  const prestas=fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
+  const main=prestas[0];
+  const aProg = estAProgrammer(fiche);
+  const statutLabel = aProg ? "À planifier" : STATUTS[fiche.status]?.label;
+  const statutColor = aProg ? "#64748B" : STATUTS[fiche.status]?.color;
+  return(
+    <div onClick={()=>onSelect(fiche)} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .2s",position:"relative",overflow:"hidden"}}
+      onMouseEnter={e=>{e.currentTarget.style.borderColor=main?.color||"#0EA5E9";e.currentTarget.style.transform="translateY(-2px)";}}
+      onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform="none";}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${aProg?"#64748B":(main?.color||"#0EA5E9")},transparent)`}}/>
+      {fiche.urgent&&<div style={{position:"absolute",top:8,right:8,fontSize:10,fontWeight:700,color:"#EF4444",background:"rgba(239,68,68,0.1)",padding:"2px 8px",borderRadius:12}}>🚨 Urgence</div>}
+      <div style={{fontFamily:"monospace",fontSize:10,color:"#0EA5E9",fontWeight:700,marginBottom:3}}>{fiche.id}</div>
+      <div style={{fontWeight:800,fontSize:15,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
+      <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {fiche.adresse||"—"}</div>
+      {fiche.dateRdv&&<div style={{fontSize:11,color:"#60A5FA",fontWeight:600,marginTop:3}}>📅 {dateFr(fiche.dateRdv)}{fiche.heureRdv?" · "+fiche.heureRdv:""}</div>}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
+        {prestas.map((p,i)=><span key={i} style={{fontSize:11,fontWeight:600,color:p.color,background:p.color+"18",padding:"3px 9px",borderRadius:20}}>{p.icon} {p.label.split(" ")[0]}</span>)}
+      </div>
+      <div style={{marginTop:10,fontSize:11,borderTop:`1px solid ${T.border}`,paddingTop:8,display:"flex",justifyContent:"space-between",color:T.textMuted}}>
+        <span>{fiche.technicien&&`👤 ${fiche.technicien}`}</span>
+        <span style={{display:"flex",gap:6,alignItems:"center"}}>
+          <span style={{fontSize:11,fontWeight:700,color:statutColor}}>{aProg?"📌":"●"} {statutLabel}</span>
+          {fiche.signature&&"· ✍️"}
+          {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
+          {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function ListeCartes({ fiches, onSelect, onDelete, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   if(fiches.length===0) return <Empty icon="📭" text="Aucune fiche trouvée" T={T}/>;
-  return (
+  const aProgrammer = fiches.filter(estAProgrammer);
+  const autres = fiches.filter(f=>!estAProgrammer(f));
+  const grille = (arr) => (
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
-      {fiches.map(fiche=>{
-        const prestas=fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
-        const main=prestas[0];
-        return(
-          <div key={fiche.id} onClick={()=>onSelect(fiche)} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .2s",position:"relative",overflow:"hidden"}}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor=main?.color||"#0EA5E9";e.currentTarget.style.transform="translateY(-2px)";}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform="none";}}>
-            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${main?.color||"#0EA5E9"},transparent)`}}/>
-            {fiche.urgent&&<div style={{position:"absolute",top:8,right:8,fontSize:10,fontWeight:700,color:"#EF4444",background:"rgba(239,68,68,0.1)",padding:"2px 8px",borderRadius:12}}>🚨 Urgence</div>}
-            <div style={{fontFamily:"monospace",fontSize:10,color:"#0EA5E9",fontWeight:700,marginBottom:3}}>{fiche.id}</div>
-            <div style={{fontWeight:800,fontSize:15,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
-            <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {fiche.adresse||"—"}</div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
-              {prestas.map((p,i)=><span key={i} style={{fontSize:11,fontWeight:600,color:p.color,background:p.color+"18",padding:"3px 9px",borderRadius:20}}>{p.icon} {p.label.split(" ")[0]}</span>)}
-            </div>
-            <div style={{marginTop:10,fontSize:11,borderTop:`1px solid ${T.border}`,paddingTop:8,display:"flex",justifyContent:"space-between",color:T.textMuted}}>
-              <span>{fiche.technicien&&`👤 ${fiche.technicien}`}</span>
-              <span style={{display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{fontSize:11,fontWeight:700,color:STATUTS[fiche.status]?.color}}>● {STATUTS[fiche.status]?.label}</span>
-                {fiche.signature&&"· ✍️"}
-                {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
-                {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
-              </span>
-            </div>
+      {arr.map(fiche=><CarteFiche key={fiche.id} fiche={fiche} onSelect={onSelect} onDelete={onDelete} T={T}/>)}
+    </div>
+  );
+  return (
+    <div>
+      {aProgrammer.length>0&&(
+        <div style={{marginBottom:18}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{background:"linear-gradient(135deg,#64748B,#475569)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>📌 À planifier</div>
+            <div style={{flex:1,height:1,background:T.border}}/>
+            <span style={{fontSize:12,color:T.textMuted}}>{aProgrammer.length} fiche(s)</span>
           </div>
-        );
-      })}
+          {grille(aProgrammer)}
+        </div>
+      )}
+      {autres.length>0&&aProgrammer.length>0&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <div style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>🗂️ Interventions</div>
+          <div style={{flex:1,height:1,background:T.border}}/>
+          <span style={{fontSize:12,color:T.textMuted}}>{autres.length} fiche(s)</span>
+        </div>
+      )}
+      {grille(autres)}
     </div>
   );
 }
@@ -2822,9 +2856,11 @@ export default function App() {
   const filtered = useMemo(()=>{
     let r=fiches;
     if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien}`.toLowerCase().includes(search.toLowerCase()));
-    if(filterStatus==="__signees") r=r.filter(f=>f.signature);
+    if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
+    else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
     else if(filterStatus==="__facture") r=r.filter(f=>f.facturation==="facture");
+    else if(filterStatus==="planifie") r=r.filter(f=>f.status==="planifie"&&!estAProgrammer(f));
     else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
     return r;
   },[fiches,search,filterStatus]);
@@ -2972,6 +3008,7 @@ export default function App() {
                 <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous statuts</option>
+                  <option value="__aprogrammer">📌 À planifier</option>
                   {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   <option value="__signees">✍️ Signées</option>
                   <option value="__afacturer">💶 À facturer</option>
