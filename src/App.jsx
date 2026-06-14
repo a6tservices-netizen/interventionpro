@@ -1882,13 +1882,13 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
           </div>
           {rdvPlanifies.sort((a,b)=>((a.dateRdv||"")+(a.heureRdv||"")).localeCompare((b.dateRdv||"")+(b.heureRdv||""))).map(f=>(
               <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,background:T.surface2,borderRadius:10,padding:"11px 14px",border:`1px solid ${T.border}`,marginBottom:6}}>
-              <div style={{minWidth:80,textAlign:"center"}}>
+              <div style={{minWidth:46,textAlign:"center",flexShrink:0}}>
                 <div style={{fontSize:11,fontWeight:800,color:"#3B82F6"}}>{f.dateRdv?new Date(f.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}):"--/--"}</div>
                 <div style={{fontSize:12,fontWeight:700,color:"#60A5FA"}}>{f.heureRdv||"--:--"}</div>
               </div>
               <div style={{width:1,height:32,background:T.border}}/>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:700,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.client||"Client non renseigné"}</div>
+                <div style={{fontWeight:700,fontSize:14,color:T.text,lineHeight:1.25,wordBreak:"break-word"}}>{f.client||"Client non renseigné"}</div>
                 <div onClick={()=>f.adresse&&window.open(`https://maps.google.com/?q=${encodeURIComponent(f.adresse)}`,"_blank")}
                   style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
                   📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
@@ -1896,9 +1896,9 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
                 {f.tel&&<a href={`tel:${f.tel}`} style={{fontSize:11,color:"#10B981",fontWeight:600,textDecoration:"none"}}>📞 {f.tel}</a>}
                 {f.technicien&&<div style={{fontSize:10,color:T.textMuted}}>👤 {f.technicien}</div>}
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>onSelect(f)} style={{padding:"6px 10px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>👁</button>
-                <button onClick={()=>onDemarrer(f)} style={{padding:"6px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>▶ Démarrer</button>
+              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                <button onClick={()=>onDemarrer(f)} style={{padding:"7px 12px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>▶ Démarrer</button>
+                <button onClick={()=>onSelect(f)} style={{padding:"5px 12px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>👁 Voir</button>
               </div>
             </div>
           ))}
@@ -1968,11 +1968,15 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 /* ═══════════════════════════════════════════
    AGENDA
 ═══════════════════════════════════════════ */
-function AgendaCarte({ fiche, onSelect, onDemarrer, T }) {
+function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
+  const e = etat || (isRdv?"rdv":"complete");
+  const COUL = { rdv:"#3B82F6", complete:"#10B981", incomplete:"#EF4444" };
+  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Fiche complète",c:"#10B981"}, incomplete:{t:"⚠️ Fiche incomplète",c:"#EF4444"} };
+  const accent = COUL[e];
   return(
-    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${isRdv?"rgba(59,130,246,0.3)":T.border}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
         <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:9,fontWeight:700,marginTop:2,color:isRdv?"#3B82F6":STATUTS[fiche.status]?.color}}>{isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`}</div>
@@ -1980,7 +1984,10 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T }) {
       </div>
       <div style={{width:1,height:36,background:T.border}}/>
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
-        <div style={{fontWeight:700,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
+          <span style={{fontSize:9.5,fontWeight:800,color:BADGE[e].c,background:BADGE[e].c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{BADGE[e].t}</span>
+        </div>
         <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {fiche.adresse
             ? <span onClick={e=>{e.stopPropagation();window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
@@ -2005,81 +2012,93 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T }) {
 function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
-  const [cursor, setCursor] = useState(todayStr.slice(0,7)); // "YYYY-MM"
   const [selDay, setSelDay] = useState(todayStr);
 
-  const [Y,M] = cursor.split("-").map(Number);
-  const firstDow = (new Date(Y, M-1, 1).getDay()+6)%7; // lundi=0
-  const nbJours = new Date(Y, M, 0).getDate();
-  const moisLabel = new Date(Y, M-1, 1).toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
-  const navMois = (d) => {
-    const dt = new Date(Y, M-1+d, 1);
-    setCursor(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`);
-  };
+  const parseD = (s) => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d, 12); };
+  const toStr = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+
+  // Lundi de la semaine contenant selDay
+  const sel = parseD(selDay);
+  const lundi = new Date(sel);
+  lundi.setDate(sel.getDate() - ((sel.getDay()+6)%7));
+  const semaine = [];
+  for (let i=0;i<7;i++){ const dt=new Date(lundi); dt.setDate(lundi.getDate()+i); semaine.push(toStr(dt)); }
 
   const byDay = {};
   const sansDate = [];
   fiches.forEach(f=>{ if(f.dateRdv) (byDay[f.dateRdv]=byDay[f.dateRdv]||[]).push(f); else sansDate.push(f); });
 
-  const cells = [];
-  for(let i=0;i<firstDow;i++) cells.push(null);
-  for(let j=1;j<=nbJours;j++) cells.push(`${cursor}-${String(j).padStart(2,"0")}`);
+  const navSemaine = (delta) => { const dt=new Date(lundi); dt.setDate(lundi.getDate()+delta*7); setSelDay(toStr(dt)); };
 
   const dayFiches = (byDay[selDay]||[]).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
-  const colorOf = (f) => (f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length)) ? "#3B82F6" : (STATUTS[f.status]?.color||"#0EA5E9");
+  // État : "rdv" (à faire), "complete" (fiche OK), "incomplete" (fiche commencée mais manques)
+  const etatFiche = (f) => {
+    const isRdv = f.type==="rdv" || (f.status==="planifie" && !f.prestations?.length);
+    if (isRdv) return "rdv";
+    return ficheManques(f).length > 0 ? "incomplete" : "complete";
+  };
+  const ETAT_COULEUR = { rdv:"#3B82F6", complete:"#10B981", incomplete:"#EF4444" };
+  const colorOf = (f) => ETAT_COULEUR[etatFiche(f)];
+  const jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+
+  // Libellé de la semaine (ex : "9 – 15 juin 2026")
+  const finSemaine = parseD(semaine[6]);
+  const moisDeb = lundi.toLocaleDateString("fr-FR",{month:"short"});
+  const moisFin = finSemaine.toLocaleDateString("fr-FR",{month:"short"});
+  const labelSemaine = moisDeb===moisFin
+    ? `${lundi.getDate()} – ${finSemaine.getDate()} ${finSemaine.toLocaleDateString("fr-FR",{month:"long",year:"numeric"})}`
+    : `${lundi.getDate()} ${moisDeb} – ${finSemaine.getDate()} ${moisFin} ${finSemaine.getFullYear()}`;
 
   return (
     <div>
-      {/* En-tête mois */}
+      {/* En-tête semaine */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={()=>navMois(-1)} style={{width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>◀</button>
-        <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:16,color:T.text,textTransform:"capitalize"}}>{moisLabel}</div>
-        <button onClick={()=>navMois(1)} style={{width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
-        <button onClick={()=>{setCursor(todayStr.slice(0,7));setSelDay(todayStr);}} style={{padding:"8px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
+        <button onClick={()=>navSemaine(-1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>◀</button>
+        <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:15,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
+        <button onClick={()=>navSemaine(1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
+        <button onClick={()=>setSelDay(todayStr)} style={{padding:"9px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
       </div>
 
-      {/* Grille calendrier */}
-      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:10,marginBottom:14}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>
-          {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(j=>(
-            <div key={j} style={{textAlign:"center",fontSize:10,fontWeight:800,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",padding:"4px 0"}}>{j}</div>
-          ))}
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
-          {cells.map((d,i)=>{
-            if(!d) return <div key={"v"+i}/>;
-            const evts = byDay[d]||[];
-            const isToday = d===todayStr, isSel = d===selDay;
-            return (
-              <div key={d} onClick={()=>{setSelDay(d);if(!evts.length&&onNewRdv)onNewRdv(d);}}
-                style={{minHeight:68,borderRadius:9,padding:"4px 3px",cursor:"pointer",position:"relative",overflow:"hidden",
-                  border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":"transparent"}`,
-                  background:isSel?"rgba(14,165,233,0.12)":isToday?"rgba(16,185,129,0.07)":evts.length?T.surface2:"transparent"}}>
-                <div style={{fontSize:12,fontWeight:isToday||isSel?800:600,textAlign:"center",marginBottom:2,color:isToday?"#10B981":isSel?"#0EA5E9":evts.length?T.text:T.textMuted}}>{parseInt(d.slice(8))}</div>
-                {evts.slice(0,3).map((f,k)=>(
-                  <div key={k} style={{fontSize:8.5,fontWeight:700,color:"#fff",background:colorOf(f),borderRadius:4,padding:"1.5px 4px",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left",lineHeight:1.5}}>
-                    {f.heureRdv?f.heureRdv+" ":""}{f.client||f.adresse||"—"}
-                  </div>
-                ))}
-                {evts.length>3&&<div style={{fontSize:8.5,fontWeight:800,color:T.textMuted,textAlign:"center"}}>+{evts.length-3} autre(s)</div>}
+      {/* Bande semaine : 7 jours */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:16}}>
+        {semaine.map((d,i)=>{
+          const evts = byDay[d]||[];
+          const isToday = d===todayStr, isSel = d===selDay;
+          return (
+            <div key={d} onClick={()=>{setSelDay(d);if(!evts.length&&onNewRdv)onNewRdv(d);}}
+              style={{borderRadius:10,padding:"8px 2px 7px",cursor:"pointer",textAlign:"center",minHeight:62,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:3,
+                border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":T.border}`,
+                background:isSel?"rgba(14,165,233,0.14)":isToday?"rgba(16,185,129,0.07)":T.surface}}>
+              <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase"}}>{jours[i]}</div>
+              <div style={{fontSize:16,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
+              <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",minHeight:6}}>
+                {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:colorOf(f),display:"inline-block"}}/>)}
               </div>
-            );
-          })}
-        </div>
+              {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:isSel?"#0EA5E9":T.textMuted}}>{evts.length}</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Légende */}
+      <div style={{display:"flex",gap:14,justifyContent:"center",marginBottom:14,flexWrap:"wrap"}}>
+        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#3B82F6"}}/>RDV à faire</span>
+        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Fiche complète</span>
+        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#EF4444"}}/>Fiche incomplète</span>
       </div>
 
       {/* Jour sélectionné */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-        <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>
+        <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"7px 15px",fontWeight:800,fontSize:13}}>
           {selDay===todayStr?"📅 Aujourd'hui":dateFr(selDay)}
         </div>
         <div style={{flex:1,height:1,background:T.border}}/>
-        <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} entrée(s)</span>
-        {onNewRdv&&<button onClick={()=>onNewRdv(selDay)} style={{padding:"7px 13px",background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>➕ RDV ce jour</button>}
+        <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} RDV</span>
+        {onNewRdv&&<button onClick={()=>onNewRdv(selDay)} style={{padding:"7px 13px",background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>➕ RDV</button>}
       </div>
       {dayFiches.length===0
-        ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"22px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter un RDV ➕":""}</div>
-        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+        ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter ➕":""}</div>
+        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
 
       {/* Sans date */}
       {sansDate.length>0&&(
@@ -2089,16 +2108,13 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
             <div style={{flex:1,height:1,background:T.border}}/>
             <span style={{fontSize:12,color:T.textMuted}}>{sansDate.length} entrée(s)</span>
           </div>
-          {sansDate.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+          {sansDate.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
         </div>
       )}
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════
-   LISTE CARTES
-═══════════════════════════════════════════ */
 function ListeCartes({ fiches, onSelect, onDelete, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   if(fiches.length===0) return <Empty icon="📭" text="Aucune fiche trouvée" T={T}/>;
@@ -2658,7 +2674,7 @@ export default function App() {
   const [theme, setTheme] = useState("dark");
   const [positions, setPositions] = useState({}); // { nomTech: { lat, lng, updatedAt, statut } }
   const [view, setView] = useState("accueil");
-  const [nav, setNav] = useState("dashboard");
+  const [nav, setNav] = useState("agenda");
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
