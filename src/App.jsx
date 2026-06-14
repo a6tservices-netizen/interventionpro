@@ -211,7 +211,7 @@ const resizePhoto = (file) => new Promise(res => {
   r.readAsDataURL(file);
 });
 const CONTRAT_TYPES = ["Bac à graisse","Poste de relevage","Curage annuel","Entretien copropriété","Autre entretien"];
-const FREQUENCES = { mensuel:{label:"Mensuel",mois:1}, trimestriel:{label:"Trimestriel",mois:3}, semestriel:{label:"Semestriel",mois:6}, annuel:{label:"Annuel",mois:12} };
+const FREQUENCES = { mensuel:{label:"Mensuel",mois:1}, bimestriel:{label:"Tous les 2 mois",mois:2}, trimestriel:{label:"Trimestriel",mois:3}, semestriel:{label:"Semestriel",mois:6}, annuel:{label:"Annuel",mois:12} };
 const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:{label:"Facturé",color:"#10B981"} };
 const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.setMonth(d.getMonth() + (FREQUENCES[freq]?.mois||12)); return d.toISOString().split("T")[0]; };
 const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
@@ -536,7 +536,6 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
       </div>
       <div class="report-title">Rapport d'intervention technique</div>
       <div class="report-subtitle">Rapport généré après intervention sur site</div>
-      ${resultatPrincipal?`<div class="result-pill"><span class="dot">✓</span><span class="txt"><b>Intervention terminée</b>${resultatPrincipal!==true?` — ${resultatPrincipal}`:""}</span></div>`:""}
     </div>
     <div class="ref-card">
       <div class="ref-label">Référence</div>
@@ -579,7 +578,6 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
   </div>` : ""}
   <div class="footer">
     <div class="footer-logo">${fiche.societe||"Rapport d'intervention"}</div>
-    <div>Généré le ${ts()}</div>
     <div>${fiche.id} — Confidentiel</div>
   </div>
 </div></body></html>`;
@@ -1726,6 +1724,9 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
   const [acOpen, setAcOpen] = useState(false);
   const acRef = useRef();
   const suggestions = useMemo(()=>{if(!f.client||f.client.length<2)return[];return clients.filter(c=>c.client.toLowerCase().includes(f.client.toLowerCase())).slice(0,5);},[f.client,clients]);
+  const [adrOpen, setAdrOpen] = useState(false);
+  const adressesConnues = useMemo(()=>{const map={};fiches.forEach(x=>{if(x.adresse)map[x.adresse.toLowerCase()]=x.adresse;});return Object.values(map);},[fiches]);
+  const adrSuggestions = useMemo(()=>{if(!f.adresse||f.adresse.length<3)return[];return adressesConnues.filter(a=>a.toLowerCase().includes(f.adresse.toLowerCase())&&a.toLowerCase()!==f.adresse.toLowerCase()).slice(0,5);},[f.adresse,adressesConnues]);
   useEffect(()=>{const h=e=>{if(acRef.current&&!acRef.current.contains(e.target))setAcOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
 
   const validate = () => { return true; };
@@ -1781,7 +1782,17 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
               </div>
             )}
           </div>
-          <div style={{gridColumn:"1/-1"}}><div style={lblStyle}>Adresse</div><input value={f.adresse} onChange={e=>set("adresse",e.target.value)} placeholder="Adresse complète" style={inpStyle()}/></div>
+          <div style={{gridColumn:"1/-1",position:"relative"}}>
+            <div style={lblStyle}>Adresse</div>
+            <input value={f.adresse} onChange={e=>{set("adresse",e.target.value);setAdrOpen(true);}} onFocus={()=>setAdrOpen(true)} onBlur={()=>setTimeout(()=>setAdrOpen(false),180)} placeholder="Adresse complète" style={inpStyle()}/>
+            {adrOpen&&adrSuggestions.length>0&&(
+              <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:30,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,marginTop:4,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
+                {adrSuggestions.map((a,i)=>(
+                  <div key={i} onMouseDown={()=>{set("adresse",a);setAdrOpen(false);}} style={{padding:"9px 12px",fontSize:13,color:T.text,cursor:"pointer",borderBottom:i<adrSuggestions.length-1?`1px solid ${T.border}`:"none"}}>📍 {a}</div>
+                ))}
+              </div>
+            )}
+          </div>
           <div><div style={lblStyle}>Téléphone client</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
           <div><div style={lblStyle}>Technicien assigné</div>
             <select value={f.technicien||""} onChange={e=>{
@@ -1836,6 +1847,12 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
             </div>
           </div>
         )}
+        <div style={{marginTop:20,display:"flex",justifyContent:"flex-end"}}>
+          <button onClick={()=>{if(validate())onSave({...f,id:f.id||uid(),createdAt:f.createdAt||ts(),type:"rdv",status:"planifie",prestations:f.prestations||[],photos:f.photos||[],materiels:f.materiels||[],preconisations:f.preconisations||[]});}}
+            style={{background:"linear-gradient(135deg,#3B82F6,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"14px 32px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 20px rgba(59,130,246,0.35)"}}>
+            💾 Enregistrer le RDV
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2250,6 +2267,13 @@ function CarteFiche({ fiche, onSelect, onDelete, T }) {
       <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
         {prestas.map((p,i)=><span key={i} style={{fontSize:11,fontWeight:600,color:p.color,background:p.color+"18",padding:"3px 9px",borderRadius:20}}>{p.icon} {p.label.split(" ")[0]}</span>)}
       </div>
+      {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
+          {fiche.tempsInterne&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 9px",borderRadius:12}}>⏱️ {fiche.tempsInterne}</span>}
+          {fiche.majorations?.includes("soir50")&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 8px",borderRadius:12}}>🌙 +50%</span>}
+          {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:10.5,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.14)",padding:"3px 8px",borderRadius:12}}>🌃 +100%</span>}
+        </div>
+      )}
       <div style={{marginTop:10,fontSize:11,borderTop:`1px solid ${T.border}`,paddingTop:8,display:"flex",justifyContent:"space-between",color:T.textMuted}}>
         <span>{fiche.technicien&&`👤 ${fiche.technicien}`}</span>
         <span style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2300,7 +2324,7 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
 /* ═══════════════════════════════════════════
    DÉTAIL FICHE
 ═══════════════════════════════════════════ */
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, theme, techTels = {}, onSaveTechTel = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
@@ -2327,6 +2351,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
         <div style={{marginLeft:"auto",display:"flex",gap:7,flexWrap:"wrap"}}>
           <button onClick={onDelete} style={{background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"8px 12px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
           <button onClick={onEdit} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
+          {onDuplicate&&<button onClick={onDuplicate} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📋 Dupliquer</button>}
           {isRdv?(
             <button onClick={()=>onDemarrer(fiche)} style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>▶ Démarrer l'intervention</button>
           ):(
@@ -2434,7 +2459,20 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
 function DevisForm({ initial, onSave, onBack, theme, clients = [], champsCustom = {} }) {
   const catalogue = champsCustom?._global?.devisCatalogue?.length ? champsCustom._global.devisCatalogue : DEVIS_CATALOGUE;
   const T = THEMES[theme] || THEMES.dark;
-  const [d, setD] = useState(()=>({ tva:10, lignes:[], photos:[], notes:"", statut:"brouillon", ...(initial||{}) }));
+  const [d, setD] = useState(()=>({ tva:10, lignes:[], photos:[], notes:"", statut:"brouillon", releve:{colonnes:[],metres:[]}, ...(initial||{}) }));
+  // Relevé terrain (L/M) : entrées cumulatives
+  const releve = d.releve || {colonnes:[],metres:[]};
+  const [relInput, setRelInput] = useState({colonnes:"",metres:""});
+  const [relNote, setRelNote] = useState({colonnes:"",metres:""});
+  const addReleve = (type) => {
+    const val = parseFloat(relInput[type]);
+    if(isNaN(val)||val<=0) return;
+    const entree = { v: val, note: (relNote[type]||"").trim() };
+    setD(p=>({...p, releve:{...(p.releve||{colonnes:[],metres:[]}), [type]:[...((p.releve||{})[type]||[]), entree]}}));
+    setRelInput(p=>({...p,[type]:""})); setRelNote(p=>({...p,[type]:""}));
+  };
+  const delReleve = (type,i) => setD(p=>({...p, releve:{...(p.releve||{}), [type]:((p.releve||{})[type]||[]).filter((_,j)=>j!==i)}}));
+  const totalReleve = (type) => (releve[type]||[]).reduce((s,e)=>s+(e.v||0),0);
   const photosDispo = initial?._photosDispo || [];
   const photoRef = useRef();
   const [genIA, setGenIA] = useState(false);
@@ -2517,6 +2555,52 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
             </select>
           </div>
         </div>
+      </div>
+
+      <div style={{...sec,border:"1px solid rgba(168,139,250,0.35)"}}>
+        <div style={{fontSize:13,fontWeight:800,color:"#A78BFA",marginBottom:4}}>📐 Relevé sur place</div>
+        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:14}}>Comptez au fur et à mesure : saisissez une quantité, ajoutez une note d'accès si besoin, puis « Ajouter ». Le total se calcule automatiquement.</div>
+
+        {[{type:"colonnes",label:"Colonnes",icon:"🏛️",unite:"col.",ph:"Ex : 3"},{type:"metres",label:"Mètres linéaires (horizontal)",icon:"📏",unite:"ml",ph:"Ex : 12"}].map(blk=>(
+          <div key={blk.type} style={{marginBottom:16,padding:"12px 14px",background:T.surface2,borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:9}}>{blk.icon} {blk.label}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              <input type="number" value={relInput[blk.type]} onChange={e=>setRelInput(p=>({...p,[blk.type]:e.target.value}))} placeholder={blk.ph}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addReleve(blk.type);}}}
+                style={{...inp,width:90,textAlign:"center"}}/>
+              <input value={relNote[blk.type]} onChange={e=>setRelNote(p=>({...p,[blk.type]:e.target.value}))} placeholder="Note d'accès (ex : cave, local technique…)"
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addReleve(blk.type);}}}
+                style={{...inp,flex:1,minWidth:140}}/>
+              <button onClick={()=>addReleve(blk.type)} style={{padding:"9px 16px",background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>+ Ajouter</button>
+            </div>
+            {(releve[blk.type]||[]).length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
+                {(releve[blk.type]||[]).map((e,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:T.text,background:T.surface,borderRadius:6,padding:"6px 10px"}}>
+                    <span style={{fontWeight:800,color:"#A78BFA",minWidth:46}}>+{e.v} {blk.unite}</span>
+                    {e.note&&<span style={{flex:1,color:T.textMuted,fontSize:12}}>📍 {e.note}</span>}
+                    {!e.note&&<span style={{flex:1}}/>}
+                    <button onClick={()=>delReleve(blk.type,i)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:`1px solid ${T.border}`,paddingTop:8}}>
+              <span style={{fontSize:13,fontWeight:800,color:T.text}}>Total : {totalReleve(blk.type)} {blk.unite}</span>
+              {totalReleve(blk.type)>0&&(
+                <button onClick={()=>{
+                  const lab = blk.type==="colonnes" ? `Colonnes (${totalReleve("colonnes")} colonnes)` : `Mètres linéaires horizontaux (${totalReleve("metres")} ml)`;
+                  setD(p=>({...p,lignes:[...p.lignes.filter(l=>l.label||l.pu),{label:lab,qte:totalReleve(blk.type),pu:""}]}));
+                }} style={{padding:"6px 12px",background:"rgba(168,139,250,0.15)",border:"1px solid #A78BFA",borderRadius:7,color:"#A78BFA",fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>↓ Ajouter au devis</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {(releve.colonnes?.some(e=>e.note)||releve.metres?.some(e=>e.note))&&(
+          <div style={{fontSize:11.5,color:"#A78BFA",background:"rgba(168,139,250,0.08)",borderRadius:8,padding:"9px 12px"}}>
+            💡 Les notes d'accès sont conservées dans le relevé. Pensez à les reporter dans les notes du devis si besoin.
+          </div>
+        )}
       </div>
 
       <div style={sec}>
@@ -2850,6 +2934,29 @@ export default function App() {
   const T = THEMES[theme] || THEMES.dark;
   const showToast = m => { setToast(m); setTimeout(()=>setToast(null),3200); };
 
+  const exporterExcel = () => {
+    try {
+      const entete = ["Reference","Date RDV","Heure","Statut","Client","Adresse","Telephone","Email","Technicien","Societe","Prestations","Temps passe","Majorations","Facturation","Conclusion"];
+      const echap = (v)=>{ const s=(v==null?"":String(v)).replace(/"/g,'""').replace(/\r?\n/g," "); return '"'+s+'"'; };
+      const majLib = {soir50:"Soir +50%",weekend100:"Nuit/WE +100%"};
+      const lignes = fiches.map(f=>{
+        const prest = (f.prestations||[]).map(p=>{const m=PRESTATIONS.find(x=>x.id===p.id);return m?m.label:p.id;}).join(" / ");
+        const maj = (f.majorations||[]).map(m=>majLib[m]||m).join(" + ");
+        const stat = STATUTS[f.status]?.label || f.status || "";
+        return [f.id,f.dateRdv||"",f.heureRdv||"",stat,f.client||"",f.adresse||"",f.tel||"",f.email||"",f.technicien||"",f.societe||"",prest,f.tempsInterne||"",maj,f.facturation||"",f.conclusion||""].map(echap).join(";");
+      });
+      const csv = "\uFEFF" + entete.map(echap).join(";") + "\r\n" + lignes.join("\r\n");
+      const blob = new Blob([csv],{type:"text/csv;charset=utf-8;"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dt = new Date().toISOString().slice(0,10);
+      a.href=url; a.download=`Interventions_${dt}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),1500);
+      showToast("📊 Export Excel téléchargé ("+fiches.length+" fiches)");
+    } catch(e){ alert("Erreur export : "+(e?.message||e)); }
+  };
+
   useEffect(()=>{
     // Firebase — écoute en temps réel
     const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); lsSet("cache_fiches", data.map(stripLourd)); });
@@ -2928,6 +3035,20 @@ export default function App() {
   const handleDelete = id => {
     deleteFiche(id); // Firebase
     setView("accueil"); setSelected(null); showToast("🗑️ Supprimé");
+  };
+
+  const handleDuplicate = (fiche) => {
+    // Repartir d'une copie : nouvelle réf, statut planifié, sans signatures/photos/conclusion/temps
+    const copie = {
+      ...fiche, id:uid(), createdAt:ts(),
+      status:"planifie", type:"rdv",
+      dateRdv: today(), heureRdv:"",
+      signature:null, signatureTech:null, nomSignataire:"",
+      conclusion:"", photos:[], tempsInterne:"", majorations:[],
+      facturation:"",
+    };
+    setEditing(copie); setView("form");
+    showToast("📋 Intervention dupliquée — modifiez et enregistrez");
   };
 
   // Contrats : créer automatiquement les prochaines interventions (horizon 30 jours)
@@ -3060,7 +3181,7 @@ export default function App() {
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
-            onDemarrer={()=>demarrerIntervention(selected)} onCreateDevis={handleCreateDevis} onToggleFacturation={handleToggleFacturation}/>
+            onDemarrer={()=>demarrerIntervention(selected)} onCreateDevis={handleCreateDevis} onToggleFacturation={handleToggleFacturation} onDuplicate={()=>handleDuplicate(selected)}/>
         )}
 
         {view==="accueil"&&(
@@ -3091,6 +3212,10 @@ export default function App() {
                           {n.label}
                         </button>
                       ))}
+                      <button onClick={()=>{exporterExcel();setMenuOpen(false);}}
+                        style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"transparent",color:"#10B981"}}>
+                        📊 Exporter en Excel
+                      </button>
                       <div style={{borderTop:`1px solid ${T.border}`,margin:"8px 4px",paddingTop:10}}>
                         <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>🎨 Couleur de l'écran</div>
                         <div style={{display:"flex",gap:6,paddingLeft:8,paddingBottom:4}}>
