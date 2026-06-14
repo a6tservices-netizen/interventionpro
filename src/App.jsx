@@ -368,7 +368,8 @@ function telechargerPDF(html, filename) {
   if (!w) { alert("Veuillez autoriser les fenêtres pop-up pour ce site, puis réessayez."); return; }
   const titre = (filename || "rapport").replace(/\.pdf$/i, "");
   const barre = `
-<div data-print-hide="1" style="position:sticky;top:0;z-index:99999;background:#0B1829;padding:12px;display:flex;gap:10px;justify-content:center;align-items:center;font-family:Arial,sans-serif;">
+<div data-print-hide="1" style="position:sticky;top:0;z-index:99999;background:#0B1829;padding:12px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;font-family:Arial,sans-serif;">
+  <button onclick="window.close()" style="background:none;color:#94A3B8;border:1px solid #334155;border-radius:8px;padding:12px 18px;font-weight:800;font-size:14px;cursor:pointer;">← Retour à l'application</button>
   <button onclick="window.print()" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:#fff;border:none;border-radius:8px;padding:12px 24px;font-weight:800;font-size:14px;cursor:pointer;">📄 Enregistrer en PDF / Imprimer</button>
   <span style="color:#94A3B8;font-size:12px;">Choisissez « Enregistrer au format PDF » comme imprimante</span>
 </div>
@@ -463,7 +464,7 @@ function buildReportHTML(fiche, hideInternal = false) {
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12px;line-height:1.7}
 .header{position:relative;background:linear-gradient(120deg,#0a1c3a 0%,#102b54 55%,#16356b 100%);padding:30px 34px;border-radius:0 0 26px 26px;overflow:hidden}
-.header::after{content:"";position:absolute;top:-40px;right:-30px;width:280px;height:200px;background:radial-gradient(circle,rgba(56,189,248,0.18),transparent 70%)}
+
 .header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;position:relative;z-index:1}
 .brand{display:flex;align-items:center;gap:13px}
 .brand-logo{background:#fff;border-radius:11px;padding:6px;width:54px;height:54px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25)}
@@ -475,7 +476,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 .result-pill .dot{width:18px;height:18px;border-radius:50%;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
 .result-pill .txt{font-size:12.5px;font-weight:700;color:#6ee7b7}
 .result-pill .txt b{color:#fff;font-weight:800}
-.ref-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:15px 18px;min-width:188px;backdrop-filter:blur(4px)}
+.ref-card{background:rgba(8,20,42,0.55);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:15px 18px;min-width:188px}
 .ref-label{font-size:8px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#7fb0e6;background:rgba(56,189,248,0.16);display:inline-block;padding:2px 8px;border-radius:5px;margin-bottom:7px}
 .ref-id{font-family:'Fraunces',serif;font-size:20px;font-weight:900;color:#fff;border-bottom:1px solid rgba(255,255,255,0.13);padding-bottom:11px;margin-bottom:11px}
 .ref-row{display:flex;align-items:center;gap:9px;margin-bottom:9px}
@@ -2082,6 +2083,9 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
           <span style={{fontSize:9.5,fontWeight:800,color:BADGE[e].c,background:BADGE[e].c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{BADGE[e].t}</span>
+          {fiche.tempsInterne&&<span style={{fontSize:9.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.12)",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
+          {fiche.majorations?.includes("soir50")&&<span style={{fontSize:9.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.12)",padding:"2px 6px",borderRadius:10}}>🌙+50%</span>}
+          {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:9.5,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.12)",padding:"2px 6px",borderRadius:10}}>🌃+100%</span>}
         </div>
         <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {fiche.adresse
