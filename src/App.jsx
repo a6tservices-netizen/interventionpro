@@ -1881,37 +1881,57 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
         ))}
       </div>
 
-      {/* RDV à réaliser */}
-      {rdvPlanifies.length>0&&(
-        <div style={{...card,border:"1.5px solid rgba(59,130,246,0.3)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:700,color:"#3B82F6",textTransform:"uppercase",letterSpacing:".1em"}}>📅 RDV à réaliser ({rdvPlanifies.length})</div>
-            <button onClick={onNewRdv} style={{padding:"5px 12px",background:"none",border:"1px solid #3B82F6",borderRadius:8,color:"#3B82F6",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Nouveau RDV</button>
-          </div>
-          {rdvPlanifies.sort((a,b)=>((a.dateRdv||"")+(a.heureRdv||"")).localeCompare((b.dateRdv||"")+(b.heureRdv||""))).map(f=>(
-              <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,background:T.surface2,borderRadius:10,padding:"11px 14px",border:`1px solid ${T.border}`,marginBottom:6}}>
-              <div style={{minWidth:46,textAlign:"center",flexShrink:0}}>
-                <div style={{fontSize:11,fontWeight:800,color:"#3B82F6"}}>{f.dateRdv?new Date(f.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}):"--/--"}</div>
-                <div style={{fontSize:12,fontWeight:700,color:"#60A5FA"}}>{f.heureRdv||"--:--"}</div>
-              </div>
-              <div style={{width:1,height:32,background:T.border}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:700,fontSize:14,color:T.text,lineHeight:1.25,wordBreak:"break-word"}}>{f.client||"Client non renseigné"}</div>
-                <div onClick={()=>f.adresse&&window.open(`https://maps.google.com/?q=${encodeURIComponent(f.adresse)}`,"_blank")}
-                  style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
-                  📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
-                </div>
-                {f.tel&&<a href={`tel:${f.tel}`} style={{fontSize:11,color:"#10B981",fontWeight:600,textDecoration:"none"}}>📞 {f.tel}</a>}
-                {f.technicien&&<div style={{fontSize:10,color:T.textMuted}}>👤 {f.technicien}</div>}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                <button onClick={()=>onDemarrer(f)} style={{padding:"7px 12px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>▶ Démarrer</button>
-                <button onClick={()=>onSelect(f)} style={{padding:"5px 12px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>👁 Voir</button>
-              </div>
+      {/* RDV à réaliser + À planifier */}
+      {(() => {
+        const rdvDates = rdvPlanifies.filter(f=>!estAProgrammer(f)).sort((a,b)=>((a.dateRdv||"")+(a.heureRdv||"")).localeCompare((b.dateRdv||"")+(b.heureRdv||"")));
+        const rdvAprog = rdvPlanifies.filter(estAProgrammer);
+        const carte = (f,prog) => (
+          <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,background:T.surface2,borderRadius:10,padding:"11px 14px",border:`1px solid ${T.border}`,borderLeft:`4px solid ${prog?"#64748B":"#3B82F6"}`,marginBottom:6}}>
+            <div style={{minWidth:46,textAlign:"center",flexShrink:0}}>
+              {prog
+                ? <div style={{fontSize:18}}>📌</div>
+                : <><div style={{fontSize:11,fontWeight:800,color:"#3B82F6"}}>{f.dateRdv?new Date(f.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}):"--/--"}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#60A5FA"}}>{f.heureRdv||"--:--"}</div></>}
             </div>
-          ))}
-        </div>
-      )}
+            <div style={{width:1,height:32,background:T.border}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:T.text,lineHeight:1.25,wordBreak:"break-word"}}>{f.client||"Client non renseigné"}</div>
+              <div onClick={()=>f.adresse&&window.open(`https://maps.google.com/?q=${encodeURIComponent(f.adresse)}`,"_blank")}
+                style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
+                📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
+              </div>
+              {f.tel&&<a href={`tel:${f.tel}`} style={{fontSize:11,color:"#10B981",fontWeight:600,textDecoration:"none"}}>📞 {f.tel}</a>}
+              {f.technicien&&<div style={{fontSize:10,color:T.textMuted}}>👤 {f.technicien}</div>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+              <button onClick={()=>onDemarrer(f)} style={{padding:"7px 12px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>▶ Démarrer</button>
+              <button onClick={()=>onSelect(f)} style={{padding:"5px 12px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>👁 Voir</button>
+            </div>
+          </div>
+        );
+        return (
+          <>
+            {rdvDates.length>0&&(
+              <div style={{...card,border:"1.5px solid rgba(59,130,246,0.3)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#3B82F6",textTransform:"uppercase",letterSpacing:".1em"}}>📅 RDV à réaliser ({rdvDates.length})</div>
+                  <button onClick={onNewRdv} style={{padding:"5px 12px",background:"none",border:"1px solid #3B82F6",borderRadius:8,color:"#3B82F6",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Nouveau RDV</button>
+                </div>
+                {rdvDates.map(f=>carte(f,false))}
+              </div>
+            )}
+            {rdvAprog.length>0&&(
+              <div style={{...card,border:"1.5px solid rgba(100,116,139,0.4)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#94A3B8",textTransform:"uppercase",letterSpacing:".1em"}}>📌 À planifier ({rdvAprog.length})</div>
+                  <button onClick={onNewRdv} style={{padding:"5px 12px",background:"none",border:"1px solid #64748B",borderRadius:8,color:"#94A3B8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Nouveau RDV</button>
+                </div>
+                {rdvAprog.map(f=>carte(f,true))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         {/* Statuts */}
