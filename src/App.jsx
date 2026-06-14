@@ -300,15 +300,17 @@ ${preconisations.length ? `Préconisations pour l'avenir (travaux ou contrôles 
 
 Règles :
 - VOCABULAIRE ABSOLU : utilise EXACTEMENT le nom de prestation fourni ci-dessus, sans JAMAIS le remplacer par un synonyme. "Débouchage" reste "débouchage" (JAMAIS "curage" ni "désengorgement"), "Hydrocurage" reste "hydrocurage", "Détartrage" reste "détartrage", "Pompage" reste "pompage". Ce sont des prestations DIFFÉRENTES, facturées différemment : les confondre est une faute professionnelle grave.
-- Rédige UN seul paragraphe fluide et professionnel
-- Utilise un français courant et naturel, pas de jargon
+- SOBRIÉTÉ ABSOLUE : décris UNIQUEMENT et FACTUELLEMENT ce qui a été fait. N'AJOUTE RIEN qui ne soit pas explicitement dans les informations fournies. N'invente aucun détail.
+- N'AJOUTE AUCUN commentaire sur l'hygiène, la salubrité, la santé, les risques sanitaires, le confort, la conformité, la sécurité ou la "tranquillité" du client. Pas de phrases de remplissage ni de considérations générales.
+- Reste neutre et professionnel : pas de superlatifs, pas de dramatisation, pas de formules commerciales exagérées ("intervention minutieuse", "travail soigné", "remise en état optimale"... à BANNIR).
+- Rédige UN seul paragraphe court et fluide
 - Commence par "Suite à notre intervention"
-- Mentionne le lieu si disponible
-- Résume les actions et résultats de manière claire
-- TRÈS IMPORTANT : ne présente JAMAIS une préconisation comme une action réalisée. Seules les lignes "Actions" ont été effectuées. Les préconisations doivent être introduites par "nous préconisons", "nous recommandons" ou équivalent, au futur ou au conditionnel
+- Mentionne le lieu seulement s'il est fourni
+- Résume simplement les actions et leur résultat
+- Ne présente JAMAIS une préconisation comme une action réalisée. Seules les lignes "Actions" ont été effectuées. Les préconisations sont introduites par "nous préconisons" ou "nous recommandons", au futur ou au conditionnel, et seulement si elles sont fournies
 - Si aucune inspection caméra ne figure dans les Actions, n'affirme pas qu'un passage caméra a eu lieu
-- Termine par une formule de politesse courte
-- Maximum 5-6 phrases
+- Termine par une formule de politesse courte et simple
+- Maximum 4 phrases. Si peu d'informations sont fournies, fais encore plus court.
 - NE PAS lister les prestations séparément, faire un texte coulant`;
 
   const response = await fetch("/api/claude", {
@@ -1657,11 +1659,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
   const suggestions = useMemo(()=>{if(!f.client||f.client.length<2)return[];return clients.filter(c=>c.client.toLowerCase().includes(f.client.toLowerCase())).slice(0,5);},[f.client,clients]);
   useEffect(()=>{const h=e=>{if(acRef.current&&!acRef.current.contains(e.target))setAcOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
 
-  const validate = () => {
-    const e = {};
-    if(!f.dateRdv) e.dateRdv = "Requis";
-    setErrors(e); return Object.keys(e).length===0;
-  };
+  const validate = () => { return true; };
 
   const envoyerTech = (canal) => {
     const types = (f.typesIntervention||[]).map(id=>PRESTATIONS.find(p=>p.id===id)).filter(Boolean);
@@ -1695,7 +1693,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
 
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"20px 22px"}}>
         <div style={{background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:10,padding:"10px 14px",marginBottom:20,fontSize:13,color:"#93C5FD",fontWeight:600}}>
-          📅 RDV planifié — La fiche complète sera remplie sur place avec le bouton ▶ Démarrer.
+          📅 RDV planifié — La fiche complète sera remplie sur place avec le bouton ▶ Démarrer. Sans date, il ira dans la rubrique 📌 À programmer de l'agenda.
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
           <div style={{gridColumn:"1/-1",position:"relative"}} ref={acRef}>
@@ -1728,7 +1726,14 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
               <option value="__new__">➕ Ajouter un technicien…</option>
             </select>
           </div>
-          <div><div style={lblStyle}>Date *</div><input type="date" value={f.dateRdv} onChange={e=>set("dateRdv",e.target.value)} style={{...inpStyle(errors.dateRdv),colorScheme:isDark?"dark":"light"}}/>{errors.dateRdv&&<div style={{color:"#EF4444",fontSize:11,marginTop:4}}>{errors.dateRdv}</div>}</div>
+          <div>
+            <div style={lblStyle}>Date</div>
+            <input type="date" value={f.dateRdv||""} onChange={e=>set("dateRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light",opacity:f.dateRdv?1:.55}}/>
+            <label style={{display:"flex",alignItems:"center",gap:7,marginTop:8,fontSize:12,color:T.textMuted,cursor:"pointer",fontWeight:600}}>
+              <input type="checkbox" checked={!f.dateRdv} onChange={e=>set("dateRdv", e.target.checked ? "" : today())} style={{width:16,height:16,cursor:"pointer"}}/>
+              📌 À programmer plus tard (sans date)
+            </label>
+          </div>
           <div><div style={lblStyle}>Heure</div><input type="time" value={f.heureRdv} onChange={e=>set("heureRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
           <div style={{gridColumn:"1/-1"}}>
             <div style={lblStyle}>Type d'intervention</div>
@@ -1972,8 +1977,8 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
   const e = etat || (isRdv?"rdv":"complete");
-  const COUL = { rdv:"#3B82F6", complete:"#10B981", incomplete:"#EF4444" };
-  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Fiche complète",c:"#10B981"}, incomplete:{t:"⚠️ Fiche incomplète",c:"#EF4444"} };
+  const COUL = { rdv:"#3B82F6", complete:"#10B981" };
+  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"} };
   const accent = COUL[e];
   return(
     <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
@@ -2003,13 +2008,17 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
           </div>
         )}
       </div>
-      {!isRdv&&<div style={{display:"flex",gap:3}}>{prestas.slice(0,3).map((p,i)=><span key={i} style={{fontSize:17}}>{p.icon}</span>)}</div>}
+      {!isRdv&&(
+        <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
+          title="Ouvrir le PDF du rapport"
+          style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
+      )}
       {isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
     </div>
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   const [selDay, setSelDay] = useState(todayStr);
@@ -2034,10 +2043,9 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
   // État : "rdv" (à faire), "complete" (fiche OK), "incomplete" (fiche commencée mais manques)
   const etatFiche = (f) => {
     const isRdv = f.type==="rdv" || (f.status==="planifie" && !f.prestations?.length);
-    if (isRdv) return "rdv";
-    return ficheManques(f).length > 0 ? "incomplete" : "complete";
+    return isRdv ? "rdv" : "complete";
   };
-  const ETAT_COULEUR = { rdv:"#3B82F6", complete:"#10B981", incomplete:"#EF4444" };
+  const ETAT_COULEUR = { rdv:"#3B82F6", complete:"#10B981" };
   const colorOf = (f) => ETAT_COULEUR[etatFiche(f)];
   const jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
@@ -2083,8 +2091,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
       {/* Légende */}
       <div style={{display:"flex",gap:14,justifyContent:"center",marginBottom:14,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#3B82F6"}}/>RDV à faire</span>
-        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Fiche complète</span>
-        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#EF4444"}}/>Fiche incomplète</span>
+        <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Terminée</span>
       </div>
 
       {/* Jour sélectionné */}
@@ -2104,11 +2111,22 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, theme }) {
       {sansDate.length>0&&(
         <div style={{marginTop:18}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <div style={{background:"linear-gradient(135deg,#64748B,#475569)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>📌 Sans date</div>
+            <div style={{background:"linear-gradient(135deg,#64748B,#475569)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>📌 À programmer</div>
             <div style={{flex:1,height:1,background:T.border}}/>
             <span style={{fontSize:12,color:T.textMuted}}>{sansDate.length} entrée(s)</span>
           </div>
-          {sansDate.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+          {sansDate.map(fiche=>(
+            <div key={fiche.id}>
+              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>
+              {onProgrammer&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,margin:"-2px 0 12px",paddingLeft:6}}>
+                  <span style={{fontSize:12,color:T.textMuted,fontWeight:600}}>📅 Programmer :</span>
+                  <input type="date" onChange={e=>{ if(e.target.value) onProgrammer(fiche, e.target.value); }}
+                    style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",color:T.text,fontSize:12,fontFamily:"inherit",cursor:"pointer",colorScheme:(theme==="light")?"light":"dark"}}/>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2140,6 +2158,7 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
               <span style={{display:"flex",gap:6,alignItems:"center"}}>
                 <span style={{fontSize:11,fontWeight:700,color:STATUTS[fiche.status]?.color}}>● {STATUTS[fiche.status]?.label}</span>
                 {fiche.signature&&"· ✍️"}
+                {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
                 {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
               </span>
             </div>
@@ -2159,7 +2178,6 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
-  const manques = isRdv ? [] : ficheManques(fiche);
   const card = { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"18px 22px", marginBottom:14 };
   const secHead = { fontSize:10, fontWeight:700, color:T.textMuted, textTransform:"uppercase", letterSpacing:".1em", paddingBottom:7, borderBottom:`1px solid ${T.border}`, marginBottom:12, display:"flex", gap:6 };
 
@@ -2189,19 +2207,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           {!isRdv&&onCreateDevis&&(
             <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
           )}
-          {!isRdv&&ficheManques(fiche).length>0&&(
-            <button onClick={()=>relancerTechnicien(fiche, techTels, onSaveTechTel)} title="Envoyer un rappel au technicien : fiche incomplète"
-              style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔔 Relancer ({ficheManques(fiche).length})</button>
-          )}
         </div>
       </div>
-
-      {manques.length>0&&(
-        <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:12,padding:"13px 18px",marginBottom:14}}>
-          <div style={{fontWeight:800,fontSize:13,color:"#F59E0B",marginBottom:6}}>⚠️ Fiche incomplète — {manques.length} élément(s) manquant(s)</div>
-          <div style={{fontSize:12.5,color:T.text,lineHeight:1.7}}>{manques.map(m=><div key={m}>• {m}</div>)}</div>
-        </div>
-      )}
 
       {/* Carte infos */}
       <div style={card}>
@@ -2996,7 +3003,21 @@ export default function App() {
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
               </div>
             )}
-            {nav==="agenda"&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&search.trim()&&(
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <div style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"7px 15px",fontWeight:800,fontSize:13}}>🔍 Résultats — toutes dates</div>
+                  <div style={{flex:1,height:1,background:T.border}}/>
+                  <span style={{fontSize:12,color:T.textMuted}}>{filtered.length} fiche(s)</span>
+                </div>
+                {filtered.length===0
+                  ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} »</div>
+                  : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
+                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T}/>
+                    ))}
+              </div>
+            )}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
