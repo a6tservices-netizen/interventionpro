@@ -2083,10 +2083,14 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
           <span style={{fontSize:9.5,fontWeight:800,color:BADGE[e].c,background:BADGE[e].c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{BADGE[e].t}</span>
-          {fiche.tempsInterne&&<span style={{fontSize:9.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.12)",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
-          {fiche.majorations?.includes("soir50")&&<span style={{fontSize:9.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.12)",padding:"2px 6px",borderRadius:10}}>🌙+50%</span>}
-          {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:9.5,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.12)",padding:"2px 6px",borderRadius:10}}>🌃+100%</span>}
         </div>
+        {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
+          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:4}}>
+            {fiche.tempsInterne&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 9px",borderRadius:12,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
+            {fiche.majorations?.includes("soir50")&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 8px",borderRadius:12,whiteSpace:"nowrap"}}>🌙 +50%</span>}
+            {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:10.5,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.14)",padding:"3px 8px",borderRadius:12,whiteSpace:"nowrap"}}>🌃 +100%</span>}
+          </div>
+        )}
         <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {fiche.adresse
             ? <span onClick={e=>{e.stopPropagation();window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
