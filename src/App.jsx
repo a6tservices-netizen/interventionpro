@@ -388,12 +388,23 @@ function telechargerPDF(html, filename) {
   w.focus();
 }
 
+const MAJORATIONS_LABEL = { soir50:"Majoration soirée +50 %", weekend100:"Majoration nuit / week-end +100 %" };
+function majorationsTexte(fiche){ return (fiche.majorations||[]).map(m=>MAJORATIONS_LABEL[m]).filter(Boolean); }
+
 function buildReportHTML(fiche, hideInternal = false) {
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
   const presta = fiche.prestations.map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
   const status = STATUTS[fiche.status] || STATUTS.planifie;
   const locStr = formatLoc(fiche.loc);
   const isUrgent = fiche.urgent;
+  // Résultat principal pour l'encart vert de l'en-tête (1er résultat trouvé sur les prestations)
+  let resultatPrincipal = null;
+  if (fiche.status === "termine") {
+    for (const p of (fiche.prestations||[])) {
+      if (p.resultats && p.resultats.length) { resultatPrincipal = p.resultats[0]; break; }
+    }
+    if (!resultatPrincipal) resultatPrincipal = true; // afficher "Intervention terminée" seul
+  }
 
   const prestaHTML = presta
     .filter(p => {
@@ -451,16 +462,30 @@ function buildReportHTML(fiche, hideInternal = false) {
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12px;line-height:1.7}
-.header{background:#0a1628;display:grid;grid-template-columns:1fr auto}
-.header-left{padding:26px 32px}
-.logo{font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-.report-title{font-family:'Fraunces',serif;font-size:22px;font-weight:900;color:#fff;margin-top:4px}
-.header-right{background:#38bdf8;padding:26px 32px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;min-width:200px}
-.report-label{font-size:8px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:rgba(10,22,40,0.6);margin-bottom:4px}
-.report-id{font-family:'Fraunces',serif;font-size:18px;font-weight:900;color:#0a1628}
-.report-date{font-size:11px;font-weight:600;color:#0a1628;margin-top:4px;opacity:.75}
-.status-badge{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;background:${status.bg};color:${status.color};border:1px solid ${status.color}44}
-.urgent-badge{display:inline-block;margin-top:6px;margin-left:6px;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,0.15);color:#EF4444;border:1px solid #EF444444}
+.header{position:relative;background:linear-gradient(120deg,#0a1c3a 0%,#102b54 55%,#16356b 100%);padding:30px 34px;border-radius:0 0 26px 26px;overflow:hidden}
+.header::after{content:"";position:absolute;top:-40px;right:-30px;width:280px;height:200px;background:radial-gradient(circle,rgba(56,189,248,0.18),transparent 70%)}
+.header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:13px}
+.brand-logo{background:#fff;border-radius:11px;padding:6px;width:54px;height:54px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25)}
+.brand-logo img{max-width:100%;max-height:100%;display:block}
+.brand-name{font-family:'Fraunces',serif;font-size:17px;font-weight:800;color:#fff}
+.report-title{font-family:'Fraunces',serif;font-size:25px;font-weight:900;color:#fff;margin-top:18px;position:relative;z-index:1;line-height:1.15}
+.report-subtitle{font-size:12px;color:#9fc4f0;margin-top:5px;position:relative;z-index:1}
+.result-pill{display:inline-flex;align-items:center;gap:9px;margin-top:18px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.45);border-radius:30px;padding:9px 18px;position:relative;z-index:1}
+.result-pill .dot{width:18px;height:18px;border-radius:50%;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+.result-pill .txt{font-size:12.5px;font-weight:700;color:#6ee7b7}
+.result-pill .txt b{color:#fff;font-weight:800}
+.ref-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:15px 18px;min-width:188px;backdrop-filter:blur(4px)}
+.ref-label{font-size:8px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#7fb0e6;background:rgba(56,189,248,0.16);display:inline-block;padding:2px 8px;border-radius:5px;margin-bottom:7px}
+.ref-id{font-family:'Fraunces',serif;font-size:20px;font-weight:900;color:#fff;border-bottom:1px solid rgba(255,255,255,0.13);padding-bottom:11px;margin-bottom:11px}
+.ref-row{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.ref-row .ic{font-size:12px;opacity:.8}
+.ref-row .rl{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#7fb0e6;line-height:1.3}
+.ref-row .rv{font-size:12px;font-weight:700;color:#fff;line-height:1.3}
+.ref-status{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.13);padding-top:11px;margin-top:3px}
+.ref-status .sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7fb0e6}
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:9px;font-weight:800;text-transform:uppercase;background:${status.bg};color:${status.color};border:1px solid ${status.color}55}
+.urgent-badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid #EF444466}
 .body{padding:28px 32px}
 .client-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
 .info-card{background:#f8fafc;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0}
@@ -502,17 +527,24 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <div class="header">
-  <div class="header-left">
-    ${fiche.logoSociete?`<img src="${fiche.logoSociete}" alt="" style="max-height:46px;max-width:190px;display:block;margin-bottom:6px;background:#fff;border-radius:6px;padding:3px 8px"/>`:""}
-    ${fiche.societe?`<div class="logo">${fiche.societe}</div>`:""}
-    <div class="report-title">Rapport d'intervention technique</div>
-  </div>
-  <div class="header-right">
-    <div class="report-label">Référence</div>
-    <div class="report-id">${fiche.id}</div>
-    <div class="report-date">${dateFr(fiche.dateRdv)}${fiche.heureRdv?" · "+fiche.heureRdv:""}</div>
-    <span class="status-badge">${status.label}</span>
-    ${isUrgent?'<span class="urgent-badge">🚨 URGENCE</span>':""}
+  <div class="header-top">
+    <div>
+      <div class="brand">
+        ${fiche.logoSociete?`<div class="brand-logo"><img src="${fiche.logoSociete}" alt=""/></div>`:""}
+        <div class="brand-name">${fiche.societe||"A6T Services"}</div>
+      </div>
+      <div class="report-title">Rapport d'intervention technique</div>
+      <div class="report-subtitle">Rapport généré après intervention sur site</div>
+      ${resultatPrincipal?`<div class="result-pill"><span class="dot">✓</span><span class="txt"><b>Intervention terminée</b>${resultatPrincipal!==true?` — ${resultatPrincipal}`:""}</span></div>`:""}
+    </div>
+    <div class="ref-card">
+      <div class="ref-label">Référence</div>
+      <div class="ref-id">${fiche.id}</div>
+      <div class="ref-row"><span class="ic">📅</span><div><div class="rl">Date</div><div class="rv">${dateFr(fiche.dateRdv)}</div></div></div>
+      ${fiche.heureRdv?`<div class="ref-row"><span class="ic">🕐</span><div><div class="rl">Heure</div><div class="rv">${fiche.heureRdv}</div></div></div>`:""}
+      <div class="ref-status"><span class="sl">Statut</span><span class="status-badge">✓ ${status.label}</span></div>
+      ${isUrgent?'<span class="urgent-badge">🚨 URGENCE</span>':""}
+    </div>
   </div>
 </div>
 <div class="body">
@@ -531,6 +563,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
   ${fiche.responsabilite&&fiche.responsabilite!=="na"?`<div class="section-block"><div class="section-title">⚖️ Responsabilité</div><div class="resp-badge">● ${resp?.label} — ${resp?.desc}</div></div>`:""}
   ${fiche.preconisations?.length?`<div class="section-block"><div class="section-title">💡 Préconisations</div><ul class="preco-list">${fiche.preconisations.map(p=>`<li>${p}</li>`).join("")}</ul></div>`:""}
   <div class="section-block"><div class="section-title">📝 Conclusion</div><div class="conclusion-box">${fiche.conclusion||"—"}</div></div>
+  ${majorationsTexte(fiche).length?`<div class="section-block"><div class="section-title">⏰ Conditions d'intervention</div><ul class="preco-list">${majorationsTexte(fiche).map(t=>`<li>${t}</li>`).join("")}</ul></div>`:""}
   ${photoGrid}
   ${sigZone}
   ${!hideInternal ? `<div class="internal">
@@ -758,21 +791,27 @@ function SignatureCanvas({ onSave, onCancel, title = "Signature client" }) {
 /* ═══════════════════════════════════════════
    POP-UP TEMPS
 ═══════════════════════════════════════════ */
-function TempsPopup({ onSave, tarifHoraire }) {
-  const [temps, setTemps] = useState("");
+function TempsPopup({ onSave, tarifHoraire, initialTemps="", initialMaj=[] }) {
+  const [temps, setTemps] = useState(initialTemps||"");
+  const [maj, setMaj] = useState(initialMaj||[]); // ex: ["soir50","weekend100"]
   const durees = ["30 min","1h","1h30","2h","2h30","3h","4h","Demi-journée","Journée complète"];
   const isForfait = temps==="Forfait";
+  const toggleMaj = (m) => setMaj(p => p.includes(m) ? p.filter(x=>x!==m) : [...p, m]);
   const montant = tarifHoraire && temps ? (() => {
     const m = temps.match(/(\d+)h(\d+)?/);
     if (!m) return null;
-    const h = parseInt(m[1]) + (m[2] ? parseInt(m[2])/60 : 0);
-    return (h * parseFloat(tarifHoraire)).toFixed(2);
+    let h = parseInt(m[1]) + (m[2] ? parseInt(m[2])/60 : 0);
+    let base = h * parseFloat(tarifHoraire);
+    let coef = 1;
+    if (maj.includes("soir50")) coef += 0.5;
+    if (maj.includes("weekend100")) coef += 1;
+    return (base * coef).toFixed(2);
   })() : null;
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:"#0B1829",border:"1px solid #1E3A5F",borderRadius:16,padding:24,width:400,maxWidth:"100%"}}>
+      <div style={{background:"#0B1829",border:"1px solid #1E3A5F",borderRadius:16,padding:24,width:420,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
         <div style={{fontWeight:800,fontSize:17,marginBottom:4}}>⏱️ Temps passé sur place</div>
-        <div style={{fontSize:13,color:"#475569",marginBottom:16}}>Renseignez le temps pour faciliter la facturation.</div>
+        <div style={{fontSize:13,color:"#475569",marginBottom:16}}>Usage interne — non affiché au client. Sert à la facturation.</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:14}}>
           {durees.map(d=>(
             <button key={d} onClick={()=>setTemps(d)} style={{padding:"10px 6px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,border:`1.5px solid ${temps===d?"#0EA5E9":"#1E3A5F"}`,background:temps===d?"rgba(14,165,233,0.12)":"#070F1C",color:temps===d?"#0EA5E9":"#64748B",fontFamily:"inherit"}}>
@@ -783,11 +822,20 @@ function TempsPopup({ onSave, tarifHoraire }) {
         <button onClick={()=>setTemps(isForfait?"":"Forfait")} style={{width:"100%",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:13,marginBottom:10,fontFamily:"inherit",border:`1.5px solid ${isForfait?"#A78BFA":"#1E3A5F"}`,background:isForfait?"rgba(167,139,250,0.14)":"#070F1C",color:isForfait?"#A78BFA":"#64748B"}}>
           💼 Forfait — intervention au forfait (pas de décompte horaire)
         </button>
-        <input value={isForfait?"":temps} onChange={e=>setTemps(e.target.value)} placeholder="Ou saisissez (ex: 2h15)" disabled={isForfait} style={{width:"100%",padding:"10px 14px",background:"#070F1C",border:"1.5px solid #1E3A5F",borderRadius:8,color:"#E2E8F0",fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:10,opacity:isForfait?.5:1}}/>
-        {montant && <div style={{fontSize:13,color:"#10B981",fontWeight:600,marginBottom:10}}>💰 Montant estimé : {montant} €</div>}
+        <input value={isForfait?"":temps} onChange={e=>setTemps(e.target.value)} placeholder="Ou saisissez (ex: 2h15)" disabled={isForfait} style={{width:"100%",padding:"10px 14px",background:"#070F1C",border:"1.5px solid #1E3A5F",borderRadius:8,color:"#E2E8F0",fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:14,opacity:isForfait?.5:1,boxSizing:"border-box"}}/>
+
+        <div style={{fontSize:11,fontWeight:700,color:"#94A3B8",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Majoration (apparaît sur le rapport)</div>
+        <button onClick={()=>toggleMaj("soir50")} style={{width:"100%",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:13,marginBottom:8,fontFamily:"inherit",textAlign:"left",border:`1.5px solid ${maj.includes("soir50")?"#F59E0B":"#1E3A5F"}`,background:maj.includes("soir50")?"rgba(245,158,11,0.14)":"#070F1C",color:maj.includes("soir50")?"#F59E0B":"#64748B"}}>
+          {maj.includes("soir50")?"☑":"☐"} 🌙 Majoration +50 % (soirée)
+        </button>
+        <button onClick={()=>toggleMaj("weekend100")} style={{width:"100%",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:13,marginBottom:14,fontFamily:"inherit",textAlign:"left",border:`1.5px solid ${maj.includes("weekend100")?"#EF4444":"#1E3A5F"}`,background:maj.includes("weekend100")?"rgba(239,68,68,0.14)":"#070F1C",color:maj.includes("weekend100")?"#EF4444":"#64748B"}}>
+          {maj.includes("weekend100")?"☑":"☐"} 🌃 Majoration +100 % (nuit / week-end)
+        </button>
+
+        {montant && <div style={{fontSize:13,color:"#10B981",fontWeight:600,marginBottom:10}}>💰 Montant estimé{maj.length?" (majoration incluse)":""} : {montant} €</div>}
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>onSave("")} style={{flex:1,padding:"11px",background:"#070F1C",border:"1px solid #1E3A5F",borderRadius:8,color:"#64748B",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Passer</button>
-          <button onClick={()=>onSave(temps)} style={{flex:2,padding:"11px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✓ Valider</button>
+          <button onClick={()=>onSave({temps:"",maj:[]})} style={{flex:1,padding:"11px",background:"#070F1C",border:"1px solid #1E3A5F",borderRadius:8,color:"#64748B",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Passer</button>
+          <button onClick={()=>onSave({temps,maj})} style={{flex:2,padding:"11px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✓ Valider</button>
         </div>
       </div>
     </div>
@@ -809,7 +857,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     prestations:[], responsabilite:"na", preconisations:[],
     conclusion:"", photos:[], signature:null, signatureTech:null,
     nomSignataire:"", materiels:[], difficulte:"",
-    tempsInterne:"", tarifHoraire:"", notesInternes:"",
+    tempsInterne:"", majorations:[], tarifHoraire:"", notesInternes:"",
     status:"planifie", loc:{...EMPTY_LOC}, urgent:false,
     ...(initial||{}),
   }));
@@ -926,10 +974,12 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     setShowTemps(true);
   };
 
-  const handleTempsValidated = (temps) => {
+  const handleTempsValidated = (data) => {
     setShowTemps(false);
+    const temps = (data && typeof data==="object") ? data.temps : data;
+    const majorations = (data && typeof data==="object") ? (data.maj||[]) : [];
     try {
-      const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
+      const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, majorations, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
       onSave(fiche);
     } catch(e) {
       alert("Erreur lors de l'enregistrement : " + (e?.message||e));
@@ -955,7 +1005,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     <div style={{maxWidth:720, margin:"0 auto"}}>
       {showSig && <SignatureCanvas title="Signature client" onSave={d=>{set("signature",d);setShowSig(false);}} onCancel={()=>setShowSig(false)}/>}
       {showSigTech && <SignatureCanvas title="Signature technicien" onSave={d=>{set("signatureTech",d);setShowSigTech(false);}} onCancel={()=>setShowSigTech(false)}/>}
-      {showTemps && <TempsPopup onSave={handleTempsValidated} tarifHoraire={f.tarifHoraire}/>}
+      {showTemps && <TempsPopup onSave={handleTempsValidated} tarifHoraire={f.tarifHoraire} initialTemps={f.tempsInterne} initialMaj={f.majorations}/>}
 
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,flexWrap:"wrap"}}>
@@ -1350,7 +1400,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
       <div style={{...sectionStyle,background:isDark?"rgba(249,115,22,0.06)":theme==="light"?"#FFF7ED":"#FDF2E9",border:`1px dashed rgba(249,115,22,0.4)`,cursor:interneOpen?"default":"pointer"}} onClick={()=>!interneOpen&&setInterneOpen(true)}>
         <div style={{...sectionTitleStyle,color:"#F97316",cursor:"pointer",borderBottom:interneOpen?"1px solid rgba(249,115,22,0.2)":"none",paddingBottom:interneOpen?10:0,marginBottom:interneOpen?14:0}} onClick={e=>{e.stopPropagation();setInterneOpen(!interneOpen);}}>
           🔒 Usage interne
-          {(f.materiels.length>0||f.difficulte||f.tarifHoraire||f.notesInternes)&&<span style={{fontSize:11,fontWeight:700,color:"#F97316",background:"rgba(249,115,22,0.15)",padding:"2px 9px",borderRadius:12}}>renseigné</span>}
+          {(f.materiels.length>0||f.difficulte||f.tarifHoraire||f.notesInternes||f.tempsInterne||f.majorations?.length)&&<span style={{fontSize:11,fontWeight:700,color:"#F97316",background:"rgba(249,115,22,0.15)",padding:"2px 9px",borderRadius:12}}>renseigné</span>}
           <span style={{marginLeft:"auto",fontSize:12,color:"#F97316",fontWeight:700}}>{interneOpen?"▲":"▼ Appuyer si besoin"}</span>
         </div>
         {interneOpen&&(<>
@@ -1384,6 +1434,21 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div>
             <div style={{...lblStyle,color:"#7C3D12"}}>Tarif horaire (€/h)</div>
             <input value={f.tarifHoraire} onChange={e=>set("tarifHoraire",e.target.value)} placeholder="Ex : 85" style={inpStyle()}/>
+          </div>
+          <div>
+            <div style={{...lblStyle,color:"#7C3D12"}}>⏱️ Temps passé sur place</div>
+            <input value={f.tempsInterne} onChange={e=>set("tempsInterne",e.target.value)} placeholder="Ex : 2h, 1h30, Forfait…" style={inpStyle()}/>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <div style={{...lblStyle,color:"#7C3D12"}}>Majoration (apparaît sur le rapport)</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>toggleArr("majorations","soir50")} style={{flex:1,minWidth:160,padding:"9px 10px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,textAlign:"left",border:`1.5px solid ${f.majorations?.includes("soir50")?"#F59E0B":T.border}`,background:f.majorations?.includes("soir50")?"rgba(245,158,11,0.15)":T.surface2,color:f.majorations?.includes("soir50")?"#F59E0B":T.textMuted,fontFamily:"inherit"}}>
+                {f.majorations?.includes("soir50")?"☑":"☐"} 🌙 +50 % (soirée)
+              </button>
+              <button onClick={()=>toggleArr("majorations","weekend100")} style={{flex:1,minWidth:160,padding:"9px 10px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,textAlign:"left",border:`1.5px solid ${f.majorations?.includes("weekend100")?"#EF4444":T.border}`,background:f.majorations?.includes("weekend100")?"rgba(239,68,68,0.15)":T.surface2,color:f.majorations?.includes("weekend100")?"#EF4444":T.textMuted,fontFamily:"inherit"}}>
+                {f.majorations?.includes("weekend100")?"☑":"☐"} 🌃 +100 % (nuit/we)
+              </button>
+            </div>
           </div>
         </div>
         <div>
@@ -1865,7 +1930,8 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
         {[
           {label:"Total fiches",val:fiches.length,icon:"📋",color:"#0EA5E9",action:()=>onFilterStatus("")},
-          {label:"RDV planifiés",val:rdvPlanifies.length,icon:"📅",color:"#3B82F6",action:()=>onFilterStatus("planifie")},
+          {label:"RDV planifiés",val:rdvPlanifies.filter(f=>!estAProgrammer(f)).length,icon:"📅",color:"#3B82F6",action:()=>onFilterStatus("planifie")},
+          {label:"À planifier",val:fiches.filter(estAProgrammer).length,icon:"📌",color:"#64748B",action:()=>onFilterStatus("__aprogrammer")},
           {label:"En cours",val:byStatus.en_cours||0,icon:"⚡",color:"#F59E0B",action:()=>onFilterStatus("en_cours")},
           {label:"Terminées",val:byStatus.termine||0,icon:"✅",color:"#10B981",action:()=>onFilterStatus("termine")},
           {label:"Signées",val:fiches.filter(f=>f.signature).length,icon:"✍️",color:"#A78BFA",action:()=>onFilterStatus("__signees")},
@@ -2328,6 +2394,23 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
             <div style={{fontSize:9,color:"#10B981",textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>📝 Conclusion</div>
             {fiche.conclusion}
           </div>}
+        </div>
+      )}
+
+      {/* Temps passé & facturation (usage interne, visible gestion) */}
+      {!isRdv&&(fiche.tempsInterne||fiche.majorations?.length)&&(
+        <div style={{...card,border:"1px solid rgba(245,158,11,0.35)",background:isRdv?T.surface:"rgba(245,158,11,0.05)"}}>
+          <div style={{...secHead,color:"#F59E0B",borderColor:"rgba(245,158,11,0.25)"}}>⏱️ Temps passé & facturation <span style={{marginLeft:"auto",fontSize:9,opacity:.7}}>🔒 interne</span></div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"center"}}>
+            {fiche.tempsInterne&&<div><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:3}}>Temps sur place</div><div style={{fontSize:20,fontWeight:800,color:T.text}}>{fiche.tempsInterne}</div></div>}
+            {fiche.tarifHoraire&&fiche.tempsInterne&&(()=>{
+              const base = calculerMontant(fiche.tempsInterne, fiche.tarifHoraire);
+              let coef = 1; (fiche.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
+              const total = base!=null ? (parseFloat(base)*coef).toFixed(2) : null;
+              return total!=null ? <div><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:3}}>Montant estimé{coef>1?" (majoré)":""}</div><div style={{fontSize:20,fontWeight:800,color:"#10B981"}}>{total} €</div></div> : null;
+            })()}
+            {fiche.majorations?.length>0&&<div style={{flex:1,minWidth:140}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5}}>Majorations</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{fiche.majorations.map(m=><span key={m} style={{fontSize:11,fontWeight:700,color:m==="weekend100"?"#EF4444":"#F59E0B",background:(m==="weekend100"?"#EF4444":"#F59E0B")+"1A",padding:"4px 10px",borderRadius:20}}>{m==="soir50"?"🌙 +50 %":"🌃 +100 %"}</span>)}</div></div>}
+          </div>
         </div>
       )}
     </div>
