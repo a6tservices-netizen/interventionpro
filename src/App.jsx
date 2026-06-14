@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
@@ -16,7 +17,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-
+const auth = getAuth(app);
 const sanitize = (o) => JSON.parse(JSON.stringify(o ?? null));
 const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), sanitize(fiche));
 const deleteFiche = (id) => remove(ref(db, `fiches/${id}`));
@@ -3110,7 +3111,6 @@ export default function App() {
     const interval = setInterval(sendPos, 120000);
     return () => clearInterval(interval);
   }, []);
-
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
   const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
