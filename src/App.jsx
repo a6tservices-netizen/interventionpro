@@ -357,36 +357,65 @@ Sois concis, professionnel et naturel en français.`;
 ═══════════════════════════════════════════ */
 function telechargerPDF(html, filename) {
   const w = window.open("", "_blank");
-  if (!w) { alert("Veuillez autoriser les pop-ups pour générer le PDF."); return; }
-  const safeName = JSON.stringify(filename);
-  const inject = `
-<div id="pdfbar" data-html2canvas-ignore="true" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#0B1829;padding:10px 12px;display:flex;gap:10px;justify-content:center;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,.35);font-family:'Segoe UI',sans-serif;">
-  <button onclick="genPdf()" id="pdfbtn" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:800;font-size:14px;cursor:pointer;">&#128196; T&eacute;l&eacute;charger le PDF</button>
-  <button onclick="window.print()" style="background:none;border:1px solid #475569;color:#94A3B8;border-radius:8px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;">&#128424; Imprimer</button>
-</div>
-<div style="height:60px" data-html2canvas-ignore="true"></div>
-<scr`+`ipt src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></scr`+`ipt>
-<scr`+`ipt>
-function genPdf(){
-  var btn=document.getElementById("pdfbtn");
-  btn.textContent="\u23F3 G\u00E9n\u00E9ration en cours\u2026"; btn.disabled=true;
-  html2pdf().set({
-    margin:[8,8,10,8],
-    filename:${safeName},
-    image:{type:"jpeg",quality:0.9},
-    html2canvas:{scale:1.5,useCORS:true,backgroundColor:"#ffffff",logging:false},
-    jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},
-    pagebreak:{mode:["css","legacy"]}
-  }).from(document.body).save().then(function(){
-    btn.textContent="\u2705 PDF t\u00E9l\u00E9charg\u00E9 !"; btn.disabled=false;
-    setTimeout(function(){btn.innerHTML="&#128196; T\u00E9l\u00E9charger le PDF";},2500);
-  }).catch(function(e){
-    btn.textContent="\u274C \u00C9chec \u2014 utilisez \uD83D\uDDA8 Imprimer \u2192 Enregistrer en PDF"; btn.disabled=false;
-  });
-}
-</scr`+`ipt>`;
-  const doc = html.includes("</body>") ? html.replace("</body>", inject + "</body>") : html + inject;
-  w.document.open(); w.document.write(doc); w.document.close();
+  if (!w) { alert("Veuillez autoriser les pop-ups (fenêtres) pour ce site, puis réessayez."); return; }
+  // 1) Écrire le rapport tel quel dans le nouvel onglet
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // 2) Une fois le document prêt, injecter la barre + html2pdf via le DOM (fiable cross-navigateur)
+  const setup = () => {
+    try {
+      const d = w.document;
+      // Barre d'actions
+      const bar = d.createElement("div");
+      bar.setAttribute("data-html2canvas-ignore", "true");
+      bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#0B1829;padding:10px 12px;display:flex;gap:10px;justify-content:center;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,.35);font-family:Segoe UI,Arial,sans-serif;";
+      const b1 = d.createElement("button");
+      b1.textContent = "📄 Télécharger le PDF";
+      b1.style.cssText = "background:linear-gradient(135deg,#0EA5E9,#6366F1);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:800;font-size:14px;cursor:pointer;";
+      const b2 = d.createElement("button");
+      b2.textContent = "🖨 Imprimer";
+      b2.style.cssText = "background:none;border:1px solid #475569;color:#94A3B8;border-radius:8px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;";
+      b2.onclick = () => w.print();
+      bar.appendChild(b1); bar.appendChild(b2);
+      const spacer = d.createElement("div");
+      spacer.setAttribute("data-html2canvas-ignore", "true");
+      spacer.style.height = "62px";
+      d.body.insertBefore(spacer, d.body.firstChild);
+      d.body.insertBefore(bar, d.body.firstChild);
+      // Charger html2pdf dans le nouvel onglet
+      const launch = () => {
+        b1.textContent = "⏳ Génération en cours…"; b1.disabled = true;
+        w.html2pdf().set({
+          margin: [8,8,10,8], filename,
+          image: { type: "jpeg", quality: 0.9 },
+          html2canvas: { scale: 1.5, useCORS: true, backgroundColor: "#ffffff", logging: false },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"] }
+        }).from(d.body).save().then(() => {
+          b1.textContent = "✅ PDF téléchargé !"; b1.disabled = false;
+          setTimeout(() => { b1.textContent = "📄 Télécharger le PDF"; }, 2500);
+        }).catch((e) => {
+          b1.textContent = "❌ Échec — utilisez 🖨 Imprimer"; b1.disabled = false;
+        });
+      };
+      b1.onclick = () => {
+        if (w.html2pdf) { launch(); return; }
+        b1.textContent = "⏳ Chargement…"; b1.disabled = true;
+        const s = d.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        s.onload = () => { b1.disabled = false; launch(); };
+        s.onerror = () => { b1.textContent = "❌ Module indisponible — utilisez 🖨 Imprimer"; b1.disabled = false; };
+        d.body.appendChild(s);
+      };
+    } catch (e) {
+      try { w.alert("Erreur d'affichage du rapport : " + (e && e.message ? e.message : e)); } catch(_) {}
+    }
+  };
+  if (w.document.readyState === "complete") setup();
+  else w.onload = setup;
+  // Filet de sécurité si onload ne se déclenche pas
+  setTimeout(() => { try { if (w.document && !w.document.querySelector("[data-html2canvas-ignore]")) setup(); } catch(e){} }, 800);
 }
 
 function buildReportHTML(fiche, hideInternal = false) {
