@@ -2898,6 +2898,72 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
   );
 }
 
+function LoginPage({ theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [email, setEmail] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const handleLogin = async () => {
+    setErr("");
+    if(!email.trim() || !pwd){ setErr("Entrez votre email et votre mot de passe."); return; }
+    setBusy(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), pwd);
+      // La connexion réussie est détectée par onAuthStateChanged → l'app s'affiche
+    } catch(e) {
+      const code = e?.code || "";
+      if(code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found"))
+        setErr("Email ou mot de passe incorrect.");
+      else if(code.includes("invalid-email")) setErr("Adresse email invalide.");
+      else if(code.includes("too-many-requests")) setErr("Trop de tentatives. Réessayez dans quelques minutes.");
+      else if(code.includes("network")) setErr("Pas de connexion internet. Vérifiez votre réseau.");
+      else setErr("Connexion impossible. Réessayez.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:380,background:T.surface,border:`1px solid ${T.border}`,borderRadius:18,padding:"34px 26px",boxShadow:"0 12px 48px rgba(0,0,0,0.25)"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:24}}>
+          <div style={{width:60,height:60,borderRadius:16,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,boxShadow:"0 6px 20px rgba(14,165,233,0.35)",marginBottom:14}}>🔧</div>
+          <div style={{fontSize:20,fontWeight:800,color:T.text}}>InterventionPro</div>
+          <div style={{fontSize:13,color:T.textMuted,marginTop:4}}>Connectez-vous pour continuer</div>
+        </div>
+
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.textMuted,marginBottom:6}}>Email</div>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoCapitalize="none" autoCorrect="off"
+            onKeyDown={e=>{if(e.key==="Enter")handleLogin();}}
+            placeholder="vous@exemple.fr"
+            style={{width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,color:T.text,fontSize:15,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+
+        <div style={{marginBottom:18}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.textMuted,marginBottom:6}}>Mot de passe</div>
+          <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")handleLogin();}}
+            placeholder="••••••••"
+            style={{width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,color:T.text,fontSize:15,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+
+        {err && <div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.4)",color:"#EF4444",borderRadius:9,padding:"10px 12px",fontSize:13,fontWeight:600,marginBottom:14}}>{err}</div>}
+
+        <button onClick={handleLogin} disabled={busy}
+          style={{width:"100%",padding:"13px",background:busy?"#64748B":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?"default":"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>
+          {busy ? "Connexion…" : "Se connecter"}
+        </button>
+
+        <div style={{fontSize:11.5,color:T.textMuted,textAlign:"center",marginTop:18,lineHeight:1.5}}>
+          Une fois connecté, vous restez identifié sur cet appareil.<br/>Pas besoin de retaper à chaque ouverture.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [fiches, setFiches] = useState(()=>lsGet("cache_fiches")||[]);
   const [societes, setSocietes] = useState(["A6T Services"]);
@@ -2924,12 +2990,19 @@ export default function App() {
   const [techTels, setTechTels] = useState({});
   const [champsCustom, setChampsCustom] = useState({});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
     window.addEventListener("online",on); window.addEventListener("offline",off);
     try { if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{}); } catch(e){}
     setTimeout(flushPending, 3000);
     return ()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+  // Surveillance de la connexion (Firebase Auth)
+  useEffect(()=>{
+    const unsub = onAuthStateChanged(auth, (u)=>{ setCurrentUser(u); setAuthReady(true); });
+    return ()=>unsub();
   },[]);
 
   const T = THEMES[theme] || THEMES.dark;
@@ -3125,6 +3198,17 @@ export default function App() {
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
   );
 
+  // ── Sécurité : connexion obligatoire ──
+  if(!authReady) return (
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔧</div>
+        <div style={{fontSize:14,color:T.textMuted}}>Chargement…</div>
+      </div>
+    </div>
+  );
+  if(!currentUser) return <LoginPage theme={theme} />;
+
   // Formulaire RDV plein écran
   if(showRdvForm) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
@@ -3229,6 +3313,13 @@ export default function App() {
                             </button>
                           ))}
                         </div>
+                      </div>
+                      <div style={{borderTop:`1px solid ${T.border}`,margin:"8px 4px",paddingTop:10}}>
+                        <div style={{fontSize:11,color:T.textMuted,paddingLeft:8,marginBottom:7,wordBreak:"break-all"}}>👤 {currentUser?.email}</div>
+                        <button onClick={()=>{ if(confirm("Se déconnecter ?")){ signOut(auth); setMenuOpen(false); } }}
+                          style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"rgba(239,68,68,0.1)",color:"#EF4444"}}>
+                          🚪 Se déconnecter
+                        </button>
                       </div>
                     </div>
                   </>
