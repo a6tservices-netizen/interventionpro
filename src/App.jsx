@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-
+import { initializeEnhancements } from './enhancements';
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
 ═══════════════════════════════════════════ */
@@ -906,7 +906,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     return adressesConnues.filter(a=>a.toLowerCase().includes(f.adresse.toLowerCase())).slice(0,5);
   },[f.adresse,adressesConnues]);
 
-  useEffect(()=>{
+  useEffect(()=>{ initializeEnhancements(auth);
     const h=e=>{
       if(acRef.current&&!acRef.current.contains(e.target))setAcOpen(false);
       if(acAdresseRef.current&&!acAdresseRef.current.contains(e.target))setAcAdresseOpen(false);
