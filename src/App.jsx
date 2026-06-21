@@ -2037,7 +2037,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
             <div style={{width:1,height:32,background:T.border}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:14,color:T.text,lineHeight:1.25,wordBreak:"break-word"}}>{f.client||"Client non renseigné"}</div>
-              <div onClick={()=>f.adresse&&window.open(`https://maps.google.com/?q=${encodeURIComponent(f.adresse)}`,"_blank")}
+              <div onClick={()=>f.adresse&&window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(f.adresse)}`,"_blank")}
                 style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
                 📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
               </div>
@@ -2167,7 +2167,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
         )}
         <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {fiche.adresse
-            ? <span onClick={e=>{e.stopPropagation();window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
+            ? <span onClick={e=>{e.stopPropagation();window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
             : "📍 —"}
           {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
         </div>
@@ -2424,7 +2424,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       <div style={card}>
         <h2 style={{margin:0,fontSize:20,fontWeight:800,color:T.text}}>{fiche.client||"Client non renseigné"}</h2>
         {fiche.adresse&&(
-          <div onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(fiche.adresse)}`,"_blank")}
+          <div onClick={()=>window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(fiche.adresse)}`,"_blank")}
             style={{color:"#0EA5E9",marginTop:4,cursor:"pointer",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
             📍 {fiche.adresse} <span style={{fontSize:11,opacity:.7}}>→ GPS</span>
           </div>
