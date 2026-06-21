@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { initializeEnhancements } from './enhancements';
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
 ═══════════════════════════════════════════ */
@@ -43,6 +42,9 @@ const watchTechTels = (cb) => onValue(ref(db, "techTels"), snap => cb(snap.val()
 const watchChamps = (cb) => onValue(ref(db, "champs"), snap => cb(snap.val()||{}));
 const saveChamps = (prestaId, cat, liste) => set(ref(db, `champs/${prestaId}/${cat}`), liste ? JSON.parse(JSON.stringify(liste)) : null);
 const saveTechTel = (nom, tel) => set(ref(db, `techTels/${logoKey(nom)}`), (tel||"").trim()||null);
+const saveTacheFb = (t) => set(ref(db, `taches/${t.id}`), sanitize(t));
+const deleteTacheFb = (id) => remove(ref(db, `taches/${id}`));
+const watchTaches = (cb) => onValue(ref(db, "taches"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const saveLogo = (nom, dataUrl) => set(ref(db, `logos/${logoKey(nom)}`), dataUrl||null);
 const removeLogo = (nom) => remove(ref(db, `logos/${logoKey(nom)}`));
 
@@ -906,7 +908,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     return adressesConnues.filter(a=>a.toLowerCase().includes(f.adresse.toLowerCase())).slice(0,5);
   },[f.adresse,adressesConnues]);
 
-  useEffect(()=>{ initializeEnhancements(auth);
+  useEffect(()=>{
     const h=e=>{
       if(acRef.current&&!acRef.current.contains(e.target))setAcOpen(false);
       if(acAdresseRef.current&&!acAdresseRef.current.contains(e.target))setAcAdresseOpen(false);
@@ -1928,9 +1930,12 @@ function ReportPreview({ fiche, onClose }) {
 /* ═══════════════════════════════════════════
    TABLEAU DE BORD
 ═══════════════════════════════════════════ */
-function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilterStatus, theme }) {
+function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilterStatus, theme, taches=[], onAjouterTache, onToggleTache, onSupprimerTache }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
+  const [nouvelleTache, setNouvelleTache] = useState("");
+  const [nouvellePriorite, setNouvellePriorite] = useState("À faire");
+  const [tachePhoto, setTachePhoto] = useState("");
   const rdvPlanifies = fiches.filter(f=>f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length));
   const byStatus = {};
   Object.keys(STATUTS).forEach(k=>{byStatus[k]=fiches.filter(f=>f.status===k).length;});
@@ -1964,6 +1969,57 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
             <div style={{fontSize:9,color:k.color,marginTop:4,opacity:.7}}>→ Voir la liste</div>
           </div>
         ))}
+      </div>
+
+      {/* ── Liste de tâches partagée ── */}
+      <div style={{...card,border:"1.5px solid rgba(168,139,250,0.3)"}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#A78BFA",textTransform:"uppercase",letterSpacing:".1em",marginBottom:12}}>📝 Tâches à faire ({taches.filter(t=>!t.fait).length})</div>
+
+        {/* Formulaire d'ajout */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+          <input value={nouvelleTache} onChange={e=>setNouvelleTache(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&nouvelleTache.trim()){onAjouterTache(nouvelleTache,nouvellePriorite,tachePhoto);setNouvelleTache("");setTachePhoto("");}}}
+            placeholder="Nouvelle tâche…"
+            style={{flex:1,minWidth:140,padding:"10px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:T.bg,color:T.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+          <select value={nouvellePriorite} onChange={e=>setNouvellePriorite(e.target.value)}
+            style={{padding:"10px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:T.bg,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer",colorScheme:theme==="dark"?"dark":"light"}}>
+            <option>Très urgent</option>
+            <option>À faire</option>
+            <option>A le temps</option>
+          </select>
+          <label style={{padding:"10px 12px",borderRadius:9,border:`1px solid ${tachePhoto?"#10B981":T.border}`,background:T.bg,color:tachePhoto?"#10B981":T.textMuted,fontSize:13,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+            {tachePhoto?"✓ Photo":"📷 Photo"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file){const r=new FileReader();r.onload=ev=>setTachePhoto(ev.target.result);r.readAsDataURL(file);}}}/>
+          </label>
+          <button onClick={()=>{if(nouvelleTache.trim()){onAjouterTache(nouvelleTache,nouvellePriorite,tachePhoto);setNouvelleTache("");setTachePhoto("");}}}
+            style={{padding:"10px 18px",background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>+ Ajouter</button>
+        </div>
+
+        {/* Liste triée par priorité */}
+        {taches.length===0 ? (
+          <div style={{fontSize:13,color:T.textMuted,textAlign:"center",padding:"14px 0"}}>Aucune tâche pour le moment.</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {[...taches].sort((a,b)=>{
+              if(a.fait!==b.fait) return a.fait?1:-1;
+              const ordre={"Très urgent":0,"À faire":1,"A le temps":2};
+              return (ordre[a.priorite]??1)-(ordre[b.priorite]??1);
+            }).map(t=>{
+              const coul = t.priorite==="Très urgent"?"#EF4444":t.priorite==="A le temps"?"#64748B":"#F59E0B";
+              return (
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:T.surface2,borderRadius:9,padding:"10px 12px",border:`1px solid ${T.border}`,borderLeft:`4px solid ${t.fait?"#10B981":coul}`,opacity:t.fait?0.55:1}}>
+                  <input type="checkbox" checked={!!t.fait} onChange={()=>onToggleTache(t)} style={{width:18,height:18,cursor:"pointer",flexShrink:0,accentColor:"#10B981"}}/>
+                  {t.photo && <img src={t.photo} alt="" style={{width:34,height:34,borderRadius:7,objectFit:"cover",flexShrink:0,cursor:"pointer"}} onClick={()=>window.open(t.photo,"_blank")}/>}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text,textDecoration:t.fait?"line-through":"none",wordBreak:"break-word"}}>{t.titre}</div>
+                    {!t.fait && <span style={{fontSize:10,fontWeight:800,color:coul,textTransform:"uppercase",letterSpacing:".05em"}}>{t.priorite}</span>}
+                  </div>
+                  <button onClick={()=>onSupprimerTache(t.id)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:15,fontFamily:"inherit",flexShrink:0,padding:4}}>🗑</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* RDV à réaliser + À planifier */}
@@ -2972,6 +3028,7 @@ export default function App() {
   const [clients, setClients] = useState([]);
   const [devisList, setDevisList] = useState([]);
   const [contrats, setContrats] = useState([]);
+  const [taches, setTaches] = useState([]);
   const [editingDevis, setEditingDevis] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState("dark");
@@ -3043,7 +3100,8 @@ export default function App() {
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); };
+    const unsub9 = watchTaches(data => setTaches(data));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); };
   },[]);
 
   const ajouterSociete = (nom) => {
@@ -3054,6 +3112,15 @@ export default function App() {
     const next = [...new Set([...techniciens, nom])];
     setTechniciens(next); saveTechniciens(next); // Firebase
   };
+
+  // ── Liste de tâches partagée (Firebase) ──
+  const ajouterTache = (titre, priorite, photo) => {
+    const t = { id: uid(), titre:(titre||"").trim(), priorite:priorite||"À faire", photo:photo||"", fait:false, createdAt: ts() };
+    if(!t.titre) return;
+    saveTacheFb(t); // Firebase (la liste se met à jour via watchTaches)
+  };
+  const toggleTache = (t) => { saveTacheFb({ ...t, fait: !t.fait }); };
+  const supprimerTache = (id) => { deleteTacheFb(id); };
 
   const flushPending = () => {
     const q = lsGet("pending_saves")||[];
@@ -3355,7 +3422,7 @@ export default function App() {
               </div>
             )}
 
-            {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}}/>}
+            {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
             {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} theme={theme}/>}
             {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} logos={logos} champs={champsCustom}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
