@@ -171,7 +171,13 @@ const STATUTS = {
 // Une fiche "à programmer" = un RDV enregistré sans date
 const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
 
-const BATIMENTS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+// Palette couleurs techniciens (agenda style Joynit)
+const TECH_COLORS = ["#0EA5E9","#10B981","#F97316","#A78BFA","#EC4899","#F59E0B","#06B6D4","#EF4444","#8B5CF6","#14B8A6"];
+const techColor = (nom, techniciens=[]) => {
+  if(!nom) return "#64748B";
+  const idx = techniciens.indexOf(nom);
+  return TECH_COLORS[idx>=0 ? idx%TECH_COLORS.length : Math.abs(nom.split("").reduce((a,c)=>a+c.charCodeAt(0),0))%TECH_COLORS.length];
+};
 const ETAGES = ["Sous-sol 2","Sous-sol 1","Rez-de-chaussée","1er étage","2ème étage","3ème étage","4ème étage","5ème étage","6ème étage","7ème étage","8ème étage","9ème étage","10ème étage","11ème étage","12ème étage","13ème étage","14ème étage","15ème étage","16ème étage","17ème étage","18ème étage","19ème étage","20ème étage"];
 const CAGES = ["1","2","3","4","5","6","7","8","9","10"];
 const POSITIONS = ["Côté gauche","Côté droit","Central","Façade rue","Façade cour","Angle"];
@@ -678,6 +684,11 @@ function envoyerRapportSMS(fiche) {
    DEVIS — document HTML
 ═══════════════════════════════════════════ */
 function devisTotaux(devis) {
+  if (devis.modeForfait) {
+    const ht = parseFloat(devis.forfaitPrixHT)||0;
+    const tva = ht*((parseFloat(devis.tva)||0)/100);
+    return { ht, tva, ttc: ht+tva };
+  }
   const ht = (devis.lignes||[]).reduce((s,l)=>s+(parseFloat(l.qte)||0)*(parseFloat(l.pu)||0),0);
   const tva = ht*((parseFloat(devis.tva)||0)/100);
   return { ht, tva, ttc: ht+tva };
@@ -685,7 +696,9 @@ function devisTotaux(devis) {
 
 function buildDevisHTML(devis) {
   const { ht, tva, ttc } = devisTotaux(devis);
-  const lignesHTML = (devis.lignes||[]).filter(l=>l.label?.trim()).map(l=>{
+  const lignesHTML = devis.modeForfait
+    ? `<tr><td colspan="2">${devis.forfaitLabel||"Forfait"}</td><td class="r" colspan="2" style="font-weight:800;color:#7C3AED">${euro(parseFloat(devis.forfaitPrixHT)||0)} HT</td></tr>`
+    : (devis.lignes||[]).filter(l=>l.label?.trim()).map(l=>{
     const tot=(parseFloat(l.qte)||0)*(parseFloat(l.pu)||0);
     return `<tr><td>${l.label}</td><td class="c">${l.qte}</td><td class="r">${euro(parseFloat(l.pu)||0)}</td><td class="r">${euro(tot)}</td></tr>`;
   }).join("");
@@ -1062,6 +1075,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
               <div><div style={lblStyle}>Client enregistré</div>
                 <select value={f.clientId||""} onChange={e=>{
                   const v=e.target.value; const c=clients.find(x=>x.id===v);
+                  // Ne PAS remplir l'adresse ici : un client peut avoir plusieurs sites
                   setF(p=>({...p,clientId:v||null,siteId:null,
                     client:c?c.nom:p.client, tel:c?(c.tel||""):p.tel, email:c?(c.email||""):p.email}));
                 }} style={{...inpStyle(),cursor:"pointer",colorScheme:isDark?"dark":"light"}}>
@@ -1091,7 +1105,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
             {acOpen&&clientSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
                 {clientSuggestions.map((c,i)=>(
-                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,adresse:c.adresse,tel:c.tel,email:c.email}));setAcOpen(false);}}
+                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,tel:c.tel,email:c.email}));setAcOpen(false);}}
                     style={{padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.08)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -1775,7 +1789,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
             {acOpen&&suggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:"1.5px solid #3B82F6",borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
                 {suggestions.map((c,i)=>(
-                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,adresse:c.adresse,tel:c.tel}));setAcOpen(false);}}
+                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,tel:c.tel}));setAcOpen(false);}}
                     style={{padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,fontSize:13,color:T.text}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.08)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -2137,7 +2151,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 /* ═══════════════════════════════════════════
    AGENDA
 ═══════════════════════════════════════════ */
-function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
+function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
   const aProg = estAProgrammer(fiche);
@@ -2145,8 +2159,9 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
   const COUL = { rdv:"#3B82F6", complete:"#10B981", prog:"#64748B" };
   const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"}, prog:{t:"📌 À planifier",c:"#64748B"} };
   const accent = COUL[e];
+  const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens) : null;
   return(
-    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
         <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color)}}>{aProg?"📌 À planifier":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`)}</div>
@@ -2174,7 +2189,11 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
         {fiche.tel&&(
           <a href={`tel:${fiche.tel}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
         )}
-        {isRdv&&fiche.typesIntervention?.length>0&&(
+        {fiche.technicien&&tColor&&(
+          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:tColor,background:tColor+"1A",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+            👤 {fiche.technicien}
+          </span>
+        )}
           <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
             {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
           </div>
@@ -2190,7 +2209,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat }) {
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[] }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   const [selDay, setSelDay] = useState(todayStr);
@@ -2252,7 +2271,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme })
               <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase"}}>{jours[i]}</div>
               <div style={{fontSize:16,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
               <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",minHeight:6}}>
-                {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:colorOf(f),display:"inline-block"}}/>)}
+                {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:f.technicien?techColor(f.technicien,techniciens):colorOf(f),display:"inline-block"}}/>)}
               </div>
               {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:isSel?"#0EA5E9":T.textMuted}}>{evts.length}</div>}
             </div>
@@ -2260,11 +2279,24 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme })
         })}
       </div>
 
-      {/* Légende */}
+      {/* Légende techniciens */}
+      {techniciens.filter(t=>fiches.some(f=>f.technicien===t)).length>0&&(
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14,justifyContent:"center"}}>
+          {techniciens.filter(t=>fiches.some(f=>f.technicien===t)).map(t=>(
+            <span key={t} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.text,fontWeight:600}}>
+              <span style={{width:10,height:10,borderRadius:"50%",background:techColor(t,techniciens),display:"inline-block"}}/>
+              {t}
+            </span>
+          ))}
+          <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Terminée</span>
+        </div>
+      )}
+      {techniciens.filter(t=>fiches.some(f=>f.technicien===t)).length===0&&(
       <div style={{display:"flex",gap:14,justifyContent:"center",marginBottom:14,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#3B82F6"}}/>RDV à faire</span>
         <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Terminée</span>
       </div>
+      )}
 
       {/* Jour sélectionné */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -2277,7 +2309,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme })
       </div>
       {dayFiches.length===0
         ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter ➕":""}</div>
-        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>)}
+        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens}/>)}
 
       {/* Sans date */}
       {sansDate.length>0&&(
@@ -2289,7 +2321,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme })
           </div>
           {sansDate.map(fiche=>(
             <div key={fiche.id}>
-              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T}/>
+              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens}/>
               {onProgrammer&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,margin:"-2px 0 12px",paddingLeft:6}}>
                   <span style={{fontSize:12,color:T.textMuted,fontWeight:600}}>📅 Programmer :</span>
@@ -2662,6 +2694,41 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
 
       <div style={sec}>
         <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>Lignes du devis</div>
+
+        {/* Mode forfait */}
+        <div style={{marginBottom:14,padding:"12px 14px",background:d.modeForfait?"rgba(167,139,250,0.08)":T.surface2,border:`1.5px solid ${d.modeForfait?"#A78BFA":T.border}`,borderRadius:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:d.modeForfait?12:0}}>
+            <button onClick={()=>setD(p=>({...p,modeForfait:!p.modeForfait}))}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",
+                border:`1.5px solid ${d.modeForfait?"#A78BFA":T.border}`,
+                background:d.modeForfait?"rgba(167,139,250,0.14)":T.surface,
+                color:d.modeForfait?"#A78BFA":T.textMuted}}>
+              <span style={{width:16,height:16,borderRadius:4,background:d.modeForfait?"#A78BFA":"transparent",border:`2px solid ${d.modeForfait?"#A78BFA":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}}>{d.modeForfait?"✓":""}</span>
+              💼 Devis forfaitaire (prix global, sans détail par ligne)
+            </button>
+          </div>
+          {d.modeForfait&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
+              <div>
+                <div style={{...lbl,color:"#A78BFA"}}>Intitulé du forfait</div>
+                <input value={d.forfaitLabel||""} onChange={e=>set("forfaitLabel",e.target.value)}
+                  placeholder="Ex : Curage réseau complet — forfait tout compris"
+                  style={{...inp,border:"1.5px solid #A78BFA"}}/>
+              </div>
+              <div style={{minWidth:140}}>
+                <div style={{...lbl,color:"#A78BFA"}}>Prix forfaitaire HT (€)</div>
+                <input type="number" value={d.forfaitPrixHT||""} onChange={e=>set("forfaitPrixHT",e.target.value)}
+                  placeholder="Ex : 450"
+                  style={{...inp,textAlign:"right",border:"1.5px solid #A78BFA"}}/>
+              </div>
+              {d.forfaitPrixHT&&(
+                <div style={{gridColumn:"1/-1",fontSize:13,color:"#A78BFA",fontWeight:600}}>
+                  💰 TTC : {euro((parseFloat(d.forfaitPrixHT)||0)*(1+(parseFloat(d.tva)||0)/100))} — TVA {d.tva}%
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
           {catalogue.map(item=>(
@@ -3444,11 +3511,11 @@ export default function App() {
                 {filtered.length===0
                   ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} »</div>
                   : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
-                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T}/>
+                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens}/>
                     ))}
               </div>
             )}
-            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} techniciens={techniciens} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
