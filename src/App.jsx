@@ -462,9 +462,15 @@ function buildReportHTML(fiche, hideInternal = false) {
       </div>`;
     }).join("");
 
+  const photoSection = (titre, liste) => liste.length
+    ? `<div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div>` : "";
+  const photosOntTag = fiche.photos?.some(p=>p.tag);
   const photoGrid = fiche.photos?.length
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
-       <div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div></div>` : "";
+       ${photosOntTag
+         ? photoSection("Avant travaux", fiche.photos.filter(p=>p.tag==="avant")) + photoSection("Après travaux", fiche.photos.filter(p=>p.tag==="apres")) + photoSection("Autres photos", fiche.photos.filter(p=>!p.tag))
+         : `<div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div>`}
+       </div>` : "";
 
   const sigBoxes = [];
   if (fiche.signatureTech) sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature technicien</div><img src="${fiche.signatureTech}" class="sig-img"/><div class="sig-name">${fiche.technicien||"Technicien"}</div></div>`);
@@ -522,6 +528,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 .preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .preco-list li{font-size:11px;font-weight:600;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;padding:6px 10px}
 .preco-list li::before{content:"▸ ";opacity:.6}
+.photo-subtitle{font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin:10px 0 6px}
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:160px;background:#f1f5f9;display:flex;align-items:center;justify-content:center}
 .photo-item img{width:100%;height:100%;object-fit:contain;display:block;max-height:160px}
@@ -603,6 +610,70 @@ function calculerMontant(temps, tarif) {
   if (!match) return "—";
   const heures = parseInt(match[1]) + (match[2] ? parseInt(match[2])/60 : 0);
   return (heures * parseFloat(tarif)).toFixed(2);
+}
+
+function buildFacturationTexte(fiche) {
+  const presta = (fiche.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean);
+  const match = (fiche.tempsInterne||"").match(/(\d+)h(\d+)?/);
+  const heures = match ? parseInt(match[1]) + (match[2]?parseInt(match[2])/60:0) : 0;
+  const tarif = parseFloat(fiche.tarifHoraire)||0;
+  let coefMaj = 1; const majLignes = [];
+  (fiche.majorations||[]).forEach(m=>{
+    if(m==="soir50"){coefMaj+=0.5; majLignes.push("Majoration soirée (+50%) incluse dans le calcul ci-dessous");}
+    if(m==="weekend100"){coefMaj+=1; majLignes.push("Majoration weekend/nuit (+100%) incluse dans le calcul ci-dessous");}
+  });
+  const montantHT = heures*tarif*coefMaj;
+  const tva = 10;
+  const montantTVA = montantHT*tva/100;
+  const montantTTC = montantHT+montantTVA;
+
+  const L = [];
+  L.push(`PROPOSITION DE FACTURATION — ${fiche.id}`);
+  L.push(`Client : ${fiche.client||"—"}`);
+  if(fiche.adresse) L.push(`Adresse : ${fiche.adresse}`);
+  L.push(`Date d'intervention : ${dateFr(fiche.dateRdv)}`);
+  if(fiche.technicien) L.push(`Technicien : ${fiche.technicien}`);
+  L.push("");
+  L.push("DESCRIPTION DES PRESTATIONS");
+  if(presta.length) presta.forEach(p=>L.push(`- ${p.label}`));
+  else L.push("- (aucune prestation cochée sur la fiche)");
+  if(fiche.conclusion) { L.push(""); L.push(`Résumé de l'intervention : ${fiche.conclusion}`); }
+  L.push("");
+  L.push("DÉTAIL FACTURATION");
+  if(heures>0 && tarif>0) L.push(`Main d'œuvre : ${heures} h × ${euro(tarif)}/h = ${euro(heures*tarif)}`);
+  else L.push("Main d'œuvre : à compléter — temps passé ou tarif horaire non renseigné sur la fiche");
+  majLignes.forEach(m=>L.push(m));
+  L.push("");
+  L.push(`Sous-total HT : ${euro(montantHT)}`);
+  L.push(`TVA (${tva} %) : ${euro(montantTVA)}`);
+  L.push(`TOTAL TTC : ${euro(montantTTC)}`);
+  L.push("");
+  L.push("⚠️ À vérifier avant saisie dans Pennylane : matériel/fournitures, frais de déplacement, remise éventuelle — non inclus automatiquement.");
+  return L.join("\n");
+}
+
+function FacturationModal({ fiche, onClose, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [copied, setCopied] = useState(false);
+  const texte = buildFacturationTexte(fiche);
+  const copier = async () => {
+    try { await navigator.clipboard.writeText(texte); setCopied(true); setTimeout(()=>setCopied(false),2000); }
+    catch(e) { alert("Impossible de copier automatiquement — sélectionnez le texte manuellement."); }
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>💶 Proposition de facturation</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>À vérifier, puis copier pour saisie manuelle dans Pennylane.</div>
+        <textarea readOnly value={texte} rows={16}
+          style={{width:"100%",padding:"12px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12.5,outline:"none",fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",marginBottom:14,lineHeight:1.6}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Fermer</button>
+          <button onClick={copier} style={{flex:2,padding:"12px",background:copied?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{copied?"✓ Copié !":"📋 Copier le texte"}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function previewReport(fiche) {
@@ -1381,10 +1452,22 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
               <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"4/3",background:T.surface2}}>
                 <img src={p.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
                 <button onClick={()=>set("photos",f.photos.filter((_,j)=>j!==i))} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>×</button>
+                <button onClick={()=>{const np=[...f.photos];np[i]={...np[i],tag:np[i].tag==="avant"?"apres":np[i].tag==="apres"?null:"avant"};set("photos",np);}}
+                  title="Cliquez pour marquer Avant / Après"
+                  style={{position:"absolute",top:4,left:4,background:p.tag==="avant"?"#F59E0B":p.tag==="apres"?"#10B981":"rgba(0,0,0,0.6)",color:"#fff",border:"none",borderRadius:6,padding:"2px 7px",fontSize:9,fontWeight:800,cursor:"pointer",fontFamily:"inherit",letterSpacing:0.3}}>
+                  {p.tag==="avant"?"AVANT":p.tag==="apres"?"APRÈS":"Tag"}
+                </button>
+                <div style={{position:"absolute",bottom:4,left:4,right:4,display:"flex",justifyContent:"space-between"}}>
+                  <button onClick={()=>{if(i===0)return;const np=[...f.photos];[np[i-1],np[i]]=[np[i],np[i-1]];set("photos",np);}}
+                    style={{background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:i===0?"default":"pointer",fontSize:11,fontFamily:"inherit",opacity:i===0?0.25:1}}>‹</button>
+                  <button onClick={()=>{if(i===f.photos.length-1)return;const np=[...f.photos];[np[i+1],np[i]]=[np[i],np[i+1]];set("photos",np);}}
+                    style={{background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:i===f.photos.length-1?"default":"pointer",fontSize:11,fontFamily:"inherit",opacity:i===f.photos.length-1?0.25:1}}>›</button>
+                </div>
               </div>
             ))}
           </div>
         )}
+        {f.photos.some(p=>p.tag)&&<div style={{fontSize:11,color:T.textMuted,marginTop:8}}>💡 Les photos taguées Avant/Après seront regroupées et titrées dans le rapport PDF.</div>}
       </div>
 
       {/* ── SIGNATURES ── */}
@@ -2429,6 +2512,7 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
 function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
+  const [showFacturation, setShowFacturation] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
@@ -2444,6 +2528,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
   return (
     <div>
       {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)}/>}
+      {showFacturation&&<FacturationModal fiche={fiche} theme={theme} onClose={()=>setShowFacturation(false)}/>}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <code style={{fontSize:12,color:isRdv?"#3B82F6":"#0EA5E9",background:isRdv?"rgba(59,130,246,0.1)":"rgba(14,165,233,0.1)",border:`1px solid ${isRdv?"rgba(59,130,246,0.2)":"rgba(14,165,233,0.2)"}`,padding:"5px 12px",borderRadius:6,fontWeight:700}}>
@@ -2461,6 +2546,9 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           )}
           {!isRdv&&onCreateDevis&&(
             <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
+          )}
+          {!isRdv&&(
+            <button onClick={()=>setShowFacturation(true)} style={{background:"linear-gradient(135deg,#10B981,#0D9488)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💶 Proposition de facturation</button>
           )}
         </div>
       </div>
