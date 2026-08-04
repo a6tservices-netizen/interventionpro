@@ -26,6 +26,8 @@ const updatePosition = (nom, lat, lng) => set(ref(db, `positions/${nom}`), { lat
 const watchSocietes = (cb) => onValue(ref(db, "societes"), snap => cb(snap.val()||["A6T Services"]));
 const saveSocietes = (list) => set(ref(db, "societes"), sanitize(list));
 const watchTechniciens = (cb) => onValue(ref(db, "techniciens"), snap => cb(snap.val()||[]));
+const watchSousTraitants = (cb) => onValue(ref(db, "sousTraitants"), snap => cb(snap.val()||[]));
+const saveSousTraitants = (list) => set(ref(db, "sousTraitants"), sanitize(list));
 const saveTechniciens = (list) => set(ref(db, "techniciens"), sanitize(list));
 const saveClient = (c) => set(ref(db, `clients/${c.id}`), sanitize(c));
 const deleteClient = (id) => remove(ref(db, `clients/${id}`));
@@ -141,6 +143,16 @@ const PRESTATIONS = [
     resultats: ["Zone nettoyée","Eaux évacuées","Surface désinfectée","Assèchement réalisé","Intervention à poursuivre"],
   },
 ];
+// Mémorise le libellé d'origine de chaque catégorie (pour pouvoir "revenir à l'origine")
+PRESTATIONS.forEach(p=>{ p._origLabel = p.label; });
+// Applique des libellés personnalisés (venant de Firebase) directement sur les objets PRESTATIONS.
+// Comme tout le reste du code lit p.label depuis ces mêmes objets, la personnalisation
+// se répercute automatiquement partout (fiches, PDF, listes, agenda…) sans rien modifier ailleurs.
+function applyPrestationLabels(overrides={}) {
+  PRESTATIONS.forEach(p=>{ p.label = overrides?.[p.id] || p._origLabel; });
+}
+const watchPrestationLabels = (cb) => onValue(ref(db, "prestationLabels"), snap => cb(snap.val()||{}));
+const savePrestationLabel = (id, label) => set(ref(db, `prestationLabels/${id}`), (label||"").trim()||null);
 
 const RESPONSABILITES = [
   { id:"na", label:"Sans objet", icon:"—", color:"#64748B", desc:"—" },
@@ -705,6 +717,78 @@ function ficheManques(fiche) {
   if(!(fiche.photos||[]).length) m.push("Aucune photo");
   if(!fiche.tempsInterne?.trim()) m.push("Temps passé non renseigné");
   return m;
+}
+
+function buildSousTraitantTexte(fiche) {
+  const types = (fiche.typesIntervention||fiche.prestations||[]).map(x=>{
+    const id = typeof x==="object" ? x.id : x;
+    return PRESTATIONS.find(p=>p.id===id);
+  }).filter(Boolean);
+  const typesStr = types.length ? types.map(p=>`${p.icon} ${p.label}`).join(" — ") : "";
+  const locStr = formatLoc(fiche.loc);
+  return [
+    `🔧 Intervention à réaliser — ${fiche.id}`,
+    ``,
+    `Client : ${fiche.client||"—"}`,
+    fiche.adresse ? `Adresse : ${fiche.adresse}` : "",
+    locStr ? `Localisation : ${locStr}` : "",
+    fiche.tel ? `Téléphone client : ${fiche.tel}` : "",
+    `Date : ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`,
+    typesStr ? `Type : ${typesStr}` : "",
+    fiche.noteRdv ? `Note : ${fiche.noteRdv}` : "",
+    fiche.notesInternes ? `Détails : ${fiche.notesInternes}` : "",
+    ``,
+    `Merci de confirmer la prise en charge 🙏`,
+  ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
+}
+
+function envoyerAuNumero(num, msg) {
+  const clean = (num||"").replace(/[^0-9]/g,"");
+  window.open(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+}
+
+function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClose, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [nom, setNom] = useState("");
+  const [tel, setTel] = useState("");
+  const msg = buildSousTraitantTexte(fiche);
+  const envoyer = (num) => { envoyerAuNumero(num, msg); onClose(); };
+  const ajouterEtEnvoyer = () => {
+    if(!tel.trim()){ alert("Entrez au moins un numéro."); return; }
+    const next = [...sousTraitants, { nom: nom.trim()||tel.trim(), tel: tel.trim() }];
+    onSaveSousTraitants(next);
+    envoyer(tel.trim());
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:440,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>📤 Envoyer au sous-traitant</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Choisissez un sous-traitant enregistré, ou saisissez un nouveau numéro.</div>
+
+        {sousTraitants.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+            {sousTraitants.map((s,i)=>(
+              <button key={i} onClick={()=>envoyer(s.tel)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",padding:"10px 14px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span>{s.nom}</span>
+                <span style={{color:"#25D366",fontSize:12,fontWeight:700}}>🟢 {s.tel}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Nouveau numéro</div>
+        <input value={nom} onChange={e=>setNom(e.target.value)} placeholder="Nom (optionnel)"
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:8,boxSizing:"border-box"}}/>
+        <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="N° WhatsApp (33612345678)"
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:14,boxSizing:"border-box"}}/>
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+          <button onClick={ajouterEtEnvoyer} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#25D366,#128C7E)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>💾 Enregistrer &amp; envoyer</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
@@ -1576,7 +1660,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -1660,6 +1744,22 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
         ))}
       </div>
 
+      {/* Sous-traitants */}
+      <div style={card}>
+        <div style={head}>📤 Sous-traitants
+          <button onClick={()=>{const nom=window.prompt("Nom du sous-traitant :");if(!nom||!nom.trim())return;const tel=window.prompt("Numéro WhatsApp (33612345678) :");if(!tel||!tel.trim())return;onSaveSousTraitants([...sousTraitants,{nom:nom.trim(),tel:tel.trim()}]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+        </div>
+        {sousTraitants.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun sous-traitant enregistré — ils s'ajoutent aussi automatiquement depuis le bouton "Envoyer au sous-traitant" sur une fiche.</div>}
+        {sousTraitants.map((s,i)=>(
+          <div key={i} style={row(i===sousTraitants.length-1)}>
+            <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s.nom}</span>
+            <input key={s.nom+s.tel} defaultValue={s.tel} onBlur={e=>{if(e.target.value!==s.tel){const next=[...sousTraitants];next[i]={...next[i],tel:e.target.value};onSaveSousTraitants(next);}}} placeholder="N° WhatsApp (33612345678)"
+              style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            <button onClick={()=>{if(window.confirm(`Supprimer "${s.nom}" ?`))onSaveSousTraitants(sousTraitants.filter((_,j)=>j!==i));}} style={{...btn,color:"#EF4444"}}>✕</button>
+          </div>
+        ))}
+      </div>
+
       {/* Catalogue devis */}
       <div style={card}>
         <div style={head}>⚡ Prestations types des devis
@@ -1702,7 +1802,7 @@ const CHAMPS_CATS = [
   {key:"actions",icon:"🔨",label:"Action réalisée"},
   {key:"resultats",icon:"✅",label:"Résultat"},
 ];
-function ChampsEditor({ champs, onSave, theme }) {
+function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
   const isPreco = prestaId==="_global";
@@ -1732,6 +1832,15 @@ function ChampsEditor({ champs, onSave, theme }) {
         {PRESTATIONS.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
         <option value="_global">💡 Préconisations (toutes fiches)</option>
       </select>
+      {!isPreco&&meta&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"12px 16px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em"}}>Titre de cette catégorie</div>
+          <div style={{fontWeight:800,fontSize:14,color:T.text,flex:1}}>{meta.icon} {meta.label}</div>
+          {meta.label!==meta._origLabel&&<span style={{fontSize:10,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.14)",padding:"2px 8px",borderRadius:10}}>personnalisé</span>}
+          <button onClick={()=>{const v=window.prompt("Nouveau titre pour cette catégorie :",meta.label);if(v&&v.trim())onSavePrestationLabel(prestaId,v.trim());}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>✏️ Renommer</button>
+          {meta.label!==meta._origLabel&&<button onClick={()=>{if(window.confirm(`Revenir au titre d'origine "${meta._origLabel}" ?`))onSavePrestationLabel(prestaId,null);}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>↺ Origine</button>}
+        </div>
+      )}
       {cats.map(cat=>(
         <div key={cat.key} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
@@ -2509,10 +2618,11 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
 /* ═══════════════════════════════════════════
    DÉTAIL FICHE
 ═══════════════════════════════════════════ */
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
+  const [showSousTraitant, setShowSousTraitant] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
@@ -2529,6 +2639,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
     <div>
       {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)}/>}
       {showFacturation&&<FacturationModal fiche={fiche} theme={theme} onClose={()=>setShowFacturation(false)}/>}
+      {showSousTraitant&&<SousTraitantModal fiche={fiche} sousTraitants={sousTraitants} onSaveSousTraitants={onSaveSousTraitants||(()=>{})} theme={theme} onClose={()=>setShowSousTraitant(false)}/>}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <code style={{fontSize:12,color:isRdv?"#3B82F6":"#0EA5E9",background:isRdv?"rgba(59,130,246,0.1)":"rgba(14,165,233,0.1)",border:`1px solid ${isRdv?"rgba(59,130,246,0.2)":"rgba(14,165,233,0.2)"}`,padding:"5px 12px",borderRadius:6,fontWeight:700}}>
@@ -2539,6 +2650,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           <button onClick={onDelete} style={{background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"8px 12px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
           <button onClick={onEdit} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
           {onDuplicate&&<button onClick={onDuplicate} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📋 Dupliquer</button>}
+          <button onClick={()=>setShowSousTraitant(true)} style={{background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer au sous-traitant</button>
           {isRdv?(
             <button onClick={()=>onDemarrer(fiche)} style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>▶ Démarrer l'intervention</button>
           ):(
@@ -3214,6 +3326,8 @@ export default function App() {
   const [showMailImport, setShowMailImport] = useState(false);
   const [techTels, setTechTels] = useState({});
   const [techColors, setTechColors] = useState({});
+  const [sousTraitants, setSousTraitants] = useState([]);
+  const [prestaLabelsVersion, setPrestaLabelsVersion] = useState(0);
   const [champsCustom, setChampsCustom] = useState({});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
@@ -3266,12 +3380,14 @@ export default function App() {
     const unsub5 = watchLogos(data => setLogos(data));
     const unsubT = watchTechTels(data => setTechTels(data));
     const unsubTC = watchTechColors(data => setTechColors(data));
+    const unsubST = watchSousTraitants(data => setSousTraitants(data));
+    const unsubPL = watchPrestationLabels(data => { applyPrestationLabels(data); setPrestaLabelsVersion(v=>v+1); });
     const unsubCh = watchChamps(data => setChampsCustom(data));
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubCh(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); };
   },[]);
 
   const ajouterSociete = (nom) => {
@@ -3499,6 +3615,7 @@ export default function App() {
 
         {view==="detail"&&selected&&(
           <DetailFiche fiche={selected} theme={theme} techTels={techTels} onSaveTechTel={saveTechTel}
+            sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
@@ -3593,8 +3710,9 @@ export default function App() {
             )}
 
             {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
-            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} theme={theme}/>}
+            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme}/>}
             {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} techColors={techColors} logos={logos} champs={champsCustom}
+              sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
