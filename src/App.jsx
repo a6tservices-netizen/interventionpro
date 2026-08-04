@@ -1986,8 +1986,8 @@ function VoiceImport({ onExtracted, onCancel, theme }) {
     setTranscribing(true);
     try {
       const r = await fetch("/api/transcribe", { method:"POST", headers:{"Content-Type": blob.type||"audio/webm"}, body: blob });
-      if(!r.ok) throw new Error("API "+r.status);
-      const data = await r.json();
+      const data = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(data?.error || ("API "+r.status));
       setTexte(p => (p ? p+" " : "") + (data.text||"").trim());
     } catch(e) { setErreur("Erreur de transcription : "+(e?.message||e)); }
     setTranscribing(false);
