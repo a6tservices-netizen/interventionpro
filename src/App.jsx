@@ -3622,6 +3622,11 @@ export default function App() {
           const title = payload.notification?.title || payload.data?.title || "InterventionPro";
           const body = payload.notification?.body || payload.data?.body || "";
           showToast(`🔔 ${title} — ${body}`);
+          // Sans ça, une notification reçue app ouverte reste silencieuse (juste le bandeau ci-dessus).
+          // new Notification(...) déclenche le vrai son/vibration du téléphone, comme les autres apps.
+          if ("Notification" in window && Notification.permission === "granted") {
+            try { new Notification(title, { body, icon: "/icon-192.png" }); } catch(e) {}
+          }
         });
       } catch (e) { console.error("onMessage error", e); }
     })();
