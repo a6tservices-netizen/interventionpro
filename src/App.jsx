@@ -1944,6 +1944,143 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
 /* ═══════════════════════════════════════════
    IMPORT MAIL → RDV (IA)
 ═══════════════════════════════════════════ */
+function VoiceImport({ onExtracted, onCancel, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [mode, setMode] = useState("rdv"); // "rdv" | "fiche"
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [texte, setTexte] = useState("");
+  const [seconds, setSeconds] = useState(0);
+  const [erreur, setErreur] = useState("");
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+
+  const demarrer = async () => {
+    setErreur("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ["audio/mp4","audio/webm","audio/webm;codecs=opus"].find(t=>window.MediaRecorder?.isTypeSupported?.(t)) || "";
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = e => { if (e.data.size>0) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t=>t.stop());
+        clearInterval(timerRef.current);
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        transcrire(blob);
+      };
+      recorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+      setSeconds(0);
+      timerRef.current = setInterval(()=>setSeconds(s=>s+1), 1000);
+    } catch (e) {
+      setErreur("Impossible d'accéder au micro — vérifiez que vous avez autorisé l'accès au micro pour ce site.");
+    }
+  };
+  const arreter = () => { recorderRef.current?.stop(); setRecording(false); };
+
+  const transcrire = async (blob) => {
+    setTranscribing(true);
+    try {
+      const r = await fetch("/api/transcribe", { method:"POST", headers:{"Content-Type": blob.type||"audio/webm"}, body: blob });
+      if(!r.ok) throw new Error("API "+r.status);
+      const data = await r.json();
+      setTexte(p => (p ? p+" " : "") + (data.text||"").trim());
+    } catch(e) { setErreur("Erreur de transcription : "+(e?.message||e)); }
+    setTranscribing(false);
+  };
+
+  const analyser = async () => {
+    if(!texte.trim()){ setErreur("Rien à analyser — dictez d'abord un message."); return; }
+    setBusy(true); setErreur("");
+    try {
+      let prompt, content;
+      if (mode === "rdv") {
+        prompt = `Tu extrais les informations d'un message dicté à l'oral par un technicien de plomberie/assainissement, pour créer un rendez-vous. Date du jour : ${today()}.
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide si l'info est absente) :
+{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","note":"résumé en 1-2 phrases du problème ou de la demande"}`;
+      } else {
+        const listePrestations = PRESTATIONS.map(p=>`${p.id} = ${p.label}`).join(" / ");
+        prompt = `Tu extrais les informations d'un compte-rendu d'intervention dicté à l'oral par un technicien de plomberie/assainissement, juste après (ou pendant) une intervention chez un client, pour remplir une fiche d'intervention.
+Catégories de prestations disponibles (utilise uniquement leur "id" exact, une ou plusieurs si mentionnées) : ${listePrestations}
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide ou tableau vide si l'info est absente) :
+{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","prestations":["id des catégories concernées, ex: debouchage"],"statut":"termine si le travail dicté semble terminé/réalisé, a_prevoir si c'est un diagnostic avec travaux à prévoir/chiffrer","conclusion":"résumé rédigé et complet du constat, du travail réalisé et du résultat, en 2 à 4 phrases, à partir de ce qui a été dicté","note":"la même idée que conclusion mais en 1 phrase courte"}`;
+      }
+      content = prompt + `\n\nMessage dicté :\n${texte.trim()}`;
+      const r = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content}] })
+      });
+      if(!r.ok) throw new Error("API "+r.status);
+      const data = await r.json();
+      const raw = (data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+      const j = JSON.parse(raw);
+      if (mode === "rdv") {
+        onExtracted("rdv", { client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
+          dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"" });
+      } else {
+        const idsValides = (j.prestations||[]).filter(id=>PRESTATIONS.some(p=>p.id===id));
+        onExtracted("fiche", {
+          client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
+          status: j.statut==="a_prevoir" ? "a_prevoir" : "termine",
+          conclusion: j.conclusion||"",
+          prestations: idsValides.map(id=>({id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:j.note||""})),
+        });
+      }
+    } catch(e) { setErreur("Erreur lors de l'analyse : "+(e?.message||e)); }
+    setBusy(false);
+  };
+
+  const mmss = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🎙️ Créer depuis un mémo vocal</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Dictez ce qu'il faut retenir — l'IA remplit le formulaire pour vous.</div>
+
+        <div style={{display:"flex",gap:6,marginBottom:14,background:T.surface2,borderRadius:10,padding:4}}>
+          <button onClick={()=>setMode("rdv")} disabled={recording||transcribing}
+            style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
+              background:mode==="rdv"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="rdv"?"#fff":T.textMuted}}>📅 RDV rapide</button>
+          <button onClick={()=>setMode("fiche")} disabled={recording||transcribing}
+            style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
+              background:mode==="fiche"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="fiche"?"#fff":T.textMuted}}>🧾 Fiche complète</button>
+        </div>
+        <div style={{fontSize:11.5,color:T.textMuted,marginTop:-8,marginBottom:14}}>
+          {mode==="rdv" ? "Pour prendre un rendez-vous : client, adresse, date/heure." : "Pour un compte-rendu après intervention : client, prestations concernées, constat et résultat."}
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"18px 0",marginBottom:14,background:T.surface2,borderRadius:12}}>
+          <button onClick={recording?arreter:demarrer} disabled={transcribing}
+            style={{width:72,height:72,borderRadius:"50%",border:"none",cursor:transcribing?"wait":"pointer",fontSize:28,
+              background: recording ? "linear-gradient(135deg,#EF4444,#DC2626)" : "linear-gradient(135deg,#0EA5E9,#6366F1)",
+              boxShadow: recording ? "0 0 0 8px rgba(239,68,68,0.15)" : "0 4px 14px rgba(14,165,233,0.3)",
+              color:"#fff", transition:"box-shadow .2s"}}>
+            {recording ? "⏹️" : "🎙️"}
+          </button>
+          <div style={{fontSize:12.5,fontWeight:700,color:recording?"#EF4444":T.textMuted}}>
+            {transcribing ? "⏳ Transcription en cours…" : recording ? `● Enregistrement — ${mmss(seconds)}` : "Appuyez pour dicter"}
+          </div>
+        </div>
+
+        {erreur && <div style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:12}}>{erreur}</div>}
+
+        <textarea value={texte} onChange={e=>setTexte(e.target.value)} rows={6} placeholder="Le texte dicté apparaît ici — vous pouvez le corriger avant d'analyser…"
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:14,lineHeight:1.5}}/>
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onCancel} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+          <button onClick={analyser} disabled={busy||transcribing||recording} style={{flex:2,padding:"12px",background:busy?"rgba(14,165,233,0.3)":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>{busy?"⏳ Analyse en cours…":"✨ Analyser et pré-remplir"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MailImport({ onExtracted, onCancel, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [texte, setTexte] = useState("");
@@ -3401,6 +3538,7 @@ export default function App() {
   const [showRdvForm, setShowRdvForm] = useState(false);
   const [rdvPrefill, setRdvPrefill] = useState(null);
   const [showMailImport, setShowMailImport] = useState(false);
+  const [showVoiceImport, setShowVoiceImport] = useState(false);
   const [techTels, setTechTels] = useState({});
   const [techColors, setTechColors] = useState({});
   const [sousTraitants, setSousTraitants] = useState([]);
@@ -3663,6 +3801,14 @@ export default function App() {
     <MailImport theme={theme} onCancel={()=>setShowMailImport(false)}
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
   );
+  const voiceImportModal = showVoiceImport && (
+    <VoiceImport theme={theme} onCancel={()=>setShowVoiceImport(false)}
+      onExtracted={(mode,data)=>{
+        setShowVoiceImport(false);
+        if (mode==="rdv") { setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }
+        else { setEditing({ technicien:"", ...data }); setView("form"); }
+      }}/>
+  );
 
   // ── Sécurité : connexion obligatoire ──
   if(!authReady) return (
@@ -3693,6 +3839,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
       {mailImportModal}
+      {voiceImportModal}
       {showProfil&&<ProfilModal techniciens={techniciens} techNom={techNom} onSaveTechNom={n=>{setTechNom(n);localStorage.setItem("techNom",n);}} theme={theme} onClose={()=>setShowProfil(false)}/>}
 
       {/* HEADER */}
@@ -3838,6 +3985,7 @@ export default function App() {
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
+                <button onClick={()=>setShowVoiceImport(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>🎙️ Mémo vocal</button>
               </div>
             )}
             {nav==="agenda"&&search.trim()&&(
