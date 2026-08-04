@@ -3,10 +3,6 @@
 //
 // Nécessite la variable d'environnement Vercel OPENAI_API_KEY.
 
-export const config = {
-  api: { bodyParser: false },
-};
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Méthode non autorisée" });
@@ -16,10 +12,17 @@ export default async function handler(req, res) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error("OPENAI_API_KEY manquante");
 
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const buffer = Buffer.concat(chunks);
-    if (!buffer.length) throw new Error("Aucun audio reçu");
+    let buffer;
+    if (Buffer.isBuffer(req.body)) {
+      buffer = req.body;
+    } else if (typeof req.body === "string" && req.body.length) {
+      buffer = Buffer.from(req.body, "binary");
+    } else {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      buffer = Buffer.concat(chunks);
+    }
+    if (!buffer || !buffer.length) throw new Error("Aucun audio reçu (corps de requête vide)");
 
     const contentType = req.headers["content-type"] || "audio/webm";
     const ext = contentType.includes("mp4") ? "mp4" : contentType.includes("wav") ? "wav" : "webm";
