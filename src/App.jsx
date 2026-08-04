@@ -162,10 +162,11 @@ const MATERIELS = ["Furet électrique","Camion hydrocureur","Caméra d'inspectio
 const SOCIETES_DEFAUT = ["A6T Services"];
 
 const STATUTS = {
-  planifie: { label:"Planifié",  color:"#3B82F6", bg:"rgba(59,130,246,0.12)" },
-  en_cours: { label:"En cours", color:"#F59E0B", bg:"rgba(245,158,11,0.12)" },
-  termine:  { label:"Terminé",  color:"#10B981", bg:"rgba(16,185,129,0.12)" },
-  annule:   { label:"Annulé",   color:"#EF4444", bg:"rgba(239,68,68,0.12)" },
+  planifie:  { label:"Planifié",         color:"#3B82F6", bg:"rgba(59,130,246,0.12)" },
+  en_cours:  { label:"En cours",         color:"#F59E0B", bg:"rgba(245,158,11,0.12)" },
+  a_prevoir: { label:"Retour à prévoir", color:"#F97316", bg:"rgba(249,115,22,0.12)" },
+  termine:   { label:"Terminé",          color:"#10B981", bg:"rgba(16,185,129,0.12)" },
+  annule:    { label:"Annulé",           color:"#EF4444", bg:"rgba(239,68,68,0.12)" },
 };
 
 // Une fiche "à programmer" = un RDV enregistré sans date
@@ -518,8 +519,8 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
 .preco-list li{font-size:11px;font-weight:600;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;padding:6px 10px}
 .preco-list li::before{content:"▸ ";opacity:.6}
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:160px}
-.photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:160px}
+.photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:160px;background:#f1f5f9;display:flex;align-items:center;justify-content:center}
+.photo-item img{width:100%;height:100%;object-fit:contain;display:block;max-height:160px}
 .sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
 .sig-box{border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;min-height:100px;background:#fafafa}
 .sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#94a3b8;margin-bottom:12px}
@@ -551,7 +552,7 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
       <div class="ref-id">${fiche.id}</div>
       <div class="ref-row"><span class="ic">📅</span><div><div class="rl">Date</div><div class="rv">${dateFr(fiche.dateRdv)}</div></div></div>
       ${fiche.heureRdv?`<div class="ref-row"><span class="ic">🕐</span><div><div class="rl">Heure</div><div class="rv">${fiche.heureRdv}</div></div></div>`:""}
-      <div class="ref-status"><span class="sl">Statut</span><span class="status-badge">✓ ${status.label}</span></div>
+      <div class="ref-status"><span class="sl">Statut</span><span class="status-badge">${fiche.status==="a_prevoir"?"⚠":fiche.status==="annule"?"✕":"✓"} ${status.label}</span></div>
       ${isUrgent?'<span class="urgent-badge">🚨 URGENCE</span>':""}
     </div>
   </div>
@@ -731,8 +732,8 @@ td{padding:9px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
 .totaux .ttc{background:#0a1628;color:#fff;border-radius:8px;font-weight:800;font-size:14px;padding:10px 14px;margin-top:4px}
 .notes{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;font-size:12px;color:#334155;margin-top:14px}
 .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.pitem{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:150px}
-.pitem img{width:100%;height:100%;object-fit:cover}
+.pitem{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:150px;background:#f1f5f9;display:flex;align-items:center;justify-content:center}
+.pitem img{width:100%;height:100%;object-fit:contain}
 .footer{margin-top:24px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
@@ -2158,11 +2159,15 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
   const e = aProg ? "prog" : (etat || (isRdv?"rdv":"complete"));
   const COUL = { rdv:"#3B82F6", complete:"#10B981", prog:"#64748B" };
   const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"}, prog:{t:"📌 À planifier",c:"#64748B"} };
+  const badgeInfo = (e==="complete" && fiche.status==="a_prevoir") ? {t:"⚠️ Retour à prévoir",c:"#F97316"}
+    : (e==="complete" && fiche.status==="annule") ? {t:"✕ Annulée",c:"#EF4444"}
+    : BADGE[e];
   const accent = COUL[e];
   const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens) : null;
   return(
     <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
-      <div style={{textAlign:"center",minWidth:50,flexShrink:0}}>
+      <div style={{textAlign:"center",minWidth:58,flexShrink:0}}>
+        {fiche.dateRdv&&<div style={{fontSize:10,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
         <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color)}}>{aProg?"📌 À planifier":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`)}</div>
         {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
@@ -2171,7 +2176,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
-          <span style={{fontSize:9.5,fontWeight:800,color:BADGE[e].c,background:BADGE[e].c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{BADGE[e].t}</span>
+          <span style={{fontSize:9.5,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
         </div>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
           <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:4}}>
@@ -2194,6 +2199,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
             👤 {fiche.technicien}
           </span>
         )}
+        {fiche.typesIntervention?.length>0&&(
           <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
             {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
           </div>
