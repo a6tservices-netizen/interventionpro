@@ -3379,6 +3379,8 @@ export default function App() {
   const [fiches, setFiches] = useState(()=>lsGet("cache_fiches")||[]);
   const [societes, setSocietes] = useState(["A6T Services"]);
   const [techniciens, setTechniciens] = useState([]);
+  const [societesLoaded, setSocietesLoaded] = useState(false);
+  const [techniciensLoaded, setTechniciensLoaded] = useState(false);
   const [logos, setLogos] = useState({});
   const [clients, setClients] = useState([]);
   const [devisList, setDevisList] = useState([]);
@@ -3452,8 +3454,8 @@ export default function App() {
     // Firebase — écoute en temps réel
     const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); lsSet("cache_fiches", data.map(stripLourd)); });
     const unsub2 = watchPositions(data => setPositions(data));
-    const unsub3 = watchSocietes(data => setSocietes(data));
-    const unsub4 = watchTechniciens(data => setTechniciens(data));
+    const unsub3 = watchSocietes(data => { setSocietes(data); setSocietesLoaded(true); });
+    const unsub4 = watchTechniciens(data => { setTechniciens(data); setTechniciensLoaded(true); });
     const unsub5 = watchLogos(data => setLogos(data));
     const unsubT = watchTechTels(data => setTechTels(data));
     const unsubTC = watchTechColors(data => setTechColors(data));
@@ -3468,10 +3470,12 @@ export default function App() {
   },[]);
 
   const ajouterSociete = (nom) => {
+    if (!societesLoaded) { console.warn("Liste sociétés pas encore chargée — ajout ignoré pour éviter d'écraser les données."); return; }
     const next = [...new Set([...societes, nom])];
     setSocietes(next); saveSocietes(next); // Firebase
   };
   const ajouterTechnicien = (nom) => {
+    if (!techniciensLoaded) { console.warn("Liste techniciens pas encore chargée — ajout ignoré pour éviter d'écraser les données."); return; }
     const next = [...new Set([...techniciens, nom])];
     setTechniciens(next); saveTechniciens(next); // Firebase
   };
