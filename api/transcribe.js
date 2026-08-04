@@ -10,7 +10,13 @@ export default async function handler(req, res) {
   }
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY manquante");
+    if (!apiKey) throw new Error("OPENAI_API_KEY manquante côté serveur");
+    if (apiKey.startsWith("sk-ant-")) {
+      throw new Error(`DIAGNOSTIC: le serveur a encore chargé la clé ANTHROPIC (commence par "sk-ant-") dans la variable OPENAI_API_KEY, pas la clé OpenAI. La modification sur Vercel n'a pas pris effet côté serveur.`);
+    }
+    if (!apiKey.startsWith("sk-")) {
+      throw new Error(`DIAGNOSTIC: valeur inattendue chargée pour OPENAI_API_KEY, commence par "${apiKey.slice(0,8)}"`);
+    }
 
     let buffer;
     if (Buffer.isBuffer(req.body)) {
