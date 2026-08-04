@@ -39,6 +39,8 @@ const watchContrats = (cb) => onValue(ref(db, "contrats"), snap => { const d=sna
 const logoKey = (nom) => (nom||"").replace(/[.#$/\[\]]/g, "_");
 const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}));
 const watchTechTels = (cb) => onValue(ref(db, "techTels"), snap => cb(snap.val()||{}));
+const watchTechColors = (cb) => onValue(ref(db, "techColors"), snap => cb(snap.val()||{}));
+const saveTechColor = (nom, couleur) => set(ref(db, `techColors/${logoKey(nom)}`), couleur||null);
 const watchChamps = (cb) => onValue(ref(db, "champs"), snap => cb(snap.val()||{}));
 const saveChamps = (prestaId, cat, liste) => set(ref(db, `champs/${prestaId}/${cat}`), liste ? JSON.parse(JSON.stringify(liste)) : null);
 const saveTechTel = (nom, tel) => set(ref(db, `techTels/${logoKey(nom)}`), (tel||"").trim()||null);
@@ -172,10 +174,12 @@ const STATUTS = {
 // Une fiche "à programmer" = un RDV enregistré sans date
 const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
 
-// Palette couleurs techniciens (agenda style Joynit)
-const TECH_COLORS = ["#0EA5E9","#10B981","#F97316","#A78BFA","#EC4899","#F59E0B","#06B6D4","#EF4444","#8B5CF6","#14B8A6"];
-const techColor = (nom, techniciens=[]) => {
+// Palette couleurs techniciens (agenda style Joynit) — utilisée seulement si aucune couleur n'a été choisie manuellement
+const TECH_COLORS = ["#0EA5E9","#8B5CF6","#EC4899","#06B6D4","#F97316","#A78BFA","#F59E0B","#EF4444","#14B8A6","#6366F1"];
+const techColor = (nom, techniciens=[], techColors={}) => {
   if(!nom) return "#64748B";
+  const custom = techColors[logoKey(nom)];
+  if(custom) return custom;
   const idx = techniciens.indexOf(nom);
   return TECH_COLORS[idx>=0 ? idx%TECH_COLORS.length : Math.abs(nom.split("").reduce((a,c)=>a+c.charCodeAt(0),0))%TECH_COLORS.length];
 };
@@ -1489,7 +1493,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, logos, champs, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -1556,16 +1560,19 @@ function AdminView({ societes, techniciens, techTels, logos, champs, onSaveSocie
 
       {/* Techniciens + numéros */}
       <div style={card}>
-        <div style={head}>👤 Techniciens & numéros WhatsApp
+        <div style={head}>👤 Techniciens, couleurs & numéros WhatsApp
           <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
         </div>
         {techniciens.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun technicien — ils s'ajoutent aussi automatiquement à la 1ʳᵉ fiche.</div>}
         {techniciens.map((t,i)=>(
           <div key={t} style={row(i===techniciens.length-1)}>
             <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{t}</span>
+            <input type="color" title="Couleur de l'agenda" value={techColor(t,techniciens,techColors)}
+              onChange={e=>onSaveTechColor(t,e.target.value)}
+              style={{width:34,height:30,padding:0,border:`1px solid ${T.border}`,borderRadius:6,background:"none",cursor:"pointer"}}/>
             <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
               style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-            <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");}}} style={{...btn,color:"#EF4444"}}>✕</button>
+            <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
       </div>
@@ -2152,7 +2159,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 /* ═══════════════════════════════════════════
    AGENDA
 ═══════════════════════════════════════════ */
-function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
+function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], techColors={} }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
   const aProg = estAProgrammer(fiche);
@@ -2163,7 +2170,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
     : (e==="complete" && fiche.status==="annule") ? {t:"✕ Annulée",c:"#EF4444"}
     : BADGE[e];
   const accent = COUL[e];
-  const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens) : null;
+  const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens, techColors) : null;
   return(
     <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:58,flexShrink:0}}>
@@ -2215,7 +2222,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[] }) {
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[] }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[], techColors={} }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   const [selDay, setSelDay] = useState(todayStr);
@@ -2277,7 +2284,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
               <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase"}}>{jours[i]}</div>
               <div style={{fontSize:16,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
               <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",minHeight:6}}>
-                {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:f.technicien?techColor(f.technicien,techniciens):colorOf(f),display:"inline-block"}}/>)}
+                {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:f.technicien?techColor(f.technicien,techniciens,techColors):colorOf(f),display:"inline-block"}}/>)}
               </div>
               {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:isSel?"#0EA5E9":T.textMuted}}>{evts.length}</div>}
             </div>
@@ -2290,7 +2297,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14,justifyContent:"center"}}>
           {techniciens.filter(t=>fiches.some(f=>f.technicien===t)).map(t=>(
             <span key={t} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.text,fontWeight:600}}>
-              <span style={{width:10,height:10,borderRadius:"50%",background:techColor(t,techniciens),display:"inline-block"}}/>
+              <span style={{width:10,height:10,borderRadius:"50%",background:techColor(t,techniciens,techColors),display:"inline-block"}}/>
               {t}
             </span>
           ))}
@@ -2315,7 +2322,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
       </div>
       {dayFiches.length===0
         ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter ➕":""}</div>
-        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens}/>)}
+        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors}/>)}
 
       {/* Sans date */}
       {sansDate.length>0&&(
@@ -2327,7 +2334,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
           </div>
           {sansDate.map(fiche=>(
             <div key={fiche.id}>
-              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens}/>
+              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors}/>
               {onProgrammer&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,margin:"-2px 0 12px",paddingLeft:6}}>
                   <span style={{fontSize:12,color:T.textMuted,fontWeight:600}}>📅 Programmer :</span>
@@ -3118,6 +3125,7 @@ export default function App() {
   const [rdvPrefill, setRdvPrefill] = useState(null);
   const [showMailImport, setShowMailImport] = useState(false);
   const [techTels, setTechTels] = useState({});
+  const [techColors, setTechColors] = useState({});
   const [champsCustom, setChampsCustom] = useState({});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
@@ -3169,12 +3177,13 @@ export default function App() {
     const unsub4 = watchTechniciens(data => setTechniciens(data));
     const unsub5 = watchLogos(data => setLogos(data));
     const unsubT = watchTechTels(data => setTechTels(data));
+    const unsubTC = watchTechColors(data => setTechColors(data));
     const unsubCh = watchChamps(data => setChampsCustom(data));
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubCh(); };
   },[]);
 
   const ajouterSociete = (nom) => {
@@ -3497,10 +3506,10 @@ export default function App() {
 
             {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
             {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} theme={theme}/>}
-            {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} logos={logos} champs={champsCustom}
+            {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} techColors={techColors} logos={logos} champs={champsCustom}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
-              onSaveTechTel={saveTechTel} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
+              onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} theme={theme}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
@@ -3517,11 +3526,11 @@ export default function App() {
                 {filtered.length===0
                   ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} »</div>
                   : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
-                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens}/>
+                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors}/>
                     ))}
               </div>
             )}
-            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} techniciens={techniciens} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
