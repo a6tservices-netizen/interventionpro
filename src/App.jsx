@@ -3609,6 +3609,25 @@ export default function App() {
     return r;
   },[fiches,search,filterStatus]);
 
+  // Notifications reçues pendant que l'app est ouverte au premier plan
+  // (le service worker ne gère que les notifications reçues quand l'app est en arrière-plan/fermée)
+  useEffect(() => {
+    let unsub;
+    (async () => {
+      try {
+        const supported = await fcmIsSupported();
+        if (!supported) return;
+        const messaging = getMessaging(app);
+        unsub = onMessage(messaging, (payload) => {
+          const title = payload.notification?.title || payload.data?.title || "InterventionPro";
+          const body = payload.notification?.body || payload.data?.body || "";
+          showToast(`🔔 ${title} — ${body}`);
+        });
+      } catch (e) { console.error("onMessage error", e); }
+    })();
+    return () => { if (unsub) unsub(); };
+  }, []);
+
   // Géolocalisation — envoie la position toutes les 2 min via Firebase
   useEffect(() => {
     if (!navigator.geolocation) return;
