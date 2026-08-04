@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
 ═══════════════════════════════════════════ */
@@ -17,6 +18,39 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+// Clé VAPID publique — générée dans Firebase Console > Paramètres > Cloud Messaging.
+// Elle n'est pas secrète (contrairement à la clé de compte de service), elle sert juste
+// à autoriser ce site à demander des abonnements de notification.
+const VAPID_KEY = "BJcB1a-GjltzN9T1dA97q8RDY5vf36sXYDY9Q6xDRWY6oPPk5z5dYKwf8e3CpHo9MHBnc55vih5UWw__rAqWl1g";
+const saveNotifToken = (nom, token) => set(ref(db, `fcmTokens/${logoKey(nom)}`), token || null);
+const watchNotifLog = (ficheId, cb) => onValue(ref(db, `fiches/${ficheId}/notif`), snap => cb(snap.val()||null));
+async function initNotifications(nom) {
+  try {
+    if (!("Notification" in window)) return { ok:false, reason:"unsupported" };
+    const supported = await fcmIsSupported();
+    if (!supported) return { ok:false, reason:"unsupported" };
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return { ok:false, reason:"denied" };
+    const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return { ok:false, reason:"no-token" };
+    await saveNotifToken(nom, token);
+    return { ok:true, token };
+  } catch (e) {
+    console.error("initNotifications error", e);
+    return { ok:false, reason:"error", error:String(e) };
+  }
+}
+async function envoyerNotification(technicien, titre, corps, ficheId) {
+  try {
+    await fetch("/api/send-notification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ technicien, titre, corps, ficheId }),
+    });
+  } catch (e) { console.error("envoyerNotification error", e); }
+}
 const sanitize = (o) => JSON.parse(JSON.stringify(o ?? null));
 const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), sanitize(fiche));
 const deleteFiche = (id) => remove(ref(db, `fiches/${id}`));
@@ -745,6 +779,47 @@ function buildSousTraitantTexte(fiche) {
 function envoyerAuNumero(num, msg) {
   const clean = (num||"").replace(/[^0-9]/g,"");
   window.open(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+}
+
+function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [nom, setNom] = useState(techNom||"");
+  const [statut, setStatut] = useState(null); // null | "loading" | "ok" | "denied" | "unsupported" | "error"
+  const activer = async () => {
+    if(!nom.trim()){ alert("Choisissez d'abord votre nom."); return; }
+    onSaveTechNom(nom.trim());
+    setStatut("loading");
+    const res = await initNotifications(nom.trim());
+    if(res.ok) setStatut("ok");
+    else if(res.reason==="denied") setStatut("denied");
+    else if(res.reason==="unsupported") setStatut("unsupported");
+    else setStatut("error");
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:420,maxWidth:"100%"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>👤 Cet appareil</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Indiquez qui utilise ce téléphone pour recevoir vos notifications et votre position sur la carte.</div>
+
+        <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Votre nom</div>
+        <select value={nom} onChange={e=>setNom(e.target.value)}
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:16,boxSizing:"border-box",cursor:"pointer"}}>
+          <option value="">— Choisir —</option>
+          {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+
+        {statut==="ok"&&<div style={{fontSize:12.5,color:"#10B981",fontWeight:700,marginBottom:12}}>✓ Notifications activées sur cet appareil.</div>}
+        {statut==="denied"&&<div style={{fontSize:12.5,color:"#EF4444",fontWeight:700,marginBottom:12}}>✕ Notifications refusées — autorisez-les dans les réglages de votre téléphone/navigateur pour ce site, puis réessayez.</div>}
+        {statut==="unsupported"&&<div style={{fontSize:12.5,color:"#F59E0B",fontWeight:700,marginBottom:12}}>⚠️ Notifications non disponibles sur cet appareil/navigateur (sur iPhone : installez l'app sur l'écran d'accueil d'abord, voir "Partager → Sur l'écran d'accueil").</div>}
+        {statut==="error"&&<div style={{fontSize:12.5,color:"#EF4444",fontWeight:700,marginBottom:12}}>✕ Une erreur est survenue. Réessayez.</div>}
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Fermer</button>
+          <button onClick={activer} disabled={statut==="loading"} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit",opacity:statut==="loading"?0.6:1}}>{statut==="loading"?"…":"🔔 Activer les notifications"}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClose, theme }) {
@@ -3327,6 +3402,8 @@ export default function App() {
   const [techTels, setTechTels] = useState({});
   const [techColors, setTechColors] = useState({});
   const [sousTraitants, setSousTraitants] = useState([]);
+  const [techNom, setTechNom] = useState(()=>localStorage.getItem("techNom")||"");
+  const [showProfil, setShowProfil] = useState(false);
   const [prestaLabelsVersion, setPrestaLabelsVersion] = useState(0);
   const [champsCustom, setChampsCustom] = useState({});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
@@ -3427,6 +3504,10 @@ export default function App() {
     try {
       if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
       if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
+      const prev = fiches.find(x=>x.id===fiche.id);
+      if (fiche.technicien?.trim() && fiche.technicien.trim()!==prev?.technicien) {
+        envoyerNotification(fiche.technicien.trim(), "🔧 Intervention assignée", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
+      }
     } catch(e) { console.error(e); }
     setSelected(fiche); setView("detail"); showToast("✓ Fiche enregistrée");
   };
@@ -3442,6 +3523,10 @@ export default function App() {
     }
     saveFiche(rdv); // Firebase
     if (rdv.technicien?.trim() && !techniciens.includes(rdv.technicien.trim())) ajouterTechnicien(rdv.technicien.trim());
+    const prevRdv = fiches.find(x=>x.id===rdv.id);
+    if (rdv.technicien?.trim() && rdv.technicien.trim()!==prevRdv?.technicien) {
+      envoyerNotification(rdv.technicien.trim(), "📅 Nouveau RDV assigné", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}`, rdv.id);
+    }
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
   };
 
@@ -3527,16 +3612,16 @@ export default function App() {
   // Géolocalisation — envoie la position toutes les 2 min via Firebase
   useEffect(() => {
     if (!navigator.geolocation) return;
-    const techNom = localStorage.getItem("techNom") || "Technicien";
+    const nomPourGeoloc = techNom || "Technicien";
     const sendPos = () => {
       navigator.geolocation.getCurrentPosition(pos => {
-        updatePosition(techNom, pos.coords.latitude, pos.coords.longitude);
+        updatePosition(nomPourGeoloc, pos.coords.latitude, pos.coords.longitude);
       }, null, { enableHighAccuracy: true });
     };
     sendPos();
     const interval = setInterval(sendPos, 120000);
     return () => clearInterval(interval);
-  }, []);
+  }, [techNom]);
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
   const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
@@ -3580,6 +3665,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
       {mailImportModal}
+      {showProfil&&<ProfilModal techniciens={techniciens} techNom={techNom} onSaveTechNom={n=>{setTechNom(n);localStorage.setItem("techNom",n);}} theme={theme} onClose={()=>setShowProfil(false)}/>}
 
       {/* HEADER */}
       <header style={{background:T.surface,backdropFilter:"blur(12px)",borderBottom:`1px solid ${T.border}`,padding:"0 16px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:300,boxShadow:theme!=="dark"?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
@@ -3587,6 +3673,10 @@ export default function App() {
         <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"0 4px 14px rgba(14,165,233,0.3)",flexShrink:0}}>🔧</div>
 
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <button onClick={()=>setShowProfil(true)} title="Cet appareil / Notifications" style={{position:"relative",padding:"7px 10px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>
+            🔔
+            {!techNom&&<span style={{position:"absolute",top:-3,right:-3,width:9,height:9,borderRadius:"50%",background:"#EF4444",border:`1.5px solid ${T.surface}`}}/>}
+          </button>
           <button onClick={()=>setShowRdvForm(true)} style={{padding:"7px 10px",background:"none",border:`1px solid #3B82F6`,borderRadius:8,color:"#3B82F6",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📅</button>
           <button onClick={()=>{setEditing(null);setView("form");}} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(14,165,233,0.25)"}}>
             + Nouvelle
