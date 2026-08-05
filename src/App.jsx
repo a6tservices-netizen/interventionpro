@@ -1944,7 +1944,7 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
 /* ═══════════════════════════════════════════
    IMPORT MAIL → RDV (IA)
 ═══════════════════════════════════════════ */
-function VoiceImport({ onExtracted, onCancel, theme }) {
+function VoiceImport({ onExtracted, onCancel, theme, techniciens }) {
   const T = THEMES[theme] || THEMES.dark;
   const [mode, setMode] = useState("rdv"); // "rdv" | "fiche"
   const [recording, setRecording] = useState(false);
@@ -1998,35 +1998,67 @@ function VoiceImport({ onExtracted, onCancel, theme }) {
     setBusy(true); setErreur("");
     try {
       let prompt, content;
+      const listeTechniciens = (techniciens||[]).join(", ");
+      const consigneTechnicien = listeTechniciens
+        ? `Techniciens connus (fais correspondre le prénom dicté à l'un d'eux, même approximatif ou mal transcrit — ex. "Ramzi" ou "Ramzy" doivent correspondre au même nom si présent dans la liste ; utilise EXACTEMENT l'orthographe de la liste ; laisse vide si aucun nom de la liste ne correspond) : ${listeTechniciens}.`
+        : "";
       if (mode === "rdv") {
         prompt = `Tu extrais les informations d'un message dicté à l'oral par un technicien de plomberie/assainissement, pour créer un rendez-vous. Date du jour : ${today()}.
-Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide si l'info est absente) :
-{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","note":"résumé en 1-2 phrases du problème ou de la demande"}`;
+${consigneTechnicien}
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide ou false si l'info est absente) :
+{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","technicien":"nom exact du technicien parmi la liste connue si mentionné, sinon vide","urgent":true ou false selon que le rendez-vous est présenté comme urgent/prioritaire,"note":"résumé en 1-2 phrases du problème ou de la demande (n'y répète pas le nom du technicien s'il a déjà été mis dans le champ technicien)"}`;
       } else {
         const listePrestations = PRESTATIONS.map(p=>`${p.id} = ${p.label}`).join(" / ");
+        const listeMateriels = MATERIELS.join(", ");
+        const listePreconisations = PRECONISATIONS.join(" / ");
+        const listeResponsabilites = RESPONSABILITES.map(r=>`${r.id} = ${r.label} (${r.desc})`).join(" / ");
         prompt = `Tu extrais les informations d'un compte-rendu d'intervention dicté à l'oral par un technicien de plomberie/assainissement, juste après (ou pendant) une intervention chez un client, pour remplir une fiche d'intervention.
 Catégories de prestations disponibles (utilise uniquement leur "id" exact, une ou plusieurs si mentionnées) : ${listePrestations}
-Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide ou tableau vide si l'info est absente) :
-{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","prestations":["id des catégories concernées, ex: debouchage"],"statut":"termine si le travail dicté semble terminé/réalisé, a_prevoir si c'est un diagnostic avec travaux à prévoir/chiffrer","conclusion":"résumé rédigé et complet du constat, du travail réalisé et du résultat, en 2 à 4 phrases, à partir de ce qui a été dicté","note":"la même idée que conclusion mais en 1 phrase courte"}`;
+Matériels disponibles (utilise UNIQUEMENT le texte exact de cette liste, un ou plusieurs si mentionnés) : ${listeMateriels}
+Préconisations disponibles (utilise UNIQUEMENT le texte exact de cette liste, une ou plusieurs si mentionnées) : ${listePreconisations}
+Responsabilité (utilise l'id exact) : ${listeResponsabilites}
+${consigneTechnicien}
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide, tableau vide ou false si l'info est absente) :
+{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","prestations":["id des catégories concernées, ex: debouchage"],"statut":"termine si le travail dicté semble terminé/réalisé, a_prevoir si c'est un diagnostic avec travaux à prévoir/chiffrer","technicien":"nom exact du technicien parmi la liste connue si mentionné, sinon vide","tempsPasse":"temps passé sur l'intervention si mentionné, au format Xh ou XhYY (ex: 2h, 1h30) ; vide si absent","majorationSoir":true ou false selon que l'intervention dicte s'être déroulée en soirée / de nuit (majoration +50%),"majorationWeekend":true ou false selon que l'intervention dicte s'être déroulée un week-end (majoration +100%),"tarifHoraire":"tarif horaire en euros si un montant/tarif horaire est explicitement mentionné, sinon vide","materiels":["texte exact du matériel utilisé mentionné, parmi la liste donnée"],"difficulte":"Facile, Normale, Difficile ou Très difficile si le niveau de difficulté est mentionné ou clairement déductible, sinon vide","responsabilite":"id exact parmi la liste si la responsabilité (privative/commune/indéterminée) est mentionnée, sinon vide","preconisations":["texte exact parmi la liste des préconisations, si des recommandations pour la suite sont mentionnées"],"diametreCanalisation":"diamètre de la canalisation si mentionné, ex: 100mm ; vide sinon","urgent":true ou false selon que l'intervention ou la situation est présentée comme urgente,"notesInternes":"remarques destinées en interne uniquement (non visibles du client), ex. difficulté d'accès, comportement du client, points de vigilance pour la prochaine visite — vide si rien de tel n'est dicté","conclusion":"résumé rédigé et complet du constat, du travail réalisé et du résultat, en 2 à 4 phrases, à partir de ce qui a été dicté (n'y répète pas les informations déjà placées dans un champ dédié : technicien, temps passé, majorations, matériel, difficulté, responsabilité, préconisations, notes internes)","note":"la même idée que conclusion mais en 1 phrase courte"}`;
       }
       content = prompt + `\n\nMessage dicté :\n${texte.trim()}`;
       const r = await fetch("/api/claude", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content}] })
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1400, messages:[{role:"user",content}] })
       });
       if(!r.ok) throw new Error("API "+r.status);
       const data = await r.json();
       const raw = (data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
       const j = JSON.parse(raw);
       if (mode === "rdv") {
+        const techValide = (techniciens||[]).find(t=>t===j.technicien) || "";
         onExtracted("rdv", { client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
-          dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"" });
+          dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"", technicien:techValide, urgent:!!j.urgent });
       } else {
         const idsValides = (j.prestations||[]).filter(id=>PRESTATIONS.some(p=>p.id===id));
+        const techValide = (techniciens||[]).find(t=>t===j.technicien) || "";
+        const majorations = [];
+        if (j.majorationSoir) majorations.push("soir50");
+        if (j.majorationWeekend) majorations.push("weekend100");
+        const materielsValides = (j.materiels||[]).filter(m=>MATERIELS.includes(m));
+        const preconisationsValides = (j.preconisations||[]).filter(p=>PRECONISATIONS.includes(p));
+        const difficulteValide = ["Facile","Normale","Difficile","Très difficile"].includes(j.difficulte) ? j.difficulte : "";
+        const responsabiliteValide = RESPONSABILITES.some(r=>r.id===j.responsabilite) ? j.responsabilite : "na";
         onExtracted("fiche", {
           client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
           status: j.statut==="a_prevoir" ? "a_prevoir" : "termine",
           conclusion: j.conclusion||"",
+          technicien: techValide,
+          tempsInterne: j.tempsPasse||"",
+          majorations,
+          tarifHoraire: j.tarifHoraire||"",
+          materiels: materielsValides,
+          difficulte: difficulteValide,
+          responsabilite: responsabiliteValide,
+          preconisations: preconisationsValides,
+          diametreCanalisation: j.diametreCanalisation||"",
+          urgent: !!j.urgent,
+          notesInternes: j.notesInternes||"",
           prestations: idsValides.map(id=>({id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:j.note||""})),
         });
       }
@@ -3802,7 +3834,7 @@ export default function App() {
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
   );
   const voiceImportModal = showVoiceImport && (
-    <VoiceImport theme={theme} onCancel={()=>setShowVoiceImport(false)}
+    <VoiceImport theme={theme} techniciens={techniciens} onCancel={()=>setShowVoiceImport(false)}
       onExtracted={(mode,data)=>{
         setShowVoiceImport(false);
         if (mode==="rdv") { setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }
