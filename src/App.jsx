@@ -1944,7 +1944,9 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
 /* ═══════════════════════════════════════════
    IMPORT MAIL → RDV (IA)
 ═══════════════════════════════════════════ */
-function VoiceImport({ onExtracted, onCancel, theme, techniciens }) {
+const normFR = s => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
+
+function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients }) {
   const T = THEMES[theme] || THEMES.dark;
   const [mode, setMode] = useState("rdv"); // "rdv" | "fiche"
   const [recording, setRecording] = useState(false);
@@ -1953,9 +1955,12 @@ function VoiceImport({ onExtracted, onCancel, theme, techniciens }) {
   const [texte, setTexte] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [erreur, setErreur] = useState("");
+  const [apercu, setApercu] = useState(null); // {mode, data, champs:[{label,valeur,ok}]}
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const dernierBlobRef = useRef(null);
+  const dernierMimeRef = useRef("audio/webm");
 
   const demarrer = async () => {
     setErreur("");
@@ -1969,6 +1974,8 @@ function VoiceImport({ onExtracted, onCancel, theme, techniciens }) {
         stream.getTracks().forEach(t=>t.stop());
         clearInterval(timerRef.current);
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        dernierBlobRef.current = blob;
+        dernierMimeRef.current = rec.mimeType || "audio/webm";
         transcrire(blob);
       };
       recorderRef.current = rec;
@@ -2032,8 +2039,23 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
       const j = JSON.parse(raw);
       if (mode === "rdv") {
         const techValide = (techniciens||[]).find(t=>t===j.technicien) || "";
-        onExtracted("rdv", { client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
-          dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"", technicien:techValide, urgent:!!j.urgent });
+        const matchClient = (clients||[]).find(c => j.client && normFR(c.client)===normFR(j.client));
+        const data = { client:j.client||"", tel:j.tel||matchClient?.tel||"", adresse:j.adresse||"",
+          dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"", technicien:techValide, urgent:!!j.urgent,
+          clientId: matchClient?.id||null };
+        const audio = await audioEnBase64();
+        if(audio) data.audioMemo = audio;
+        const champs = [
+          {label:"Client", valeur:j.client, ok:!!j.client},
+          {label:"→ relié à un client existant", valeur:matchClient?"oui":null, ok:!!matchClient, optionnel:!matchClient},
+          {label:"Téléphone", valeur:data.tel, ok:!!data.tel},
+          {label:"Adresse", valeur:j.adresse, ok:!!j.adresse},
+          {label:"Date/heure", valeur:j.dateRdv?`${j.dateRdv}${j.heureRdv?" à "+j.heureRdv:""}`:"", ok:!!j.dateRdv},
+          {label:"Technicien", valeur:techValide, ok:!!techValide},
+          {label:"Urgent", valeur:j.urgent?"oui":null, ok:!!j.urgent, optionnel:!j.urgent},
+          {label:"Note", valeur:j.note, ok:!!j.note},
+        ];
+        setApercu({ mode:"rdv", data, champs });
       } else {
         const idsValides = (j.prestations||[]).filter(id=>PRESTATIONS.some(p=>p.id===id));
         const techValide = (techniciens||[]).find(t=>t===j.technicien) || "";
@@ -2044,8 +2066,9 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
         const preconisationsValides = (j.preconisations||[]).filter(p=>PRECONISATIONS.includes(p));
         const difficulteValide = ["Facile","Normale","Difficile","Très difficile"].includes(j.difficulte) ? j.difficulte : "";
         const responsabiliteValide = RESPONSABILITES.some(r=>r.id===j.responsabilite) ? j.responsabilite : "na";
-        onExtracted("fiche", {
-          client:j.client||"", tel:j.tel||"", adresse:j.adresse||"",
+        const matchClient = (clients||[]).find(c => j.client && normFR(c.client)===normFR(j.client));
+        const data = {
+          client:j.client||"", tel:j.tel||matchClient?.tel||"", adresse:j.adresse||"",
           status: j.statut==="a_prevoir" ? "a_prevoir" : "termine",
           conclusion: j.conclusion||"",
           technicien: techValide,
@@ -2060,10 +2083,49 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
           urgent: !!j.urgent,
           notesInternes: j.notesInternes||"",
           prestations: idsValides.map(id=>({id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:j.note||""})),
-        });
+          clientId: matchClient?.id||null,
+        };
+        const audio = await audioEnBase64();
+        if(audio) data.audioMemo = audio;
+        const labelPrestations = idsValides.map(id=>PRESTATIONS.find(p=>p.id===id)?.label).filter(Boolean).join(", ");
+        const champs = [
+          {label:"Client", valeur:j.client, ok:!!j.client},
+          {label:"→ relié à un client existant", valeur:matchClient?"oui":null, ok:!!matchClient, optionnel:!matchClient},
+          {label:"Téléphone", valeur:data.tel, ok:!!data.tel},
+          {label:"Adresse", valeur:j.adresse, ok:!!j.adresse},
+          {label:"Prestations", valeur:labelPrestations, ok:idsValides.length>0},
+          {label:"Statut", valeur:STATUTS[data.status]?.label, ok:true},
+          {label:"Technicien", valeur:techValide, ok:!!techValide},
+          {label:"Temps passé", valeur:j.tempsPasse, ok:!!j.tempsPasse},
+          {label:"Majoration", valeur:majorations.length?majorations.map(m=>MAJORATIONS_LABEL[m]).join(", "):null, ok:majorations.length>0, optionnel:!majorations.length},
+          {label:"Tarif horaire", valeur:j.tarifHoraire, ok:!!j.tarifHoraire},
+          {label:"Matériel", valeur:materielsValides.join(", "), ok:materielsValides.length>0},
+          {label:"Difficulté", valeur:difficulteValide, ok:!!difficulteValide},
+          {label:"Responsabilité", valeur:responsabiliteValide!=="na"?RESPONSABILITES.find(r=>r.id===responsabiliteValide)?.label:null, ok:responsabiliteValide!=="na", optionnel:responsabiliteValide==="na"},
+          {label:"Préconisations", valeur:preconisationsValides.join(", "), ok:preconisationsValides.length>0},
+          {label:"Diamètre canalisation", valeur:j.diametreCanalisation, ok:!!j.diametreCanalisation},
+          {label:"Urgent", valeur:j.urgent?"oui":null, ok:!!j.urgent, optionnel:!j.urgent},
+          {label:"Notes internes", valeur:j.notesInternes, ok:!!j.notesInternes},
+          {label:"Conclusion", valeur:j.conclusion, ok:!!j.conclusion},
+        ];
+        setApercu({ mode:"fiche", data, champs });
       }
     } catch(e) { setErreur("Erreur lors de l'analyse : "+(e?.message||e)); }
     setBusy(false);
+  };
+
+  const audioEnBase64 = () => new Promise(resolve => {
+    const blob = dernierBlobRef.current;
+    if(!blob || blob.size > 4*1024*1024){ resolve(null); return; } // >4Mo : on n'attache pas
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => resolve(null);
+    r.readAsDataURL(blob);
+  });
+
+  const appliquer = () => {
+    if(!apercu) return;
+    onExtracted(apercu.mode, apercu.data);
   };
 
   const mmss = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
@@ -2071,43 +2133,69 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🎙️ Créer depuis un mémo vocal</div>
-        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Dictez ce qu'il faut retenir — l'IA remplit le formulaire pour vous.</div>
 
-        <div style={{display:"flex",gap:6,marginBottom:14,background:T.surface2,borderRadius:10,padding:4}}>
-          <button onClick={()=>setMode("rdv")} disabled={recording||transcribing}
-            style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
-              background:mode==="rdv"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="rdv"?"#fff":T.textMuted}}>📅 RDV rapide</button>
-          <button onClick={()=>setMode("fiche")} disabled={recording||transcribing}
-            style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
-              background:mode==="fiche"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="fiche"?"#fff":T.textMuted}}>🧾 Fiche complète</button>
-        </div>
-        <div style={{fontSize:11.5,color:T.textMuted,marginTop:-8,marginBottom:14}}>
-          {mode==="rdv" ? "Pour prendre un rendez-vous : client, adresse, date/heure." : "Pour un compte-rendu après intervention : client, prestations concernées, constat et résultat."}
-        </div>
+        {apercu ? (
+          <>
+            <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>✨ Aperçu avant application</div>
+            <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Voici ce que l'IA a compris. Vous pourrez encore tout modifier dans le formulaire ensuite.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+              {apercu.champs.map((c,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 10px",borderRadius:8,background:T.surface2}}>
+                  <div style={{fontSize:13,flexShrink:0}}>{c.ok?"✅":c.optionnel?"⚪":"❌"}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:10.5,color:T.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em"}}>{c.label}</div>
+                    <div style={{fontSize:12.5,color:c.ok?T.text:T.textFaint,fontWeight:c.ok?600:400,wordBreak:"break-word"}}>{c.valeur || (c.optionnel?"—":"non détecté")}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setApercu(null)} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Retour</button>
+              <button onClick={appliquer} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✓ Appliquer au formulaire</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🎙️ Créer depuis un mémo vocal</div>
+            <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Dictez ce qu'il faut retenir — l'IA remplit le formulaire pour vous.</div>
 
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"18px 0",marginBottom:14,background:T.surface2,borderRadius:12}}>
-          <button onClick={recording?arreter:demarrer} disabled={transcribing}
-            style={{width:72,height:72,borderRadius:"50%",border:"none",cursor:transcribing?"wait":"pointer",fontSize:28,
-              background: recording ? "linear-gradient(135deg,#EF4444,#DC2626)" : "linear-gradient(135deg,#0EA5E9,#6366F1)",
-              boxShadow: recording ? "0 0 0 8px rgba(239,68,68,0.15)" : "0 4px 14px rgba(14,165,233,0.3)",
-              color:"#fff", transition:"box-shadow .2s"}}>
-            {recording ? "⏹️" : "🎙️"}
-          </button>
-          <div style={{fontSize:12.5,fontWeight:700,color:recording?"#EF4444":T.textMuted}}>
-            {transcribing ? "⏳ Transcription en cours…" : recording ? `● Enregistrement — ${mmss(seconds)}` : "Appuyez pour dicter"}
-          </div>
-        </div>
+            <div style={{display:"flex",gap:6,marginBottom:14,background:T.surface2,borderRadius:10,padding:4}}>
+              <button onClick={()=>setMode("rdv")} disabled={recording||transcribing}
+                style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
+                  background:mode==="rdv"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="rdv"?"#fff":T.textMuted}}>📅 RDV rapide</button>
+              <button onClick={()=>setMode("fiche")} disabled={recording||transcribing}
+                style={{flex:1,padding:"9px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:12.5,
+                  background:mode==="fiche"?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",color:mode==="fiche"?"#fff":T.textMuted}}>🧾 Fiche complète</button>
+            </div>
+            <div style={{fontSize:11.5,color:T.textMuted,marginTop:-8,marginBottom:14}}>
+              {mode==="rdv" ? "Pour prendre un rendez-vous : client, adresse, date/heure." : "Pour un compte-rendu après intervention : client, prestations concernées, constat et résultat."}
+            </div>
 
-        {erreur && <div style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:12}}>{erreur}</div>}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"18px 0",marginBottom:14,background:T.surface2,borderRadius:12}}>
+              <button onClick={recording?arreter:demarrer} disabled={transcribing}
+                style={{width:72,height:72,borderRadius:"50%",border:"none",cursor:transcribing?"wait":"pointer",fontSize:28,
+                  background: recording ? "linear-gradient(135deg,#EF4444,#DC2626)" : "linear-gradient(135deg,#0EA5E9,#6366F1)",
+                  boxShadow: recording ? "0 0 0 8px rgba(239,68,68,0.15)" : "0 4px 14px rgba(14,165,233,0.3)",
+                  color:"#fff", transition:"box-shadow .2s"}}>
+                {recording ? "⏹️" : "🎙️"}
+              </button>
+              <div style={{fontSize:12.5,fontWeight:700,color:recording?"#EF4444":T.textMuted}}>
+                {transcribing ? "⏳ Transcription en cours…" : recording ? `● Enregistrement — ${mmss(seconds)}` : texte.trim() ? "Appuyez pour compléter la dictée" : "Appuyez pour dicter"}
+              </div>
+              {dernierBlobRef.current && !recording && !transcribing && <div style={{fontSize:10.5,color:T.textFaint}}>🔊 Note vocale conservée avec la fiche</div>}
+            </div>
 
-        <textarea value={texte} onChange={e=>setTexte(e.target.value)} rows={6} placeholder="Le texte dicté apparaît ici — vous pouvez le corriger avant d'analyser…"
-          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:14,lineHeight:1.5}}/>
+            {erreur && <div style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:12}}>{erreur}</div>}
 
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={onCancel} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
-          <button onClick={analyser} disabled={busy||transcribing||recording} style={{flex:2,padding:"12px",background:busy?"rgba(14,165,233,0.3)":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>{busy?"⏳ Analyse en cours…":"✨ Analyser et pré-remplir"}</button>
-        </div>
+            <textarea value={texte} onChange={e=>setTexte(e.target.value)} rows={6} placeholder="Le texte dicté apparaît ici — vous pouvez le corriger avant d'analyser…"
+              style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:14,lineHeight:1.5}}/>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onCancel} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+              <button onClick={analyser} disabled={busy||transcribing||recording} style={{flex:2,padding:"12px",background:busy?"rgba(14,165,233,0.3)":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>{busy?"⏳ Analyse en cours…":"✨ Analyser"}</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -2992,6 +3080,14 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           </div>
         </div>
       )}
+
+      {!isRdv&&fiche.audioMemo&&(
+        <div style={{...card,border:`1px solid ${T.border}`}}>
+          <div style={secHead}>🔊 Note vocale d'origine <span style={{marginLeft:"auto",fontSize:9,opacity:.7}}>🔒 interne</span></div>
+          <audio controls src={fiche.audioMemo} style={{width:"100%",height:36}}/>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -3834,7 +3930,7 @@ export default function App() {
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
   );
   const voiceImportModal = showVoiceImport && (
-    <VoiceImport theme={theme} techniciens={techniciens} onCancel={()=>setShowVoiceImport(false)}
+    <VoiceImport theme={theme} techniciens={techniciens} clients={clients} onCancel={()=>setShowVoiceImport(false)}
       onExtracted={(mode,data)=>{
         setShowVoiceImport(false);
         if (mode==="rdv") { setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }
