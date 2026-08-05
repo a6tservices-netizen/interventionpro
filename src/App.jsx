@@ -514,7 +514,7 @@ function buildReportHTML(fiche, hideInternal = false) {
   const photoGrid = fiche.photos?.length
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
        ${photosOntTag
-         ? photoSection("Avant travaux", fiche.photos.filter(p=>p.tag==="avant")) + photoSection("Après travaux", fiche.photos.filter(p=>p.tag==="apres")) + photoSection("Autres photos", fiche.photos.filter(p=>!p.tag))
+         ? photoSection("Avant travaux", fiche.photos.filter(p=>p.tag==="avant")) + photoSection("Pendant intervention", fiche.photos.filter(p=>p.tag==="pendant")) + photoSection("Après travaux", fiche.photos.filter(p=>p.tag==="apres")) + photoSection("Autres photos", fiche.photos.filter(p=>!p.tag))
          : `<div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div>`}
        </div>` : "";
 
@@ -1611,10 +1611,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
               <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"4/3",background:T.surface2}}>
                 <img src={p.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
                 <button onClick={()=>set("photos",f.photos.filter((_,j)=>j!==i))} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>×</button>
-                <button onClick={()=>{const np=[...f.photos];np[i]={...np[i],tag:np[i].tag==="avant"?"apres":np[i].tag==="apres"?null:"avant"};set("photos",np);}}
-                  title="Cliquez pour marquer Avant / Après"
-                  style={{position:"absolute",top:4,left:4,background:p.tag==="avant"?"#F59E0B":p.tag==="apres"?"#10B981":"rgba(0,0,0,0.6)",color:"#fff",border:"none",borderRadius:6,padding:"2px 7px",fontSize:9,fontWeight:800,cursor:"pointer",fontFamily:"inherit",letterSpacing:0.3}}>
-                  {p.tag==="avant"?"AVANT":p.tag==="apres"?"APRÈS":"Tag"}
+                <button onClick={()=>{const np=[...f.photos];np[i]={...np[i],tag:np[i].tag==="avant"?"pendant":np[i].tag==="pendant"?"apres":np[i].tag==="apres"?null:"avant"};set("photos",np);}}
+                  title="Cliquez pour marquer Avant / Pendant / Après"
+                  style={{position:"absolute",top:4,left:4,background:p.tag==="avant"?"#F59E0B":p.tag==="pendant"?"#0EA5E9":p.tag==="apres"?"#10B981":"rgba(0,0,0,0.6)",color:"#fff",border:"none",borderRadius:6,padding:"2px 7px",fontSize:9,fontWeight:800,cursor:"pointer",fontFamily:"inherit",letterSpacing:0.3}}>
+                  {p.tag==="avant"?"AVANT":p.tag==="pendant"?"PENDANT":p.tag==="apres"?"APRÈS":"Tag"}
                 </button>
                 <div style={{position:"absolute",bottom:4,left:4,right:4,display:"flex",justifyContent:"space-between"}}>
                   <button onClick={()=>{if(i===0)return;const np=[...f.photos];[np[i-1],np[i]]=[np[i],np[i-1]];set("photos",np);}}
