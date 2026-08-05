@@ -66,6 +66,8 @@ const saveTechniciens = (list) => set(ref(db, "techniciens"), sanitize(list));
 const saveClient = (c) => set(ref(db, `clients/${c.id}`), sanitize(c));
 const deleteClient = (id) => remove(ref(db, `clients/${id}`));
 const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const watchMemosVocaux = (cb) => onValue(ref(db, "memosVocaux"), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>(b.ts||0)-(a.ts||0)):[]); });
+const saveMemoVocal = (memo) => set(ref(db, `memosVocaux/${memo.id}`), memo);
 const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), sanitize(d));
 const deleteDevisFb = (id) => remove(ref(db, `devis/${id}`));
 const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
@@ -658,6 +660,66 @@ function calculerMontant(temps, tarif) {
   return (heures * parseFloat(tarif)).toFixed(2);
 }
 
+function parseTempsMinutes(temps) {
+  if (!temps) return 0;
+  const match = temps.match(/(\d+)h(\d+)?/);
+  if (!match) return 0;
+  return parseInt(match[1])*60 + (match[2] ? parseInt(match[2]) : 0);
+}
+
+function ExportMensuelModal({ fiches, theme, onClose }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [mois, setMois] = useState(() => today().slice(0,7)); // YYYY-MM
+  const [copie, setCopie] = useState(false);
+
+  const fichesDuMois = fiches.filter(f => {
+    const d = f.dateRdv || (f.createdAt ? new Date(f.createdAt).toISOString().slice(0,10) : null);
+    return d && d.slice(0,7)===mois && f.status==="termine";
+  });
+
+  let caTotal = 0, minutesTotal = 0;
+  const parTechnicien = {};
+  fichesDuMois.forEach(f => {
+    const base = f.tempsInterne && f.tarifHoraire ? parseFloat(calculerMontant(f.tempsInterne, f.tarifHoraire)) : 0;
+    let coef = 1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
+    const montant = (base && !isNaN(base)) ? base*coef : 0;
+    caTotal += montant;
+    minutesTotal += parseTempsMinutes(f.tempsInterne);
+    const t = f.technicien || "Non attribué";
+    if(!parTechnicien[t]) parTechnicien[t] = { nb:0, minutes:0, ca:0 };
+    parTechnicien[t].nb++;
+    parTechnicien[t].minutes += parseTempsMinutes(f.tempsInterne);
+    parTechnicien[t].ca += montant;
+  });
+  const heuresTotal = (minutesTotal/60).toFixed(1);
+  const nomMois = new Date(mois+"-01").toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
+
+  const texte = `📊 RÉCAPITULATIF — ${nomMois}
+
+Interventions terminées : ${fichesDuMois.length}
+Temps total : ${heuresTotal} h
+CA estimé : ${caTotal.toFixed(2)} €
+
+Par technicien :
+${Object.entries(parTechnicien).map(([nom,d])=>`- ${nom} : ${d.nb} intervention(s), ${(d.minutes/60).toFixed(1)} h, ${d.ca.toFixed(2)} € estimés`).join("\n")||"— aucune donnée —"}`;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:14}}>📊 Export mensuel</div>
+        <input type="month" value={mois} onChange={e=>setMois(e.target.value)}
+          style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13.5,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:14,colorScheme:theme==="dark"?"dark":"light"}}/>
+        <pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:12.5,color:T.text,background:T.surface2,borderRadius:8,padding:14,lineHeight:1.6,marginBottom:14}}>{texte}</pre>
+        <div style={{fontSize:11,color:T.textFaint,marginBottom:14}}>⚠️ Le CA est une estimation à partir du temps saisi et du tarif horaire renseignés sur chaque fiche — à recouper avec Pennylane pour la facturation réelle.</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Fermer</button>
+          <button onClick={()=>{navigator.clipboard.writeText(texte);setCopie(true);setTimeout(()=>setCopie(false),1800);}} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{copie?"✓ Copié !":"📋 Copier"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function buildFacturationTexte(fiche) {
   const presta = (fiche.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean);
   const match = (fiche.tempsInterne||"").match(/(\d+)h(\d+)?/);
@@ -1112,6 +1174,28 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     ...(initial||{}),
   }));
 
+  const DRAFT_KEY = "interventionpro_brouillon_fiche";
+  const [brouillon, setBrouillon] = useState(null);
+  const brouillonIgnoreRef = useRef(false);
+  useEffect(()=>{
+    try{
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if(raw){
+        const d = JSON.parse(raw);
+        if((d.id||null) === (initial?.id||null)) setBrouillon(d);
+      }
+    }catch(e){}
+  },[]);
+  useEffect(()=>{
+    if(brouillonIgnoreRef.current) return;
+    const t = setTimeout(()=>{
+      try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id||null, data: f, savedAt: new Date().toISOString() })); }catch(e){}
+    }, 1200);
+    return ()=>clearTimeout(t);
+  },[f]);
+  const restaurerBrouillon = () => { setF(brouillon.data); setBrouillon(null); };
+  const ignorerBrouillon = () => { setBrouillon(null); try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} };
+
   const [showSig, setShowSig] = useState(false);
   const [showSigTech, setShowSigTech] = useState(false);
   const [showTemps, setShowTemps] = useState(false);
@@ -1231,6 +1315,8 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     try {
       const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, majorations, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
       onSave(fiche);
+      brouillonIgnoreRef.current = true;
+      try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
     } catch(e) {
       alert("Erreur lors de l'enregistrement : " + (e?.message||e));
     }
@@ -1266,6 +1352,15 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           💾 Enregistrer
         </button>
       </div>
+
+      {brouillon && (
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(245,158,11,0.1)",border:"1.5px solid #F59E0B",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+          <div style={{fontSize:18}}>💾</div>
+          <div style={{flex:1,minWidth:200,fontSize:12.5,color:T.text}}>Un brouillon non enregistré a été retrouvé ({new Date(brouillon.savedAt).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}). Le restaurer ?</div>
+          <button onClick={ignorerBrouillon} style={{padding:"7px 12px",background:"none",border:`1px solid ${T.border}`,borderRadius:7,color:T.textMuted,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Ignorer</button>
+          <button onClick={restaurerBrouillon} style={{padding:"7px 14px",background:"#F59E0B",border:"none",borderRadius:7,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Restaurer</button>
+        </div>
+      )}
 
       {/* ── INFOS CLIENT ── */}
       <div style={sectionStyle}>
@@ -1735,7 +1830,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, theme }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -1776,6 +1871,13 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
         🛠️ <b>Administration</b> — gérez ici toutes les données de l'application, sans toucher au code. Les modifications sont immédiates pour toute l'équipe.
+      </div>
+
+      {/* Export mensuel */}
+      <div style={card}>
+        <div style={head}>📊 Export mensuel</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Récapitulatif du chiffre d'affaires estimé et du temps travaillé, par technicien, pour un mois donné.</div>
+        <button onClick={onOpenExport} style={{padding:"9px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📊 Générer l'export</button>
       </div>
 
       {/* Sociétés + logos */}
@@ -1946,13 +2048,13 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
 ═══════════════════════════════════════════ */
 const normFR = s => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
 
-function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients }) {
+function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients, onLog, initialTexte, initialMode }) {
   const T = THEMES[theme] || THEMES.dark;
-  const [mode, setMode] = useState("rdv"); // "rdv" | "fiche"
+  const [mode, setMode] = useState(initialMode||"rdv"); // "rdv" | "fiche"
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [texte, setTexte] = useState("");
+  const [texte, setTexte] = useState(initialTexte||"");
   const [seconds, setSeconds] = useState(0);
   const [erreur, setErreur] = useState("");
   const [apercu, setApercu] = useState(null); // {mode, data}
@@ -2027,7 +2129,7 @@ Préconisations disponibles (utilise UNIQUEMENT le texte exact de cette liste, u
 Responsabilité (utilise l'id exact) : ${listeResponsabilites}
 ${consigneTechnicien}
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide, tableau vide ou false si l'info est absente) :
-{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","prestations":["id des catégories concernées, ex: debouchage"],"statut":"termine si le travail dicté semble terminé/réalisé, a_prevoir si c'est un diagnostic avec travaux à prévoir/chiffrer","technicien":"nom exact du technicien parmi la liste connue si mentionné, sinon vide","tempsPasse":"temps passé sur l'intervention si mentionné, au format Xh ou XhYY (ex: 2h, 1h30) ; vide si absent","majorationSoir":true ou false selon que l'intervention dicte s'être déroulée en soirée / de nuit (majoration +50%),"majorationWeekend":true ou false selon que l'intervention dicte s'être déroulée un week-end (majoration +100%),"tarifHoraire":"tarif horaire en euros si un montant/tarif horaire est explicitement mentionné, sinon vide","materiels":["texte exact du matériel utilisé mentionné, parmi la liste donnée"],"difficulte":"Facile, Normale, Difficile ou Très difficile si le niveau de difficulté est mentionné ou clairement déductible, sinon vide","responsabilite":"id exact parmi la liste si la responsabilité (privative/commune/indéterminée) est mentionnée, sinon vide","preconisations":["texte exact parmi la liste des préconisations, si des recommandations pour la suite sont mentionnées"],"diametreCanalisation":"diamètre de la canalisation si mentionné, ex: 100mm ; vide sinon","urgent":true ou false selon que l'intervention ou la situation est présentée comme urgente,"notesInternes":"remarques destinées en interne uniquement (non visibles du client), ex. difficulté d'accès, comportement du client, points de vigilance pour la prochaine visite — vide si rien de tel n'est dicté","conclusion":"résumé rédigé et complet du constat, du travail réalisé et du résultat, en 2 à 4 phrases, à partir de ce qui a été dicté (n'y répète pas les informations déjà placées dans un champ dédié : technicien, temps passé, majorations, matériel, difficulté, responsabilité, préconisations, notes internes)","note":"la même idée que conclusion mais en 1 phrase courte"}`;
+{"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","prestations":["id des catégories concernées, ex: debouchage"],"statut":"a_prevoir UNIQUEMENT si le technicien doit physiquement repasser sur place pour finir ou réparer quelque chose de précis — typiquement une pièce ou un matériel qui manquait sur place (ex: une vanne à remplacer non disponible dans le camion). Ne JAMAIS mettre a_prevoir pour une simple recommandation que le client est libre d'accepter ou de refuser (ex: curage conseillé, passage caméra conseillé, détartrage conseillé) — cela va uniquement dans le champ preconisations, avec statut termine. Dans le doute, mettre termine.","technicien":"nom exact du technicien parmi la liste connue si mentionné, sinon vide","tempsPasse":"temps passé sur l'intervention si mentionné, au format Xh ou XhYY (ex: 2h, 1h30) ; vide si absent","majorationSoir":true ou false selon que l'intervention dicte s'être déroulée en soirée / de nuit (majoration +50%),"majorationWeekend":true ou false selon que l'intervention dicte s'être déroulée un week-end (majoration +100%),"tarifHoraire":"tarif horaire en euros si un montant/tarif horaire est explicitement mentionné, sinon vide","materiels":["texte exact du matériel utilisé mentionné, parmi la liste donnée"],"difficulte":"Facile, Normale, Difficile ou Très difficile si le niveau de difficulté est mentionné ou clairement déductible, sinon vide","responsabilite":"id exact parmi la liste si la responsabilité (privative/commune/indéterminée) est mentionnée, sinon vide","preconisations":["texte exact parmi la liste des préconisations, si des recommandations pour la suite sont mentionnées"],"diametreCanalisation":"diamètre de la canalisation si mentionné, ex: 100mm ; vide sinon","urgent":true ou false selon que l'intervention ou la situation est présentée comme urgente,"notesInternes":"remarques destinées en interne uniquement (non visibles du client), ex. difficulté d'accès, comportement du client, points de vigilance pour la prochaine visite — vide si rien de tel n'est dicté","conclusion":"résumé rédigé et complet du constat, du travail réalisé et du résultat, en 2 à 4 phrases, à partir de ce qui a été dicté (n'y répète pas les informations déjà placées dans un champ dédié : technicien, temps passé, majorations, matériel, difficulté, responsabilité, préconisations, notes internes)","note":"la même idée que conclusion mais en 1 phrase courte"}`;
       }
       content = prompt + `\n\nMessage dicté :\n${texte.trim()}`;
       const r = await fetch("/api/claude", {
@@ -2168,7 +2270,12 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
   const appliquer = () => {
     setEditKey(null);
     if(!apercu) return;
+    onLog?.({ id:uid2("MEMO"), ts:ts(), mode:apercu.mode, texte, statut:"applique", client:apercu.data?.client||"" });
     onExtracted(apercu.mode, apercu.data);
+  };
+  const annulerAvecLog = () => {
+    if(texte.trim()) onLog?.({ id:uid2("MEMO"), ts:ts(), mode, texte, statut:"abandonne", client:"" });
+    onCancel();
   };
 
   const mmss = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
@@ -2296,7 +2403,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
               style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:14,lineHeight:1.5}}/>
 
             <div style={{display:"flex",gap:8}}>
-              <button onClick={onCancel} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+              <button onClick={annulerAvecLog} disabled={busy} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
               <button onClick={analyser} disabled={busy||transcribing||recording} style={{flex:2,padding:"12px",background:busy?"rgba(14,165,233,0.3)":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>{busy?"⏳ Analyse en cours…":"✨ Analyser"}</button>
             </div>
           </>
@@ -3055,8 +3162,36 @@ function ListeCartes({ fiches, onSelect, onDelete, theme }) {
 }
 
 /* ═══════════════════════════════════════════
-   DÉTAIL FICHE
+   HISTORIQUE DES MÉMOS VOCAUX
 ═══════════════════════════════════════════ */
+function MemosVocauxView({ memos = [], theme, onReprendre }) {
+  const T = THEMES[theme] || THEMES.dark;
+  if(memos.length===0) return <Empty icon="🎙️" text="Aucun mémo vocal enregistré pour l'instant" T={T}/>;
+  const BADGE = { applique:{t:"✅ Appliqué",c:"#10B981"}, abandonne:{t:"✕ Abandonné",c:"#EF4444"}, en_attente_analyse:{t:"⏳ En attente d'analyse",c:"#F59E0B"} };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {memos.map(m=>{
+        const b = BADGE[m.statut]||BADGE.abandonne;
+        return (
+          <div key={m.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontSize:10.5,fontWeight:800,color:b.c,background:b.c+"1A",padding:"2px 9px",borderRadius:12}}>{b.t}</span>
+              <span style={{fontSize:10.5,fontWeight:700,color:T.textMuted}}>{m.mode==="rdv"?"📅 RDV rapide":"🧾 Fiche complète"}</span>
+              {m.client&&<span style={{fontSize:11,fontWeight:700,color:T.text}}>👤 {m.client}</span>}
+              <span style={{fontSize:10.5,color:T.textFaint,marginLeft:"auto"}}>{new Date(m.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+            </div>
+            <div style={{fontSize:12.5,color:T.textMuted,lineHeight:1.5,marginBottom:m.statut!=="applique"?10:0}}>{m.texte}</div>
+            {m.statut!=="applique"&&(
+              <button onClick={()=>onReprendre(m)} style={{padding:"6px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:7,color:"#fff",fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>🔁 Reprendre cette dictée</button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
@@ -3758,6 +3893,9 @@ export default function App() {
   const [devisList, setDevisList] = useState([]);
   const [contrats, setContrats] = useState([]);
   const [taches, setTaches] = useState([]);
+  const [memosVocaux, setMemosVocaux] = useState([]);
+  const [voiceResume, setVoiceResume] = useState(null);
+  const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState("dark");
@@ -3839,7 +3977,8 @@ export default function App() {
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); };
+    const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubM(); };
   },[]);
 
   const ajouterSociete = (nom) => {
@@ -4024,11 +4163,21 @@ export default function App() {
     return () => clearInterval(interval);
   }, [techNom]);
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
-  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
+  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"memos",label:"🎙️ Historique mémos vocaux"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
   const offlineBanner = !online && (
     <div style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
       📴 Mode hors ligne — consultation possible, vos enregistrements seront synchronisés au retour du réseau
+    </div>
+  );
+
+  const fichesEnRetard = useMemo(()=>{
+    const seuil = Date.now() - 3*24*60*60*1000;
+    return fiches.filter(f => f.status==="a_prevoir" && (f.createdAt||0) < seuil);
+  },[fiches]);
+  const retardBanner = fichesEnRetard.length>0 && nav!=="liste" && (
+    <div onClick={()=>{setView("accueil");setNav("liste");setFilterStatus("a_prevoir");}} style={{cursor:"pointer",background:"rgba(249,115,22,0.15)",borderBottom:"1px solid rgba(249,115,22,0.35)",color:"#F97316",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
+      ⚠️ {fichesEnRetard.length} fiche(s) "Retour à prévoir" en attente depuis plus de 3 jours — cliquez pour voir
     </div>
   );
 
@@ -4037,9 +4186,12 @@ export default function App() {
       onExtracted={data=>{ setShowMailImport(false); setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }}/>
   );
   const voiceImportModal = showVoiceImport && (
-    <VoiceImport theme={theme} techniciens={techniciens} clients={clients} onCancel={()=>setShowVoiceImport(false)}
+    <VoiceImport theme={theme} techniciens={techniciens} clients={clients} initialTexte={voiceResume?.texte} initialMode={voiceResume?.mode}
+      onCancel={()=>{setShowVoiceImport(false);setVoiceResume(null);}}
+      onLog={memo=>saveMemoVocal(memo)}
       onExtracted={(mode,data)=>{
         setShowVoiceImport(false);
+        setVoiceResume(null);
         if (mode==="rdv") { setRdvPrefill({ technicien:"", status:"planifie", type:"rdv", ...data }); setShowRdvForm(true); }
         else { setEditing({ technicien:"", ...data }); setView("form"); }
       }}/>
@@ -4060,6 +4212,7 @@ export default function App() {
   if(showRdvForm) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
+      {retardBanner}
       <header style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:300}}>
         <button onClick={()=>setShowRdvForm(false)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <div style={{fontWeight:800,fontSize:16,color:T.text}}>📅 Nouveau RDV</div>
@@ -4073,8 +4226,10 @@ export default function App() {
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
+      {retardBanner}
       {mailImportModal}
       {voiceImportModal}
+      {showExportMensuel && <ExportMensuelModal fiches={fiches} theme={theme} onClose={()=>setShowExportMensuel(false)}/>}
       {showProfil&&<ProfilModal techniciens={techniciens} techNom={techNom} onSaveTechNom={n=>{setTechNom(n);localStorage.setItem("techNom",n);}} theme={theme} onClose={()=>setShowProfil(false)}/>}
 
       {/* HEADER */}
@@ -4216,7 +4371,7 @@ export default function App() {
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
-              onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} theme={theme}/>}
+              onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)} theme={theme}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
@@ -4243,6 +4398,7 @@ export default function App() {
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
             {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
             {nav==="carte"&&<CarteView fiches={fiches} positions={positions} theme={theme}/>}
+            {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
           </>
         )}
       </div>
