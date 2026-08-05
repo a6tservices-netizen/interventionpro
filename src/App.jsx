@@ -1955,7 +1955,8 @@ function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients }) {
   const [texte, setTexte] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [erreur, setErreur] = useState("");
-  const [apercu, setApercu] = useState(null); // {mode, data, champs:[{label,valeur,ok}]}
+  const [apercu, setApercu] = useState(null); // {mode, data}
+  const [editKey, setEditKey] = useState(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
@@ -2045,17 +2046,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
           clientId: matchClient?.id||null };
         const audio = await audioEnBase64();
         if(audio) data.audioMemo = audio;
-        const champs = [
-          {label:"Client", valeur:j.client, ok:!!j.client},
-          {label:"→ relié à un client existant", valeur:matchClient?"oui":null, ok:!!matchClient, optionnel:!matchClient},
-          {label:"Téléphone", valeur:data.tel, ok:!!data.tel},
-          {label:"Adresse", valeur:j.adresse, ok:!!j.adresse},
-          {label:"Date/heure", valeur:j.dateRdv?`${j.dateRdv}${j.heureRdv?" à "+j.heureRdv:""}`:"", ok:!!j.dateRdv},
-          {label:"Technicien", valeur:techValide, ok:!!techValide},
-          {label:"Urgent", valeur:j.urgent?"oui":null, ok:!!j.urgent, optionnel:!j.urgent},
-          {label:"Note", valeur:j.note, ok:!!j.note},
-        ];
-        setApercu({ mode:"rdv", data, champs });
+        setApercu({ mode:"rdv", data });
       } else {
         const idsValides = (j.prestations||[]).filter(id=>PRESTATIONS.some(p=>p.id===id));
         const techValide = (techniciens||[]).find(t=>t===j.technicien) || "";
@@ -2087,28 +2078,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
         };
         const audio = await audioEnBase64();
         if(audio) data.audioMemo = audio;
-        const labelPrestations = idsValides.map(id=>PRESTATIONS.find(p=>p.id===id)?.label).filter(Boolean).join(", ");
-        const champs = [
-          {label:"Client", valeur:j.client, ok:!!j.client},
-          {label:"→ relié à un client existant", valeur:matchClient?"oui":null, ok:!!matchClient, optionnel:!matchClient},
-          {label:"Téléphone", valeur:data.tel, ok:!!data.tel},
-          {label:"Adresse", valeur:j.adresse, ok:!!j.adresse},
-          {label:"Prestations", valeur:labelPrestations, ok:idsValides.length>0},
-          {label:"Statut", valeur:STATUTS[data.status]?.label, ok:true},
-          {label:"Technicien", valeur:techValide, ok:!!techValide},
-          {label:"Temps passé", valeur:j.tempsPasse, ok:!!j.tempsPasse},
-          {label:"Majoration", valeur:majorations.length?majorations.map(m=>MAJORATIONS_LABEL[m]).join(", "):null, ok:majorations.length>0, optionnel:!majorations.length},
-          {label:"Tarif horaire", valeur:j.tarifHoraire, ok:!!j.tarifHoraire},
-          {label:"Matériel", valeur:materielsValides.join(", "), ok:materielsValides.length>0},
-          {label:"Difficulté", valeur:difficulteValide, ok:!!difficulteValide},
-          {label:"Responsabilité", valeur:responsabiliteValide!=="na"?RESPONSABILITES.find(r=>r.id===responsabiliteValide)?.label:null, ok:responsabiliteValide!=="na", optionnel:responsabiliteValide==="na"},
-          {label:"Préconisations", valeur:preconisationsValides.join(", "), ok:preconisationsValides.length>0},
-          {label:"Diamètre canalisation", valeur:j.diametreCanalisation, ok:!!j.diametreCanalisation},
-          {label:"Urgent", valeur:j.urgent?"oui":null, ok:!!j.urgent, optionnel:!j.urgent},
-          {label:"Notes internes", valeur:j.notesInternes, ok:!!j.notesInternes},
-          {label:"Conclusion", valeur:j.conclusion, ok:!!j.conclusion},
-        ];
-        setApercu({ mode:"fiche", data, champs });
+        setApercu({ mode:"fiche", data });
       }
     } catch(e) { setErreur("Erreur lors de l'analyse : "+(e?.message||e)); }
     setBusy(false);
@@ -2123,7 +2093,80 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
     r.readAsDataURL(blob);
   });
 
+  const updateChamp = (key, value) => setApercu(p => ({ ...p, data: { ...p.data, [key]: value } }));
+
+  const toggleDansListe = (key, id) => setApercu(p => {
+    const arr = p.data[key] || [];
+    const next = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr, id];
+    return { ...p, data: { ...p.data, [key]: next } };
+  });
+
+  const togglePrestation = (id) => setApercu(p => {
+    const arr = p.data.prestations || [];
+    const existe = arr.some(x=>x.id===id);
+    const next = existe ? arr.filter(x=>x.id!==id) : [...arr, {id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:""}];
+    return { ...p, data: { ...p.data, prestations: next } };
+  });
+
+  const champsConfig = () => {
+    if (!apercu) return [];
+    if (apercu.mode === "rdv") {
+      return [
+        {key:"client", label:"Client", type:"text"},
+        {key:"_clientMatch", label:"→ relié à un client existant", type:"info"},
+        {key:"tel", label:"Téléphone", type:"text"},
+        {key:"adresse", label:"Adresse", type:"text"},
+        {key:"dateRdv", label:"Date", type:"date"},
+        {key:"heureRdv", label:"Heure", type:"time"},
+        {key:"technicien", label:"Technicien", type:"select", options:(techniciens||[]).map(t=>({id:t,label:t}))},
+        {key:"urgent", label:"Urgent", type:"toggle"},
+        {key:"noteRdv", label:"Note", type:"textarea"},
+      ];
+    }
+    return [
+      {key:"client", label:"Client", type:"text"},
+      {key:"_clientMatch", label:"→ relié à un client existant", type:"info"},
+      {key:"tel", label:"Téléphone", type:"text"},
+      {key:"adresse", label:"Adresse", type:"text"},
+      {key:"prestations", label:"Prestations", type:"prestations"},
+      {key:"status", label:"Statut", type:"select", options:[{id:"termine",label:"Terminé"},{id:"a_prevoir",label:"Retour à prévoir"}]},
+      {key:"technicien", label:"Technicien", type:"select", options:(techniciens||[]).map(t=>({id:t,label:t}))},
+      {key:"tempsInterne", label:"Temps passé", type:"text", placeholder:"ex : 1h30"},
+      {key:"majorations", label:"Majoration", type:"multiselect", options:[{id:"soir50",label:"🌙 Soirée +50%"},{id:"weekend100",label:"🌃 Nuit / week-end +100%"}]},
+      {key:"tarifHoraire", label:"Tarif horaire", type:"text", placeholder:"ex : 85"},
+      {key:"materiels", label:"Matériel", type:"multiselect", options:MATERIELS.map(m=>({id:m,label:m}))},
+      {key:"difficulte", label:"Difficulté", type:"select", options:["Facile","Normale","Difficile","Très difficile"].map(d=>({id:d,label:d}))},
+      {key:"responsabilite", label:"Responsabilité", type:"select", options:RESPONSABILITES.map(r=>({id:r.id,label:r.label}))},
+      {key:"preconisations", label:"Préconisations", type:"multiselect", options:PRECONISATIONS.map(p=>({id:p,label:p}))},
+      {key:"diametreCanalisation", label:"Diamètre canalisation", type:"text", placeholder:"ex : 100mm"},
+      {key:"urgent", label:"Urgent", type:"toggle"},
+      {key:"notesInternes", label:"Notes internes", type:"textarea"},
+      {key:"conclusion", label:"Conclusion", type:"textarea"},
+    ];
+  };
+
+  // Calcule l'affichage (valeur texte + ok/optionnel) d'un champ à partir de apercu.data actuel
+  const champAffichage = (c) => {
+    const d = apercu?.data || {};
+    if (c.key === "_clientMatch") return { valeur: d.clientId ? "oui" : null, ok: !!d.clientId, optionnel: !d.clientId };
+    if (c.type === "prestations") {
+      const labels = (d.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ");
+      return { valeur: labels, ok: (d.prestations||[]).length>0 };
+    }
+    if (c.type === "multiselect") {
+      const arr = d[c.key]||[];
+      const labels = arr.map(id=>c.options.find(o=>o.id===id)?.label).filter(Boolean).join(", ");
+      return { valeur: labels, ok: arr.length>0, optionnel: arr.length===0 };
+    }
+    if (c.type === "toggle") return { valeur: d[c.key]?"oui":null, ok: !!d[c.key], optionnel: !d[c.key] };
+    if (c.key === "status") return { valeur: STATUTS[d.status]?.label, ok: true };
+    if (c.key === "responsabilite") return { valeur: d.responsabilite&&d.responsabilite!=="na" ? c.options.find(o=>o.id===d.responsabilite)?.label : null, ok: d.responsabilite&&d.responsabilite!=="na", optionnel: !d.responsabilite||d.responsabilite==="na" };
+    return { valeur: d[c.key], ok: !!d[c.key] };
+  };
+
+
   const appliquer = () => {
+    setEditKey(null);
     if(!apercu) return;
     onExtracted(apercu.mode, apercu.data);
   };
@@ -2137,20 +2180,82 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
         {apercu ? (
           <>
             <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>✨ Aperçu avant application</div>
-            <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Voici ce que l'IA a compris. Vous pourrez encore tout modifier dans le formulaire ensuite.</div>
+            <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Voici ce que l'IA a compris. Cliquez sur une ligne pour la compléter ou la corriger.</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
-              {apercu.champs.map((c,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 10px",borderRadius:8,background:T.surface2}}>
-                  <div style={{fontSize:13,flexShrink:0}}>{c.ok?"✅":c.optionnel?"⚪":"❌"}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:10.5,color:T.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em"}}>{c.label}</div>
-                    <div style={{fontSize:12.5,color:c.ok?T.text:T.textFaint,fontWeight:c.ok?600:400,wordBreak:"break-word"}}>{c.valeur || (c.optionnel?"—":"non détecté")}</div>
+              {champsConfig().map((c,i)=>{
+                const { valeur, ok, optionnel } = champAffichage(c);
+                const enEdition = editKey === c.key;
+                const editable = c.type !== "info";
+                return (
+                  <div key={i} style={{borderRadius:8,background:T.surface2,overflow:"hidden"}}>
+                    <div onClick={()=>editable&&setEditKey(enEdition?null:c.key)}
+                      style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 10px",cursor:editable?"pointer":"default",...(enEdition?{background:"rgba(14,165,233,0.08)"}:{})}}>
+                      <div style={{fontSize:13,flexShrink:0}}>{ok?"✅":optionnel?"⚪":"❌"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:10.5,color:T.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em"}}>{c.label}</div>
+                        <div style={{fontSize:12.5,color:ok?T.text:T.textFaint,fontWeight:ok?600:400,wordBreak:"break-word"}}>{valeur || (optionnel?"—":"non détecté")}</div>
+                      </div>
+                      {editable&&<div style={{fontSize:11,color:"#0EA5E9",flexShrink:0}}>{enEdition?"▲":"✏️"}</div>}
+                    </div>
+
+                    {enEdition && (
+                      <div style={{padding:"0 10px 10px"}} onClick={e=>e.stopPropagation()}>
+                        {c.type==="text" && (
+                          <input autoFocus value={apercu.data[c.key]||""} placeholder={c.placeholder||""} onChange={e=>updateChamp(c.key,e.target.value)}
+                            style={{width:"100%",padding:"8px 10px",background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:6,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        )}
+                        {c.type==="textarea" && (
+                          <textarea autoFocus rows={3} value={apercu.data[c.key]||""} onChange={e=>updateChamp(c.key,e.target.value)}
+                            style={{width:"100%",padding:"8px 10px",background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:6,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+                        )}
+                        {c.type==="date" && (
+                          <input autoFocus type="date" value={apercu.data[c.key]||""} onChange={e=>updateChamp(c.key,e.target.value)}
+                            style={{width:"100%",padding:"8px 10px",background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:6,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",colorScheme:"dark"}}/>
+                        )}
+                        {c.type==="time" && (
+                          <input autoFocus type="time" value={apercu.data[c.key]||""} onChange={e=>updateChamp(c.key,e.target.value)}
+                            style={{width:"100%",padding:"8px 10px",background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:6,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",colorScheme:"dark"}}/>
+                        )}
+                        {c.type==="toggle" && (
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={()=>updateChamp(c.key,true)} style={{flex:1,padding:"7px",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12,border:`1.5px solid ${apercu.data[c.key]?"#EF4444":T.border}`,background:apercu.data[c.key]?"rgba(239,68,68,0.15)":T.surface,color:apercu.data[c.key]?"#EF4444":T.textMuted,fontFamily:"inherit"}}>Oui</button>
+                            <button onClick={()=>updateChamp(c.key,false)} style={{flex:1,padding:"7px",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12,border:`1.5px solid ${!apercu.data[c.key]?"#0EA5E9":T.border}`,background:!apercu.data[c.key]?"rgba(14,165,233,0.15)":T.surface,color:!apercu.data[c.key]?"#0EA5E9":T.textMuted,fontFamily:"inherit"}}>Non</button>
+                          </div>
+                        )}
+                        {c.type==="select" && (
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {c.options.map(o=>(
+                              <button key={o.id} onClick={()=>updateChamp(c.key,o.id)}
+                                style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontWeight:700,fontSize:11.5,border:`1.5px solid ${apercu.data[c.key]===o.id?"#0EA5E9":T.border}`,background:apercu.data[c.key]===o.id?"rgba(14,165,233,0.15)":T.surface,color:apercu.data[c.key]===o.id?"#0EA5E9":T.textMuted,fontFamily:"inherit"}}>{o.label}</button>
+                            ))}
+                          </div>
+                        )}
+                        {c.type==="multiselect" && (
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {c.options.map(o=>{
+                              const actif = (apercu.data[c.key]||[]).includes(o.id);
+                              return <button key={o.id} onClick={()=>toggleDansListe(c.key,o.id)}
+                                style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontWeight:700,fontSize:11.5,border:`1.5px solid ${actif?"#0EA5E9":T.border}`,background:actif?"rgba(14,165,233,0.15)":T.surface,color:actif?"#0EA5E9":T.textMuted,fontFamily:"inherit"}}>{actif?"✓ ":""}{o.label}</button>;
+                            })}
+                          </div>
+                        )}
+                        {c.type==="prestations" && (
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {PRESTATIONS.map(p=>{
+                              const actif = (apercu.data.prestations||[]).some(x=>x.id===p.id);
+                              return <button key={p.id} onClick={()=>togglePrestation(p.id)}
+                                style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontWeight:700,fontSize:11.5,border:`1.5px solid ${actif?p.color:T.border}`,background:actif?p.color+"22":T.surface,color:actif?p.color:T.textMuted,fontFamily:"inherit"}}>{actif?"✓ ":""}{p.icon} {p.label}</button>;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setApercu(null)} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Retour</button>
+              <button onClick={()=>{setApercu(null);setEditKey(null);}} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Retour</button>
               <button onClick={appliquer} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✓ Appliquer au formulaire</button>
             </div>
           </>
