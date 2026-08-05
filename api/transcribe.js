@@ -20,7 +20,8 @@ export default async function handler(req, res) {
       apiKey = CLE_SECOURS;
     }
     if (!apiKey || apiKey.startsWith("sk-ant-") || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
-      throw new Error("Aucune clé OpenAI valide disponible (ni OPENAI_KEY_V2, ni OPENAI_API_KEY, ni clé de secours dans le fichier).");
+      const toutesLesCles = Object.keys(process.env).sort().join(", ");
+      throw new Error(`Aucune clé OpenAI valide. Variables vues par le serveur: [${toutesLesCles}]`);
     }
 
     let buffer;
