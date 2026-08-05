@@ -2708,6 +2708,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
           <span style={{fontSize:9.5,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
+          {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:9.5,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
         </div>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
           <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:4}}>
@@ -2905,6 +2906,7 @@ function CarteFiche({ fiche, onSelect, onDelete, T }) {
         <span style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:11,fontWeight:700,color:statutColor}}>{aProg?"📌":"●"} {statutLabel}</span>
           {fiche.signature&&"· ✍️"}
+          {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:700,color:"#A78BFA",display:"flex",alignItems:"center",gap:2}}>📷 {fiche.photos.length}</span>}
           {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
           {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
         </span>
