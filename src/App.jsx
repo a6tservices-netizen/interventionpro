@@ -3906,6 +3906,7 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterTech, setFilterTech] = useState("");
   const [toast, setToast] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [showRdvForm, setShowRdvForm] = useState(false);
@@ -4122,8 +4123,9 @@ export default function App() {
     else if(filterStatus==="__facture") r=r.filter(f=>f.facturation==="facture");
     else if(filterStatus==="planifie") r=r.filter(f=>f.status==="planifie"&&!estAProgrammer(f));
     else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
+    if(filterTech) r=r.filter(f=>f.technicien===filterTech);
     return r;
-  },[fiches,search,filterStatus]);
+  },[fiches,search,filterStatus,filterTech]);
 
   // Notifications reçues pendant que l'app est ouverte au premier plan
   // (le service worker ne gère que les notifications reçues quand l'app est en arrière-plan/fermée)
@@ -4350,17 +4352,22 @@ export default function App() {
                   <option value="__afacturer">💶 À facturer</option>
                   <option value="__facture">✅ Facturé</option>
                 </select>
+                <select value={filterTech} onChange={e=>setFilterTech(e.target.value)}
+                  style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
+                  <option value="">Tous techniciens</option>
+                  {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
                 <span style={{fontSize:12,color:T.textMuted}}>{filtered.length}/{fiches.length}</span>
               </div>
             )}
 
             {/* Bandeau filtre actif */}
-            {nav==="liste"&&filterStatus&&(
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8}}>
+            {nav==="liste"&&(filterStatus||filterTech)&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:"#0EA5E9"}}>
-                  Filtre : {filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label} — {filtered.length} fiche(s)
+                  Filtre :{filterStatus?` ${filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
                 </span>
-                <button onClick={()=>setFilterStatus("")} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
+                <button onClick={()=>{setFilterStatus("");setFilterTech("");}} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
               </div>
             )}
 
