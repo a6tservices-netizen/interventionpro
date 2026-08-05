@@ -9,13 +9,18 @@ export default async function handler(req, res) {
     return;
   }
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY manquante côté serveur");
-    if (apiKey.startsWith("sk-ant-")) {
-      throw new Error(`DIAGNOSTIC: le serveur a encore chargé la clé ANTHROPIC (commence par "sk-ant-") dans la variable OPENAI_API_KEY, pas la clé OpenAI. La modification sur Vercel n'a pas pris effet côté serveur.`);
+    // ⚠️ Clé de secours temporaire, en attendant de comprendre pourquoi la
+    // variable d'environnement Vercel OPENAI_API_KEY ne s'enregistre pas correctement.
+    // Remplacez le texte entre guillemets ci-dessous par votre vraie clé OpenAI (sk-proj-...).
+    // À retirer une fois le problème Vercel résolu, et à révoquer/régénérer ensuite.
+    const CLE_SECOURS = "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI";
+
+    let apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey || apiKey.startsWith("sk-ant-") || !apiKey.startsWith("sk-")) {
+      apiKey = CLE_SECOURS;
     }
-    if (!apiKey.startsWith("sk-")) {
-      throw new Error(`DIAGNOSTIC: valeur inattendue chargée pour OPENAI_API_KEY, commence par "${apiKey.slice(0,8)}"`);
+    if (!apiKey || apiKey.startsWith("sk-ant-") || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
+      throw new Error("Aucune clé OpenAI valide disponible (ni variable d'environnement, ni clé de secours renseignée dans le fichier).");
     }
 
     let buffer;
