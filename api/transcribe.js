@@ -15,12 +15,12 @@ export default async function handler(req, res) {
     // À retirer une fois le problème Vercel résolu, et à révoquer/régénérer ensuite.
     const CLE_SECOURS = "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI";
 
-    let apiKey = process.env.OPENAI_API_KEY;
+    let apiKey = process.env.OPENAI_KEY_V2 || process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey.startsWith("sk-ant-") || !apiKey.startsWith("sk-")) {
       apiKey = CLE_SECOURS;
     }
     if (!apiKey || apiKey.startsWith("sk-ant-") || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
-      throw new Error("Aucune clé OpenAI valide disponible (ni variable d'environnement, ni clé de secours renseignée dans le fichier).");
+      throw new Error("Aucune clé OpenAI valide disponible (ni OPENAI_KEY_V2, ni OPENAI_API_KEY, ni clé de secours dans le fichier).");
     }
 
     let buffer;
