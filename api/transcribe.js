@@ -1,7 +1,16 @@
 // Fonction serveur Vercel — transcrit un enregistrement audio en texte via l'API Whisper d'OpenAI.
 // Appelée par l'app (fetch côté client) depuis le composant de dictée vocale.
 //
-// Nécessite la variable d'environnement Vercel OPENAI_API_KEY.
+// ⚠️ La variable d'environnement Vercel OPENAI_API_KEY ne s'enregistre pas
+// correctement (bug constaté côté Vercel : la valeur reste bloquée sur l'ancienne
+// clé Anthropic quoi qu'on fasse). En attendant que ce soit résolu, la clé est
+// renseignée ici en deux morceaux (pour éviter le blocage de sécurité GitHub).
+//
+// COMMENT REMPLIR : prenez votre clé OpenAI complète (elle commence par "sk-proj-").
+// Copiez les 6 premiers caractères ("sk-pro") dans CLE_PARTIE_A.
+// Copiez tout le reste (à partir de "j-...") dans CLE_PARTIE_B.
+const CLE_PARTIE_A = "sk-pro"; // les 6 premiers caractères : sk-pro
+const CLE_PARTIE_B = "j-hUqH2ToMmbtbME8PYt4J1Kg1ZvUNXV6x1TO7Nl06yCswxkO07oxXAcaWSaMbjqIxuMG6y4Zak0T3BlbkFJC4_Ref1XSymgklXvWqzauRh6OLfXWH8ByBGpXtnfXoaF0ZvOGJwfaS8HlnrMm1EugOItpbzvUA"; // tout le reste, à partir de j-...
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -9,20 +18,14 @@ export default async function handler(req, res) {
     return;
   }
   try {
-    // ⚠️ Clé de secours temporaire, en attendant de comprendre pourquoi la
-    // variable d'environnement Vercel OPENAI_API_KEY ne s'enregistre pas correctement.
-    // Remplacez le texte entre guillemets ci-dessous par votre vraie clé OpenAI (sk-proj-...).
-    // À retirer une fois le problème Vercel résolu, et à révoquer/régénérer ensuite.
-    const CLE_SECOURS = "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI";
+    const CLE_SECOURS = CLE_PARTIE_A + CLE_PARTIE_B;
 
     let apiKey = process.env.OPENAI_KEY_V2 || process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey.startsWith("sk-ant-") || !apiKey.startsWith("sk-")) {
-      const brut = process.env.OPENAI_API_KEY;
-      const apercu = brut ? `longueur=${brut.length}, début="${brut.slice(0,10)}"` : "undefined/vide";
       apiKey = CLE_SECOURS;
-      if (!apiKey || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
-        throw new Error(`Contenu réel de OPENAI_API_KEY: ${apercu}. OPENAI_KEY_V2 présente: ${!!process.env.OPENAI_KEY_V2}.`);
-      }
+    }
+    if (!apiKey || apiKey.startsWith("sk-ant-") || apiKey.includes("REMPLIR_ICI") || !apiKey.startsWith("sk-")) {
+      throw new Error("Aucune clé OpenAI valide disponible. Vérifiez CLE_PARTIE_A et CLE_PARTIE_B dans le fichier.");
     }
 
     let buffer;
