@@ -17,11 +17,12 @@ export default async function handler(req, res) {
 
     let apiKey = process.env.OPENAI_KEY_V2 || process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey.startsWith("sk-ant-") || !apiKey.startsWith("sk-")) {
+      const brut = process.env.OPENAI_API_KEY;
+      const apercu = brut ? `longueur=${brut.length}, début="${brut.slice(0,10)}"` : "undefined/vide";
       apiKey = CLE_SECOURS;
-    }
-    if (!apiKey || apiKey.startsWith("sk-ant-") || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
-      const toutesLesCles = Object.keys(process.env).sort().join(", ");
-      throw new Error(`Aucune clé OpenAI valide. Variables vues par le serveur: [${toutesLesCles}]`);
+      if (!apiKey || apiKey === "REMPLACER_PAR_VOTRE_CLE_OPENAI_ICI") {
+        throw new Error(`Contenu réel de OPENAI_API_KEY: ${apercu}. OPENAI_KEY_V2 présente: ${!!process.env.OPENAI_KEY_V2}.`);
+      }
     }
 
     let buffer;
