@@ -745,6 +745,7 @@ function buildFacturationTexte(fiche) {
   if(fiche.adresse) L.push(`Adresse : ${fiche.adresse}`);
   L.push(`Date d'intervention : ${dateFr(fiche.dateRdv)}`);
   if(fiche.technicien) L.push(`Technicien : ${fiche.technicien}`);
+  if(fiche.numeroOS) L.push(`N° d'ordre de service : ${fiche.numeroOS}`);
   L.push("");
   L.push("DESCRIPTION DES PRESTATIONS");
   if(presta.length) presta.forEach(p=>L.push(`- ${p.label}`));
@@ -1173,7 +1174,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     prestations:[], responsabilite:"na", preconisations:[],
     conclusion:"", photos:[], signature:null, signatureTech:null,
     nomSignataire:"", materiels:[], difficulte:"",
-    tempsInterne:"", majorations:[], tarifHoraire:"", notesInternes:"",
+    tempsInterne:"", majorations:[], tarifHoraire:"", notesInternes:"", numeroOS:"",
     status:"planifie", loc:{...EMPTY_LOC}, urgent:false,
     ...(initial||{}),
   }));
@@ -1796,6 +1797,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div>
             <div style={{...lblStyle,color:"#7C3D12"}}>Tarif horaire (€/h)</div>
             <input value={f.tarifHoraire} onChange={e=>set("tarifHoraire",e.target.value)} placeholder="Ex : 85" style={inpStyle()}/>
+          </div>
+          <div>
+            <div style={{...lblStyle,color:"#7C3D12"}}>📋 N° d'ordre de service</div>
+            <input value={f.numeroOS} onChange={e=>set("numeroOS",e.target.value)} placeholder="Ex : OS-2026-1234" style={inpStyle()}/>
           </div>
           <div>
             <div style={{...lblStyle,color:"#7C3D12"}}>⏱️ Temps passé sur place</div>
@@ -2982,6 +2987,11 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
             🆓 Libre
           </span>
         )}
+        {fiche.numeroOS&&(
+          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.12)",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+            📋 {fiche.numeroOS}
+          </span>
+        )}
         {fiche.typesIntervention?.length>0&&(
           <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
             {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
@@ -3365,10 +3375,11 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       )}
 
       {/* Temps passé & facturation (usage interne, visible gestion) */}
-      {!isRdv&&(fiche.tempsInterne||fiche.majorations?.length)&&(
+      {!isRdv&&(fiche.tempsInterne||fiche.majorations?.length||fiche.numeroOS)&&(
         <div style={{...card,border:"1px solid rgba(245,158,11,0.35)",background:isRdv?T.surface:"rgba(245,158,11,0.05)"}}>
           <div style={{...secHead,color:"#F59E0B",borderColor:"rgba(245,158,11,0.25)"}}>⏱️ Temps passé & facturation <span style={{marginLeft:"auto",fontSize:9,opacity:.7}}>🔒 interne</span></div>
           <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"center"}}>
+            {fiche.numeroOS&&<div><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:3}}>N° ordre de service</div><div style={{fontSize:20,fontWeight:800,color:T.text}}>📋 {fiche.numeroOS}</div></div>}
             {fiche.tempsInterne&&<div><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:3}}>Temps sur place</div><div style={{fontSize:20,fontWeight:800,color:T.text}}>{fiche.tempsInterne}</div></div>}
             {fiche.tarifHoraire&&fiche.tempsInterne&&(()=>{
               const base = calculerMontant(fiche.tempsInterne, fiche.tarifHoraire);
@@ -4187,7 +4198,7 @@ export default function App() {
   const filtered = useMemo(()=>{
     let r=fiches;
     if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || !f.technicien);
-    if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien}`.toLowerCase().includes(search.toLowerCase()));
+    if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien} ${f.numeroOS||""}`.toLowerCase().includes(search.toLowerCase()));
     if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
