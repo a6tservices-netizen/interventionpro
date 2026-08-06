@@ -68,6 +68,10 @@ const deleteClient = (id) => remove(ref(db, `clients/${id}`));
 const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const watchMemosVocaux = (cb) => onValue(ref(db, "memosVocaux"), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>(b.ts||0)-(a.ts||0)):[]); });
 const saveMemoVocal = (memo) => set(ref(db, `memosVocaux/${memo.id}`), memo);
+const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_");
+const watchUserRoles = (cb) => onValue(ref(db, "userRoles"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const saveUserRole = (role) => set(ref(db, `userRoles/${emailKey(role.email)}`), role);
+const deleteUserRole = (email) => remove(ref(db, `userRoles/${emailKey(email)}`));
 const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), sanitize(d));
 const deleteDevisFb = (id) => remove(ref(db, `devis/${id}`));
 const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
@@ -1830,7 +1834,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, theme }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -1839,6 +1843,8 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
   const btn = {border:`1px solid ${T.border}`,background:T.surface2,color:T.textMuted,borderRadius:6,width:28,height:28,cursor:"pointer",fontFamily:"inherit",fontSize:12};
   const addBtn = {border:"1px solid rgba(16,185,129,0.4)",background:T.surface2,color:"#10B981",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700};
   const row = (last)=>({display:"flex",alignItems:"center",gap:8,padding:"8px 4px",borderBottom:last?"none":`1px solid ${T.border}`});
+  const [nouvelEmail, setNouvelEmail] = useState("");
+  const [nouveauRoleTech, setNouveauRoleTech] = useState("");
 
   /* Listes simples éditables via champs/_global */
   const simpleList = (key, def) => (champs?._global?.[key]?.length ? champs._global[key] : def);
@@ -1878,6 +1884,34 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
         <div style={head}>📊 Export mensuel</div>
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Récapitulatif du chiffre d'affaires estimé et du temps travaillé, par technicien, pour un mois donné.</div>
         <button onClick={onOpenExport} style={{padding:"9px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📊 Générer l'export</button>
+      </div>
+
+      {/* Comptes techniciens restreints */}
+      <div style={card}>
+        <div style={head}>🔐 Comptes & accès restreints</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
+          Pour donner un accès personnel à un technicien : créez d'abord son compte (email + mot de passe) dans <b>Firebase Console → Authentication</b>, puis liez cet email à son nom ci-dessous. Un email lié à un technicien ne verra plus que ses propres interventions. Un compte non listé ici garde un accès complet.
+        </div>
+        {userRoles.filter(r=>r.role==="technicien").map(r=>(
+          <div key={r.email} style={row(false)}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12.5,fontWeight:700,color:T.text,wordBreak:"break-all"}}>{r.email}</div>
+              <div style={{fontSize:11,color:"#0EA5E9"}}>👤 {r.technicien}</div>
+            </div>
+            <button onClick={()=>onDeleteUserRole(r.email)} style={btn}>🗑️</button>
+          </div>
+        ))}
+        {userRoles.filter(r=>r.role==="technicien").length===0 && <div style={{fontSize:12,color:T.textFaint,padding:"6px 4px"}}>Aucun compte restreint pour l'instant — tout le monde voit tout.</div>}
+        <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+          <input value={nouvelEmail} onChange={e=>setNouvelEmail(e.target.value)} placeholder="email du compte" type="email"
+            style={{flex:2,minWidth:160,padding:"8px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+          <select value={nouveauRoleTech} onChange={e=>setNouveauRoleTech(e.target.value)}
+            style={{flex:1,minWidth:120,padding:"8px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
+            <option value="">— technicien —</option>
+            {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+          <button onClick={()=>{ if(!nouvelEmail.trim()||!nouveauRoleTech) return; onSaveUserRole({email:nouvelEmail.trim().toLowerCase(),role:"technicien",technicien:nouveauRoleTech}); setNouvelEmail("");setNouveauRoleTech(""); }} style={addBtn}>+ Lier ce compte</button>
+        </div>
       </div>
 
       {/* Sociétés + logos */}
@@ -2940,7 +2974,12 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         )}
         {fiche.technicien&&tColor&&(
           <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:tColor,background:tColor+"1A",padding:"2px 8px",borderRadius:12,marginTop:2}}>
-            👤 {fiche.technicien}
+            👤 {fiche.technicien} {fiche.priseEnCharge?"✅":"⏳"}
+          </span>
+        )}
+        {!fiche.technicien&&(
+          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.12)",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+            🆓 Libre
           </span>
         )}
         {fiche.typesIntervention?.length>0&&(
@@ -3114,7 +3153,7 @@ function CarteFiche({ fiche, onSelect, onDelete, T }) {
         </div>
       )}
       <div style={{marginTop:10,fontSize:11,borderTop:`1px solid ${T.border}`,paddingTop:8,display:"flex",justifyContent:"space-between",color:T.textMuted}}>
-        <span>{fiche.technicien&&`👤 ${fiche.technicien}`}</span>
+        <span>{fiche.technicien&&`👤 ${fiche.technicien} ${fiche.priseEnCharge?"✅":"⏳"}`}</span>
         <span style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:11,fontWeight:700,color:statutColor}}>{aProg?"📌":"●"} {statutLabel}</span>
           {fiche.signature&&"· ✍️"}
@@ -3192,7 +3231,7 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
@@ -3214,6 +3253,25 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)}/>}
       {showFacturation&&<FacturationModal fiche={fiche} theme={theme} onClose={()=>setShowFacturation(false)}/>}
       {showSousTraitant&&<SousTraitantModal fiche={fiche} sousTraitants={sousTraitants} onSaveSousTraitants={onSaveSousTraitants||(()=>{})} theme={theme} onClose={()=>setShowSousTraitant(false)}/>}
+      {!fiche.technicien && onClaim && (
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(14,165,233,0.1)",border:"1.5px solid #0EA5E9",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+          <div style={{fontSize:18}}>🆓</div>
+          <div style={{flex:1,minWidth:200,fontSize:12.5,color:T.text}}>Cette intervention n'est attribuée à personne — le premier disponible peut la prendre.</div>
+          <button onClick={()=>onClaim(fiche)} style={{padding:"8px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>✋ Je la prends{monTechnicien?` (${monTechnicien})`:""}</button>
+        </div>
+      )}
+      {fiche.technicien && !fiche.priseEnCharge && onConfirmerPriseEnCharge && (
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(245,158,11,0.1)",border:"1.5px solid #F59E0B",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+          <div style={{fontSize:18}}>⏳</div>
+          <div style={{flex:1,minWidth:200,fontSize:12.5,color:T.text}}>Attribuée à <b>{fiche.technicien}</b> — pas encore confirmée comme prise en charge.</div>
+          <button onClick={()=>onConfirmerPriseEnCharge(fiche)} style={{padding:"8px 16px",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>✅ Je m'en occupe</button>
+        </div>
+      )}
+      {fiche.priseEnCharge && (
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:10,padding:"8px 14px",marginBottom:16,fontSize:12,color:"#10B981",fontWeight:700}}>
+          ✅ Pris en charge par {fiche.priseEnCharge.par} à {new Date(fiche.priseEnCharge.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+        </div>
+      )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <code style={{fontSize:12,color:isRdv?"#3B82F6":"#0EA5E9",background:isRdv?"rgba(59,130,246,0.1)":"rgba(14,165,233,0.1)",border:`1px solid ${isRdv?"rgba(59,130,246,0.2)":"rgba(14,165,233,0.2)"}`,padding:"5px 12px",borderRadius:6,fontWeight:700}}>
@@ -3894,6 +3952,7 @@ export default function App() {
   const [contrats, setContrats] = useState([]);
   const [taches, setTaches] = useState([]);
   const [memosVocaux, setMemosVocaux] = useState([]);
+  const [userRoles, setUserRoles] = useState([]);
   const [voiceResume, setVoiceResume] = useState(null);
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
@@ -3922,6 +3981,12 @@ export default function App() {
   const [champsCustom, setChampsCustom] = useState({});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
+  const monRole = useMemo(() => {
+    if(!currentUser?.email) return { role:"admin", technicien:null };
+    const trouve = userRoles.find(r => (r.email||"").toLowerCase() === currentUser.email.toLowerCase());
+    return trouve || { role:"admin", technicien:null }; // par défaut : accès complet tant qu'un compte n'est pas explicitement restreint
+  }, [currentUser, userRoles]);
+  const estRestreint = monRole.role === "technicien";
   const [authReady, setAuthReady] = useState(false);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
@@ -3979,7 +4044,8 @@ export default function App() {
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubM(); };
+    const unsubR = watchUserRoles(data => setUserRoles(data));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubM(); unsubR(); };
   },[]);
 
   const ajouterSociete = (nom) => {
@@ -4017,11 +4083,15 @@ export default function App() {
       showToast("📴 Hors ligne — fiche mise en attente, envoi automatique au retour du réseau");
       return;
     }
+    const prevAvantSave = fiches.find(x=>x.id===fiche.id);
+    if (fiche.priseEnCharge && fiche.technicien?.trim() !== prevAvantSave?.technicien && fiche.technicien?.trim() !== fiche.priseEnCharge.par) {
+      fiche = { ...fiche, priseEnCharge: null };
+    }
     saveFiche(fiche); // Firebase
     try {
       if (fiche.societe && !societes.includes(fiche.societe)) ajouterSociete(fiche.societe);
       if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
-      const prev = fiches.find(x=>x.id===fiche.id);
+      const prev = prevAvantSave;
       if (fiche.technicien?.trim() && fiche.technicien.trim()!==prev?.technicien) {
         envoyerNotification(fiche.technicien.trim(), "🔧 Intervention assignée", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
       }
@@ -4116,6 +4186,7 @@ export default function App() {
 
   const filtered = useMemo(()=>{
     let r=fiches;
+    if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || !f.technicien);
     if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien}`.toLowerCase().includes(search.toLowerCase()));
     if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
@@ -4125,7 +4196,7 @@ export default function App() {
     else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
     if(filterTech) r=r.filter(f=>f.technicien===filterTech);
     return r;
-  },[fiches,search,filterStatus,filterTech]);
+  },[fiches,search,filterStatus,filterTech,estRestreint,monRole.technicien]);
 
   // Notifications reçues pendant que l'app est ouverte au premier plan
   // (le service worker ne gère que les notifications reçues quand l'app est en arrière-plan/fermée)
@@ -4173,10 +4244,11 @@ export default function App() {
     </div>
   );
 
+  const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || !f.technicien) : fiches, [fiches,estRestreint,monRole.technicien]);
   const fichesEnRetard = useMemo(()=>{
     const seuil = Date.now() - 3*24*60*60*1000;
-    return fiches.filter(f => f.status==="a_prevoir" && (f.createdAt||0) < seuil);
-  },[fiches]);
+    return fichesVisibles.filter(f => f.status==="a_prevoir" && (f.createdAt||0) < seuil);
+  },[fichesVisibles]);
   const retardBanner = fichesEnRetard.length>0 && nav!=="liste" && (
     <div onClick={()=>{setView("accueil");setNav("liste");setFilterStatus("a_prevoir");}} style={{cursor:"pointer",background:"rgba(249,115,22,0.15)",borderBottom:"1px solid rgba(249,115,22,0.35)",color:"#F97316",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
       ⚠️ {fichesEnRetard.length} fiche(s) "Retour à prévoir" en attente depuis plus de 3 jours — cliquez pour voir
@@ -4273,6 +4345,9 @@ export default function App() {
         {view==="detail"&&selected&&(
           <DetailFiche fiche={selected} theme={theme} techTels={techTels} onSaveTechTel={saveTechTel}
             sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
+            monTechnicien={estRestreint?monRole.technicien:null}
+            onClaim={estRestreint?(f)=>{const nf={...f,technicien:monRole.technicien};saveFiche(nf);setSelected(nf);showToast(`✋ Intervention attribuée à ${monRole.technicien}`);}:null}
+            onConfirmerPriseEnCharge={(f)=>{const nf={...f,priseEnCharge:{par:f.technicien,ts:Date.now()}};saveFiche(nf);setSelected(nf);showToast(`✅ Prise en charge confirmée`);}}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
@@ -4299,7 +4374,7 @@ export default function App() {
                   <>
                     <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:390}}/>
                     <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:400,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:8,minWidth:230,boxShadow:"0 16px 48px rgba(0,0,0,0.35)"}}>
-                      {NAV_MENU.map(n=>(
+                      {NAV_MENU.filter(n=>!estRestreint || n.id==="liste").map(n=>(
                         <button key={n.id} onClick={()=>{setNav(n.id);setMenuOpen(false);}}
                           style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",
                             background:nav===n.id?"rgba(14,165,233,0.14)":"transparent",
@@ -4307,10 +4382,10 @@ export default function App() {
                           {n.label}
                         </button>
                       ))}
-                      <button onClick={()=>{exporterExcel();setMenuOpen(false);}}
+                      {!estRestreint&&<button onClick={()=>{exporterExcel();setMenuOpen(false);}}
                         style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"transparent",color:"#10B981"}}>
                         📊 Exporter en Excel
-                      </button>
+                      </button>}
                       <div style={{borderTop:`1px solid ${T.border}`,margin:"8px 4px",paddingTop:10}}>
                         <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>🎨 Couleur de l'écran</div>
                         <div style={{display:"flex",gap:6,paddingLeft:8,paddingBottom:4}}>
@@ -4371,14 +4446,15 @@ export default function App() {
               </div>
             )}
 
-            {nav==="dashboard"&&<TableauDeBord fiches={fiches} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
+            {nav==="dashboard"&&<TableauDeBord fiches={fichesVisibles} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
             {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme}/>}
             {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} techColors={techColors} logos={logos} champs={champsCustom}
               sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
-              onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)} theme={theme}/>}
+              onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
+              userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
@@ -4404,7 +4480,7 @@ export default function App() {
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
             {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
-            {nav==="carte"&&<CarteView fiches={fiches} positions={positions} theme={theme}/>}
+            {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
           </>
         )}
