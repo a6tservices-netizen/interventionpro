@@ -4427,7 +4427,7 @@ export default function App() {
                   <option value="__afacturer">💶 À facturer</option>
                   <option value="__facture">✅ Facturé</option>
                 </select>
-                <select value={filterTech} onChange={e=>setFilterTech(e.target.value)}
+                <select value={filterTech} onChange={e=>{setFilterTech(e.target.value);if(e.target.value&&nav==="agenda")setNav("liste");}}
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous techniciens</option>
                   {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
