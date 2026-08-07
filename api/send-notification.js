@@ -3,16 +3,25 @@
 //
 // Nécessite la variable d'environnement Vercel FIREBASE_SERVICE_ACCOUNT
 // (le contenu complet du fichier .json de la clé de compte de service, en une seule ligne).
+//
+// IMPORTANT : on utilise ici la syntaxe "modulaire" de firebase-admin (imports nommés
+// depuis firebase-admin/app, /database, /messaging) plutôt que `import admin from
+// "firebase-admin"`. Le default-import classique peut mal s'interfacer en ESM sur
+// Vercel (admin.apps se retrouve `undefined`), ce qui faisait planter la fonction
+// avant même de lire la clé. La forme modulaire évite ce piège.
 
-import admin from "firebase-admin";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getDatabase } from "firebase-admin/database";
+import { getMessaging } from "firebase-admin/messaging";
 
 function getAdminApp() {
-  if (admin.apps.length) return admin.apps[0];
+  const apps = getApps();
+  if (apps.length) return apps[0];
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT manquante");
   const serviceAccount = JSON.parse(raw);
-  return admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+  return initializeApp({
+    credential: cert(serviceAccount),
     databaseURL: "https://fiche-d-intervention-ae948-default-rtdb.europe-west1.firebasedatabase.app",
   });
 }
@@ -29,7 +38,8 @@ export default async function handler(req, res) {
       return;
     }
     const app = getAdminApp();
-    const db = admin.database(app);
+    const db = getDatabase(app);
+    const messaging = getMessaging(app);
     const logoKey = (nom) => (nom || "").replace(/[.#$/\[\]]/g, "_");
 
     // Aucun technicien précisé → on notifie TOUTE l'équipe (tous les tokens enregistrés).
@@ -46,7 +56,7 @@ export default async function handler(req, res) {
         data: { ficheId: ficheId || "" },
         webpush: { fcmOptions: { link: "/" }, notification: { icon: "/icon-192.png" } },
       };
-      const resp = await admin.messaging(app).sendEachForMulticast({ tokens, ...message });
+      const resp = await messaging.sendEachForMulticast({ tokens, ...message });
       res.status(200).json({ ok: true, envoyes: resp.successCount, echecs: resp.failureCount });
       return;
     }
@@ -58,7 +68,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    await admin.messaging(app).send({
+    await messaging.send({
       token,
       notification: { title: titre, body: corps || "" },
       data: { ficheId: ficheId || "" },
