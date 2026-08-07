@@ -75,6 +75,25 @@ const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_")
 const watchUserRoles = (cb) => onValue(ref(db, "userRoles"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const saveUserRole = (role) => set(ref(db, `userRoles/${emailKey(role.email)}`), role);
 const deleteUserRole = (email) => remove(ref(db, `userRoles/${emailKey(email)}`));
+// ── Lecture rapide des droits d'accès, en contournant la connexion Firebase principale ──
+// Après connexion, l'app doit confirmer "admin ou technicien restreint ?" avant d'afficher
+// quoi que ce soit. Ce petit bout d'info passait par le même canal que le téléchargement de
+// TOUTES les fiches (avec leurs photos) — donc il attendait derrière ce gros transfert et
+// mettait du temps à arriver. Cet appel REST classique (une simple requête web) est
+// totalement indépendant de ce canal, et arrive donc immédiatement, sans jamais attendre
+// le reste des données.
+async function fetchUserRolesFast(user) {
+  try {
+    const token = await user.getIdToken();
+    const res = await fetch(`${firebaseConfig.databaseURL}/userRoles.json?auth=${token}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    return data ? Object.values(data) : [];
+  } catch (e) {
+    console.error("fetchUserRolesFast error", e);
+    return null; // échec : on laisse l'écoute temps réel (plus lente) prendre le relais
+  }
+}
 const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), sanitize(d));
 const deleteDevisFb = (id) => remove(ref(db, `devis/${id}`));
 const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
@@ -4371,6 +4390,19 @@ export default function App() {
     if(!currentUser || userRolesLoaded) { setRolesStuck(false); return; }
     const t = setTimeout(()=>{ setRolesStuck(true); }, 12000);
     return ()=>clearTimeout(t);
+  },[currentUser, userRolesLoaded]);
+  // Dès la connexion réussie, on va chercher les droits d'accès par le chemin rapide
+  // (indépendant du gros téléchargement des fiches) plutôt que d'attendre l'écoute temps
+  // réel classique, qui peut se retrouver coincée derrière ce transfert.
+  useEffect(()=>{
+    if(!currentUser || userRolesLoaded) return;
+    let annule = false;
+    fetchUserRolesFast(currentUser).then(data=>{
+      if(annule || data===null) return; // échec : l'écoute temps réel plus lente prendra le relais
+      setUserRoles(data);
+      setUserRolesLoaded(true);
+    });
+    return ()=>{ annule = true; };
   },[currentUser, userRolesLoaded]);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
