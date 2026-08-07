@@ -3103,7 +3103,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
           </select>
           <label style={{padding:"10px 12px",borderRadius:9,border:`1px solid ${tachePhoto?"#10B981":T.border}`,background:T.bg,color:tachePhoto?"#10B981":T.textMuted,fontSize:13,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
             {tachePhoto?"✓ Photo":"📷 Photo"}
-            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file){const r=new FileReader();r.onload=ev=>setTachePhoto(ev.target.result);r.readAsDataURL(file);}}}/>
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(file){const r=await resizePhoto(file);setTachePhoto(r.data);}}}/>
           </label>
           <button onClick={()=>{if(nouvelleTache.trim()){onAjouterTache(nouvelleTache,nouvellePriorite,tachePhoto);setNouvelleTache("");setTachePhoto("");}}}
             style={{padding:"10px 18px",background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>+ Ajouter</button>
@@ -4364,11 +4364,14 @@ export default function App() {
   // charger (souci réseau/Firebase), on n'accorde JAMAIS un accès admin par défaut en
   // attendant — ça exposerait les données de tout le monde à un compte censé être
   // restreint. On affiche plutôt un écran explicite avec un bouton pour réessayer.
+  // Le minuteur ne démarre qu'une fois connecté (currentUser) : avant ça, userRoles ne
+  // peut de toute façon pas se charger (règles Firebase), et le temps passé sur l'écran
+  // de connexion à taper ses identifiants ne doit pas être compté dans ces 12 secondes.
   useEffect(()=>{
-    if(userRolesLoaded) { setRolesStuck(false); return; }
+    if(!currentUser || userRolesLoaded) { setRolesStuck(false); return; }
     const t = setTimeout(()=>{ setRolesStuck(true); }, 12000);
     return ()=>clearTimeout(t);
-  },[userRolesLoaded]);
+  },[currentUser, userRolesLoaded]);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
     window.addEventListener("online",on); window.addEventListener("offline",off);
@@ -4675,6 +4678,22 @@ export default function App() {
   );
 
   // ── Sécurité : connexion obligatoire ──
+  // IMPORTANT : on vérifie authReady et currentUser AVANT de se soucier des droits d'accès
+  // (userRoles). Firebase refuse de toute façon de lire les droits tant qu'on n'est pas
+  // connecté — attendre cette info avant d'afficher le formulaire de connexion bloquait
+  // l'écran de connexion lui-même (personne ne peut même taper son mot de passe).
+  if(!authReady) return (
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔧</div>
+        <div style={{fontSize:14,color:T.textMuted}}>Chargement…</div>
+      </div>
+    </div>
+  );
+  if(!currentUser) return <LoginPage theme={theme} />;
+  // À partir d'ici, l'utilisateur est authentifié : on peut légitimement attendre la
+  // confirmation de ses droits d'accès (admin ou technicien restreint) avant d'afficher
+  // les données de l'app.
   if(rolesStuck) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:20}}>
       <div style={{textAlign:"center",maxWidth:340}}>
@@ -4685,7 +4704,7 @@ export default function App() {
       </div>
     </div>
   );
-  if(!authReady || monRole.role==="pending") return (
+  if(monRole.role==="pending") return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <div style={{textAlign:"center"}}>
         <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔧</div>
@@ -4693,7 +4712,6 @@ export default function App() {
       </div>
     </div>
   );
-  if(!currentUser) return <LoginPage theme={theme} />;
 
   // Formulaire RDV plein écran
   if(showRdvForm) return (
