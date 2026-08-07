@@ -549,13 +549,13 @@ function buildReportHTML(fiche, hideInternal = false) {
     }).join("");
 
   const photoSection = (titre, liste) => liste.length
-    ? `<div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div>` : "";
+    ? `<div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div>` : "";
   const photosOntTag = fiche.photos?.some(p=>p.tag);
   const photoGrid = fiche.photos?.length
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
        ${photosOntTag
          ? photoSection("Avant travaux", fiche.photos.filter(p=>p.tag==="avant")) + photoSection("Pendant intervention", fiche.photos.filter(p=>p.tag==="pendant")) + photoSection("Après travaux", fiche.photos.filter(p=>p.tag==="apres")) + photoSection("Autres photos", fiche.photos.filter(p=>!p.tag))
-         : `<div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt=""/></div>`).join("")}</div>`}
+         : `<div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div>`}
        </div>` : "";
 
   const sigBoxes = [];
@@ -687,7 +687,19 @@ body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12
     <div class="footer-logo">${fiche.societe||"Rapport d'intervention"}</div>
     <div>${fiche.id} — Confidentiel</div>
   </div>
-</div></body></html>`;
+</div>
+<div id="lightbox" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;">
+  <img id="lightbox-img" src="" style="max-width:94%;max-height:94%;border-radius:6px;box-shadow:0 10px 50px rgba(0,0,0,0.6);"/>
+</div>
+<style>@media print{ .photo-zoomable{cursor:default!important;} #lightbox{display:none!important;} }</style>
+<script>
+function zoomPhoto(src){
+  var lb=document.getElementById('lightbox'), img=document.getElementById('lightbox-img');
+  if(!lb||!img) return;
+  img.src=src; lb.style.display='flex';
+}
+</script>
+</body></html>`;
 }
 
 function calculerMontant(temps, tarif) {
@@ -1214,6 +1226,184 @@ function TempsPopup({ onSave, tarifHoraire, initialTemps="", initialMaj=[] }) {
 }
 
 /* ═══════════════════════════════════════════
+   ANNOTATION PHOTO — cercles / flèches / texte
+═══════════════════════════════════════════ */
+function PhotoAnnotator({ photo, onSave, onClose, theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [tool, setTool] = useState("circle"); // circle | arrow | texte
+  const [color, setColor] = useState("#EF4444");
+  const [shapes, setShapes] = useState([]); // liste d'opérations pour pouvoir annuler
+  const drawingRef = useRef(null); // { type, x1,y1, x2,y2 } en cours de tracé
+  const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      imgRef.current = img;
+      const cv = canvasRef.current;
+      cv.width = img.naturalWidth;
+      cv.height = img.naturalHeight;
+      redraw([]);
+      setReady(true);
+    };
+    img.src = photo.data;
+  }, [photo.data]);
+
+  const redraw = (list) => {
+    const cv = canvasRef.current, img = imgRef.current;
+    if (!cv || !img) return;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    const lw = Math.max(3, cv.width * 0.006);
+    list.forEach(s => {
+      ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = lw;
+      if (s.type === "circle") {
+        const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2;
+        const rx = Math.abs(s.x2 - s.x1) / 2, ry = Math.abs(s.y2 - s.y1) / 2;
+        ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(rx, lw), Math.max(ry, lw), 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (s.type === "arrow") {
+        const { x1, y1, x2, y2 } = s;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        const angle = Math.atan2(y2 - y1, x2 - x1); const head = lw * 4.5;
+        ctx.beginPath(); ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - head * Math.cos(angle - Math.PI / 6), y2 - head * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6));
+        ctx.closePath(); ctx.fill();
+      } else if (s.type === "texte") {
+        const fs = Math.max(20, cv.width * 0.035);
+        ctx.font = `800 ${fs}px 'DM Sans', sans-serif`;
+        const w = ctx.measureText(s.texte).width;
+        ctx.fillStyle = "rgba(0,0,0,0.65)"; ctx.fillRect(s.x1 - 6, s.y1 - fs, w + 12, fs + 12);
+        ctx.fillStyle = s.color; ctx.fillText(s.texte, s.x1, s.y1);
+      }
+    });
+  };
+
+  const coordsFromEvent = (e) => {
+    const cv = canvasRef.current;
+    const rect = cv.getBoundingClientRect();
+    const scaleX = cv.width / rect.width, scaleY = cv.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const onDown = (e) => {
+    if (!ready) return;
+    e.preventDefault();
+    const { x, y } = coordsFromEvent(e);
+    if (tool === "texte") {
+      const v = window.prompt("Texte à ajouter sur la photo :");
+      if (v && v.trim()) {
+        const next = [...shapes, { type: "texte", x1: x, y1: y, texte: v.trim(), color }];
+        setShapes(next); redraw(next);
+      }
+      return;
+    }
+    drawingRef.current = { type: tool, x1: x, y1: y, x2: x, y2: y, color };
+    e.target.setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e) => {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const { x, y } = coordsFromEvent(e);
+    drawingRef.current = { ...drawingRef.current, x2: x, y2: y };
+    redraw([...shapes, drawingRef.current]);
+  };
+  const onUp = () => {
+    if (!drawingRef.current) return;
+    const s = drawingRef.current;
+    const moved = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 4;
+    drawingRef.current = null;
+    if (moved) { const next = [...shapes, s]; setShapes(next); redraw(next); }
+    else redraw(shapes);
+  };
+
+  const undo = () => { const next = shapes.slice(0, -1); setShapes(next); redraw(next); };
+  const effacerTout = () => { setShapes([]); redraw([]); };
+  const enregistrer = () => {
+    const cv = canvasRef.current;
+    const dataUrl = cv.toDataURL("image/jpeg", 0.92);
+    onSave(dataUrl);
+  };
+
+  const toolBtn = (id, label, icon) => (
+    <button onClick={() => setTool(id)} style={{ flex: 1, padding: "10px 6px", borderRadius: 9, cursor: "pointer", fontWeight: 700, fontSize: 12, fontFamily: "inherit", border: `1.5px solid ${tool === id ? color : "#1E3A5F"}`, background: tool === id ? color + "22" : "#0B1829", color: tool === id ? color : "#94A3B8" }}>
+      {icon} {label}
+    </button>
+  );
+  const COULEURS = ["#EF4444", "#F59E0B", "#10B981", "#0EA5E9", "#FFFFFF"];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 900, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "#0A1525", flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: "none", border: "1px solid #1a3050", color: "#94A3B8", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>← Annuler</button>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#fff", flex: 1, textAlign: "center" }}>✏️ Annoter la photo</div>
+        <button onClick={enregistrer} disabled={!ready} style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>✓ Enregistrer</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", padding: 12, touchAction: "none" }}>
+        {!ready && <div style={{ color: "#64748B", fontSize: 13 }}>Chargement…</div>}
+        <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+          style={{ maxWidth: "100%", maxHeight: "100%", touchAction: "none", borderRadius: 8, background: "#000", display: ready ? "block" : "none", cursor: "crosshair" }} />
+      </div>
+      <div style={{ padding: "10px 12px", background: "#0A1525", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          {toolBtn("circle", "Cercle", "⭕")}
+          {toolBtn("arrow", "Flèche", "➡️")}
+          {toolBtn("texte", "Texte", "🔤")}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {COULEURS.map(c => (
+              <button key={c} onClick={() => setColor(c)} style={{ width: 26, height: 26, borderRadius: "50%", background: c, border: color === c ? "3px solid #fff" : "1px solid #334155", cursor: "pointer" }} />
+            ))}
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <button onClick={undo} disabled={!shapes.length} style={{ padding: "8px 12px", background: "#070F1C", border: "1px solid #1E3A5F", borderRadius: 8, color: shapes.length ? "#E2E8F0" : "#334155", fontWeight: 700, fontSize: 12, cursor: shapes.length ? "pointer" : "default", fontFamily: "inherit" }}>↩ Annuler</button>
+            <button onClick={effacerTout} disabled={!shapes.length} style={{ padding: "8px 12px", background: "#070F1C", border: "1px solid #1E3A5F", borderRadius: 8, color: shapes.length ? "#EF4444" : "#334155", fontWeight: 700, fontSize: 12, cursor: shapes.length ? "pointer" : "default", fontFamily: "inherit" }}>🗑 Tout effacer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   VISIONNEUSE PHOTO — plein écran + zoom
+═══════════════════════════════════════════ */
+function PhotoViewer({ photos, index, onClose, onIndexChange }) {
+  const [zoom, setZoom] = useState(1);
+  const photo = photos[index];
+  useEffect(() => { setZoom(1); }, [index]);
+  if (!photo) return null;
+  const go = (d) => { const n = index + d; if (n >= 0 && n < photos.length) onIndexChange(n); };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", zIndex: 900, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: "none", border: "1px solid #334155", color: "#94A3B8", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>✕ Fermer</button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} style={{ width: 34, height: 34, borderRadius: 8, background: "#0B1829", border: "1px solid #334155", color: "#fff", fontSize: 16, cursor: "pointer", fontFamily: "inherit" }}>−</button>
+          <div style={{ display: "flex", alignItems: "center", color: "#94A3B8", fontSize: 12, fontWeight: 700, minWidth: 40, justifyContent: "center" }}>{Math.round(zoom * 100)}%</div>
+          <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} style={{ width: 34, height: 34, borderRadius: 8, background: "#0B1829", border: "1px solid #334155", color: "#fff", fontSize: 16, cursor: "pointer", fontFamily: "inherit" }}>+</button>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: zoom === 1 ? "center" : "flex-start", justifyContent: zoom === 1 ? "center" : "flex-start" }}>
+        <img src={photo.data} alt="" style={{ transform: `scale(${zoom})`, transformOrigin: "top left", maxWidth: zoom === 1 ? "100%" : "none", maxHeight: zoom === 1 ? "100%" : "none", margin: "auto" }} />
+      </div>
+      {photos.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: 12, flexShrink: 0 }}>
+          <button onClick={() => go(-1)} disabled={index === 0} style={{ padding: "10px 18px", borderRadius: 8, background: "#0B1829", border: "1px solid #334155", color: index === 0 ? "#334155" : "#fff", fontWeight: 700, cursor: index === 0 ? "default" : "pointer", fontFamily: "inherit" }}>‹ Précédente</button>
+          <div style={{ color: "#64748B", fontSize: 12, alignSelf: "center" }}>{index + 1} / {photos.length}</div>
+          <button onClick={() => go(1)} disabled={index === photos.length - 1} style={{ padding: "10px 18px", borderRadius: 8, background: "#0B1829", border: "1px solid #334155", color: index === photos.length - 1 ? "#334155" : "#fff", fontWeight: 700, cursor: index === photos.length - 1 ? "default" : "pointer", fontFamily: "inherit" }}>Suivante ›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
    FORMULAIRE FICHE — SCROLL UNIQUE
 ═══════════════════════════════════════════ */
 function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {} }) {
@@ -1263,6 +1453,8 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const [interneOpen, setInterneOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [annotatingIndex, setAnnotatingIndex] = useState(null);
+  const [viewingIndex, setViewingIndex] = useState(null);
   const [acOpen, setAcOpen] = useState(false);
   const [acAdresseOpen, setAcAdresseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1763,7 +1955,9 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
             {f.photos.map((p,i)=>(
               <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"4/3",background:T.surface2}}>
-                <img src={p.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
+                <img src={p.data} onClick={()=>setViewingIndex(i)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}} alt=""/>
+                <button onClick={()=>setAnnotatingIndex(i)} title="Annoter (cercle, flèche, texte)"
+                  style={{position:"absolute",top:4,right:28,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✏️</button>
                 <button onClick={()=>set("photos",f.photos.filter((_,j)=>j!==i))} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>×</button>
                 <button onClick={()=>{const np=[...f.photos];np[i]={...np[i],tag:np[i].tag==="avant"?"pendant":np[i].tag==="pendant"?"apres":np[i].tag==="apres"?null:"avant"};set("photos",np);}}
                   title="Cliquez pour marquer Avant / Pendant / Après"
@@ -1782,6 +1976,21 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
         )}
         {f.photos.some(p=>p.tag)&&<div style={{fontSize:11,color:T.textMuted,marginTop:8}}>💡 Les photos taguées Avant/Après seront regroupées et titrées dans le rapport PDF.</div>}
       </div>
+
+      {annotatingIndex!==null && f.photos[annotatingIndex] && (
+        <PhotoAnnotator photo={f.photos[annotatingIndex]} theme={theme}
+          onClose={()=>setAnnotatingIndex(null)}
+          onSave={(dataUrl)=>{
+            const np=[...f.photos];
+            const orig = np[annotatingIndex].dataOriginal || np[annotatingIndex].data;
+            np[annotatingIndex] = {...np[annotatingIndex], data:dataUrl, dataOriginal:orig};
+            set("photos",np);
+            setAnnotatingIndex(null);
+          }}/>
+      )}
+      {viewingIndex!==null && (
+        <PhotoViewer photos={f.photos} index={viewingIndex} onClose={()=>setViewingIndex(null)} onIndexChange={setViewingIndex}/>
+      )}
 
       {/* ── SIGNATURES ── */}
       <div style={sectionStyle}>
