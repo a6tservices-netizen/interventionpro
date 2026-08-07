@@ -4322,6 +4322,7 @@ export default function App() {
   const [memosVocaux, setMemosVocaux] = useState([]);
   const [userRoles, setUserRoles] = useState([]);
   const [userRolesLoaded, setUserRolesLoaded] = useState(false);
+  const [rolesStuck, setRolesStuck] = useState(false); // chargement des restrictions anormalement long
   const [voiceResume, setVoiceResume] = useState(null);
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
@@ -4359,13 +4360,15 @@ export default function App() {
   }, [currentUser, userRoles, userRolesLoaded]);
   const estRestreint = monRole.role === "technicien";
   const [authReady, setAuthReady] = useState(false);
-  // Filet de sécurité : si la liste des comptes restreints n'a pas fini de charger après
-  // 4s (souci réseau, règle Firebase, etc.), on démarre quand même l'app plutôt que de
-  // rester bloqué indéfiniment sur l'écran de chargement pour tout le monde.
+  // Filet de sécurité : si la liste des comptes restreints met anormalement longtemps à
+  // charger (souci réseau/Firebase), on n'accorde JAMAIS un accès admin par défaut en
+  // attendant — ça exposerait les données de tout le monde à un compte censé être
+  // restreint. On affiche plutôt un écran explicite avec un bouton pour réessayer.
   useEffect(()=>{
-    const t = setTimeout(()=>{ setUserRolesLoaded(true); }, 4000);
+    if(userRolesLoaded) { setRolesStuck(false); return; }
+    const t = setTimeout(()=>{ setRolesStuck(true); }, 12000);
     return ()=>clearTimeout(t);
-  },[]);
+  },[userRolesLoaded]);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
     window.addEventListener("online",on); window.addEventListener("offline",off);
@@ -4672,6 +4675,16 @@ export default function App() {
   );
 
   // ── Sécurité : connexion obligatoire ──
+  if(rolesStuck) return (
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:20}}>
+      <div style={{textAlign:"center",maxWidth:340}}>
+        <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#F59E0B,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>⚠️</div>
+        <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:8}}>Connexion lente</div>
+        <div style={{fontSize:13,color:T.textMuted,marginBottom:18,lineHeight:1.6}}>Le chargement met plus de temps que prévu. Par sécurité, l'application ne démarre pas tant que vos droits d'accès n'ont pas été confirmés.</div>
+        <button onClick={()=>window.location.reload()} style={{padding:"11px 24px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>🔄 Réessayer</button>
+      </div>
+    </div>
+  );
   if(!authReady || monRole.role==="pending") return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <div style={{textAlign:"center"}}>
