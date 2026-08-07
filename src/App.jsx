@@ -4108,6 +4108,7 @@ export default function App() {
   const [taches, setTaches] = useState([]);
   const [memosVocaux, setMemosVocaux] = useState([]);
   const [userRoles, setUserRoles] = useState([]);
+  const [userRolesLoaded, setUserRolesLoaded] = useState(false);
   const [voiceResume, setVoiceResume] = useState(null);
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
@@ -4139,9 +4140,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const monRole = useMemo(() => {
     if(!currentUser?.email) return { role:"admin", technicien:null };
+    if(!userRolesLoaded) return { role:"pending", technicien:null }; // évite un accès admin transitoire avant le chargement des restrictions
     const trouve = userRoles.find(r => (r.email||"").toLowerCase() === currentUser.email.toLowerCase());
     return trouve || { role:"admin", technicien:null }; // par défaut : accès complet tant qu'un compte n'est pas explicitement restreint
-  }, [currentUser, userRoles]);
+  }, [currentUser, userRoles, userRolesLoaded]);
   const estRestreint = monRole.role === "technicien";
   const [authReady, setAuthReady] = useState(false);
   useEffect(()=>{
@@ -4201,7 +4203,7 @@ export default function App() {
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
-    const unsubR = watchUserRoles(data => setUserRoles(data));
+    const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); });
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); };
   },[]);
 
@@ -4450,7 +4452,7 @@ export default function App() {
   );
 
   // ── Sécurité : connexion obligatoire ──
-  if(!authReady) return (
+  if(!authReady || monRole.role==="pending") return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <div style={{textAlign:"center"}}>
         <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔧</div>
