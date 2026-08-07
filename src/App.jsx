@@ -1720,6 +1720,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
           <div><div style={lblStyle}>Téléphone</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
           <div><div style={lblStyle}>Email</div><input value={f.email} onChange={e=>set("email",e.target.value)} placeholder="email@exemple.fr" style={inpStyle()}/></div>
+          <div>
+            <div style={lblStyle}>📋 N° d'ordre de service <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(réf. demande client)</span></div>
+            <input value={f.numeroOS} onChange={e=>set("numeroOS",e.target.value)} placeholder="Ex : OS-2026-1234" style={inpStyle()}/>
+          </div>
           <div><div style={lblStyle}>Technicien</div>
             <select value={f.technicien||""} onChange={e=>{
               if(e.target.value==="__new__"){
@@ -2060,10 +2064,6 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           <div>
             <div style={{...lblStyle,color:"#7C3D12"}}>Tarif horaire (€/h)</div>
             <input value={f.tarifHoraire} onChange={e=>set("tarifHoraire",e.target.value)} placeholder="Ex : 85" style={inpStyle()}/>
-          </div>
-          <div>
-            <div style={{...lblStyle,color:"#7C3D12"}}>📋 N° d'ordre de service</div>
-            <input value={f.numeroOS} onChange={e=>set("numeroOS",e.target.value)} placeholder="Ex : OS-2026-1234" style={inpStyle()}/>
           </div>
           <div>
             <div style={{...lblStyle,color:"#7C3D12"}}>⏱️ Temps passé sur place</div>
@@ -2822,7 +2822,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
 function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = [], onAddTechnicien }) {
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
-  const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", status:"planifie", type:"rdv" });
+  const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv" });
   const [errors, setErrors] = useState({});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
@@ -2903,6 +2903,10 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
             )}
           </div>
           <div><div style={lblStyle}>Téléphone client</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
+          <div>
+            <div style={lblStyle}>📋 N° d'ordre de service <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(réf. demande client)</span></div>
+            <input value={f.numeroOS||""} onChange={e=>set("numeroOS",e.target.value)} placeholder="Ex : OS-2026-1234" style={inpStyle()}/>
+          </div>
           <div><div style={lblStyle}>Technicien assigné</div>
             <select value={f.technicien||""} onChange={e=>{
               if(e.target.value==="__new__"){
