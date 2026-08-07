@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove } from "firebase/database";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
@@ -18,6 +18,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+// Persistance locale explicite : évite que Safari/iOS ne redemande une connexion
+// à chaque ouverture de la PWA (comportement par défaut moins fiable sur Safari).
+setPersistence(auth, browserLocalPersistence).catch(e => console.error("setPersistence error", e));
 // Clé VAPID publique — générée dans Firebase Console > Paramètres > Cloud Messaging.
 // Elle n'est pas secrète (contrairement à la clé de compte de service), elle sert juste
 // à autoriser ce site à demander des abonnements de notification.
@@ -193,6 +196,37 @@ function applyPrestationLabels(overrides={}) {
 }
 const watchPrestationLabels = (cb) => onValue(ref(db, "prestationLabels"), snap => cb(snap.val()||{}));
 const savePrestationLabel = (id, label) => set(ref(db, `prestationLabels/${id}`), (label||"").trim()||null);
+
+// ── Modules de service personnalisés (créés depuis l'admin) ──
+// Stockés dans Firebase sous prestationsCustom/{id}, puis fusionnés dans le tableau
+// PRESTATIONS lui-même (par mutation, comme applyPrestationLabels) pour que tout le
+// reste du code (formulaires, PDF, listes, agenda…) les traite exactement comme les
+// modules d'origine, sans rien modifier ailleurs.
+const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","actions","resultats"];
+const watchPrestationsCustom = (cb) => onValue(ref(db, "prestationsCustom"), snap => cb(snap.val()||{}));
+const savePrestationCustom = (item) => set(ref(db, `prestationsCustom/${item.id}`), sanitize(item));
+const deletePrestationCustom = (id) => remove(ref(db, `prestationsCustom/${id}`));
+function applyPrestationsCustom(data={}) {
+  Object.values(data).forEach(item=>{
+    if(!item?.id) return;
+    let existant = PRESTATIONS.find(p=>p.id===item.id);
+    if(!existant){
+      existant = { id:item.id, _custom:true };
+      PRESTATIONS.push(existant);
+    }
+    existant.label = item.label || existant.label || "Nouveau service";
+    existant.icon = item.icon || existant.icon || "🧩";
+    existant.color = item.color || existant.color || "#8B5CF6";
+    existant._origLabel = existant._origLabel || existant.label;
+    existant._custom = true;
+    CHAMPS_CATS_KEYS.forEach(k=>{ existant[k] = Array.isArray(item[k]) ? item[k] : (existant[k]||[]); });
+  });
+  // Retire du tableau les modules personnalisés supprimés côté Firebase
+  for(let i=PRESTATIONS.length-1;i>=0;i--){
+    const p = PRESTATIONS[i];
+    if(p._custom && !data[p.id]) PRESTATIONS.splice(i,1);
+  }
+}
 
 const RESPONSABILITES = [
   { id:"na", label:"Sans objet", icon:"—", color:"#64748B", desc:"—" },
@@ -980,6 +1014,26 @@ function envoyerRapportSMS(fiche) {
   const msg = `Rapport ${fiche.id} — ${fiche.client||"Client"}. Intervention du ${dateFr(fiche.dateRdv)}. Rapport PDF transmis séparément.`;
   const num = (fiche.tel||"").replace(/[^0-9+]/g,"");
   window.location.href = `sms:${num}?&body=${encodeURIComponent(msg)}`;
+}
+
+// Adresse interne A6T pour l'archivage/vérification des rapports (pas d'envoi au client).
+// L'envoi au client reste strictement manuel (boutons WhatsApp/SMS ci-dessus) — aucun envoi
+// automatique n'est déclenché nulle part dans l'app.
+const EMAIL_ARCHIVAGE_INTERNE = "contact@a6t-assainissement.fr";
+function envoyerRapportArchivageInterne(fiche, pdfDejaTelecharge) {
+  const sujet = `[Archivage] Rapport ${fiche.id} — ${fiche.client||"Client"}`;
+  const corps = [
+    `Rapport d'intervention pour archivage interne.`,
+    ``,
+    `Référence : ${fiche.id}`,
+    `Client : ${fiche.client||"—"}`,
+    `Adresse : ${fiche.adresse||"—"}`,
+    `Date : ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`,
+    `Technicien : ${fiche.technicien||"—"}`,
+    ``,
+    pdfDejaTelecharge ? `⚠️ Le PDF du rapport vient d'être téléchargé — pensez à le joindre manuellement à cet email avant envoi.` : ``,
+  ].filter(Boolean).join("\n");
+  window.location.href = `mailto:${EMAIL_ARCHIVAGE_INTERNE}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
 }
 
 /* ═══════════════════════════════════════════
@@ -2018,7 +2072,7 @@ const CHAMPS_CATS = [
   {key:"actions",icon:"🔨",label:"Action réalisée"},
   {key:"resultats",icon:"✅",label:"Résultat"},
 ];
-function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
+function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateModule, onDeleteModule }) {
   const T = THEMES[theme] || THEMES.dark;
   const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
   const isPreco = prestaId==="_global";
@@ -2037,24 +2091,70 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme }) {
   const addIt = (cat) => { const v=window.prompt("Libellé de la nouvelle case :"); if(v&&v.trim()) write(cat,[...listOf(cat),v.trim()]); };
   const resetIt = (cat) => { if(window.confirm("Revenir à la liste d'origine ? Vos personnalisations de cette rubrique seront effacées.")) write(cat,null); };
 
+  const [showCreate, setShowCreate] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newIcon, setNewIcon] = useState("🧩");
+  const [newColor, setNewColor] = useState("#8B5CF6");
+  const slugify = (s) => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+  const creerModule = () => {
+    const label = newLabel.trim();
+    if(!label){ alert("Donnez un nom à ce nouveau module (ex : Curage)."); return; }
+    let id = slugify(label) || "module";
+    if(PRESTATIONS.some(p=>p.id===id)) id = id + "_" + Date.now().toString(36).slice(-4);
+    const item = { id, label, icon: newIcon.trim()||"🧩", color: newColor, localisations:[], problemes:[], causes:[], constatCamera:[], actions:[], resultats:[] };
+    onCreateModule(item);
+    setNewLabel(""); setNewIcon("🧩"); setNewColor("#8B5CF6"); setShowCreate(false);
+    setPrestaId(id);
+  };
+  const supprimerModule = () => {
+    if(!window.confirm(`Supprimer définitivement le module "${meta.label}" ? Les cases et personnalisations associées seront perdues (les fiches déjà enregistrées ne sont pas touchées).`)) return;
+    onDeleteModule(meta.id);
+    setPrestaId(PRESTATIONS[0].id);
+  };
+
   const btn = {border:`1px solid ${T.border}`,background:T.surface2,color:T.textMuted,borderRadius:6,width:28,height:28,cursor:"pointer",fontFamily:"inherit",fontSize:12};
   return (
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{background:"rgba(14,165,233,0.07)",border:"1px solid rgba(14,165,233,0.25)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
         ⚙️ Ici vous gérez vous-même les cases proposées dans les fiches : <b>ajoutez</b> ➕, <b>renommez</b> ✏️, <b>supprimez</b> ✕ ou <b>déplacez</b> ↑↓ les cases. Les modifications s'appliquent immédiatement pour toute l'équipe. Les fiches déjà enregistrées ne sont pas touchées.
       </div>
+
+      <div style={{background:showCreate?"rgba(139,92,246,0.08)":T.surface,border:`1.5px solid ${showCreate?"#8B5CF6":T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:14}}>
+        {!showCreate ? (
+          <button onClick={()=>setShowCreate(true)} style={{width:"100%",padding:"10px 14px",background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧩 Créer un nouveau module de service</button>
+        ) : (
+          <>
+            <div style={{fontWeight:800,fontSize:13.5,color:T.text,marginBottom:10}}>🧩 Nouveau module de service</div>
+            <div style={{display:"grid",gridTemplateColumns:"56px 70px 1fr",gap:8,marginBottom:10}}>
+              <input value={newIcon} onChange={e=>setNewIcon(e.target.value)} placeholder="🧩" maxLength={2}
+                style={{padding:"9px",textAlign:"center",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:16,outline:"none",fontFamily:"inherit"}}/>
+              <input type="color" value={newColor} onChange={e=>setNewColor(e.target.value)}
+                style={{padding:2,background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,cursor:"pointer",height:38}}/>
+              <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Nom du service (ex : Curage)"
+                style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10}}>Une fois créé, vous pourrez ajouter ses cases (localisations, problèmes, causes, actions, résultats…) juste en dessous, exactement comme pour les services existants.</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={creerModule} style={{flex:1,padding:"9px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✓ Créer</button>
+              <button onClick={()=>{setShowCreate(false);setNewLabel("");}} style={{padding:"9px 14px",background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+            </div>
+          </>
+        )}
+      </div>
+
       <select value={prestaId} onChange={e=>setPrestaId(e.target.value)}
         style={{width:"100%",padding:"12px 14px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",cursor:"pointer",marginBottom:16,boxSizing:"border-box"}}>
-        {PRESTATIONS.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
+        {PRESTATIONS.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}{p._custom?" (personnalisé)":""}</option>)}
         <option value="_global">💡 Préconisations (toutes fiches)</option>
       </select>
       {!isPreco&&meta&&(
-        <div style={{display:"flex",alignItems:"center",gap:10,background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"12px 16px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"12px 16px",marginBottom:12,flexWrap:"wrap"}}>
           <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em"}}>Titre de cette catégorie</div>
           <div style={{fontWeight:800,fontSize:14,color:T.text,flex:1}}>{meta.icon} {meta.label}</div>
           {meta.label!==meta._origLabel&&<span style={{fontSize:10,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.14)",padding:"2px 8px",borderRadius:10}}>personnalisé</span>}
           <button onClick={()=>{const v=window.prompt("Nouveau titre pour cette catégorie :",meta.label);if(v&&v.trim())onSavePrestationLabel(prestaId,v.trim());}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>✏️ Renommer</button>
           {meta.label!==meta._origLabel&&<button onClick={()=>{if(window.confirm(`Revenir au titre d'origine "${meta._origLabel}" ?`))onSavePrestationLabel(prestaId,null);}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>↺ Origine</button>}
+          {meta._custom&&<button onClick={supprimerModule} style={{...btn,width:"auto",padding:"0 10px",fontSize:11,color:"#EF4444",borderColor:"rgba(239,68,68,0.4)"}}>🗑️ Supprimer ce module</button>}
         </div>
       )}
       {cats.map(cat=>(
@@ -2706,8 +2806,12 @@ function ReportPreview({ fiche, onClose }) {
         <div style={{background:"#0A1525",borderBottom:"1px solid #1a3050",padding:"12px 16px",display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>envoyerRapportWhatsApp(fiche)} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
           <button onClick={()=>envoyerRapportSMS(fiche)} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
+          <button onClick={()=>{download();envoyerRapportArchivageInterne(fiche,true);}} style={{padding:"8px 16px",background:"#1E293B",border:"1px solid #F97316",color:"#F97316",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📧 Archiver (interne A6T)</button>
         </div>
       )}
+      <div style={{background:"rgba(16,185,129,0.06)",borderBottom:"1px solid rgba(16,185,129,0.2)",padding:"6px 16px",fontSize:11,color:"#6EE7B7"}}>
+        ℹ️ Aucun envoi automatique au client — le rapport n'est transmis que si vous cliquez vous-même sur WhatsApp ou SMS ci-dessus.
+      </div>
       {!versionInterne&&<div style={{background:"rgba(14,165,233,0.08)",borderBottom:"1px solid rgba(14,165,233,0.2)",padding:"8px 16px",fontSize:12,color:"#38BDF8"}}>
         👤 Version <b>client</b> — section interne masquée
       </div>}
@@ -3429,6 +3533,35 @@ function DevisForm({ initial, onSave, onBack, theme, clients = [], champsCustom 
   const photosDispo = initial?._photosDispo || [];
   const photoRef = useRef();
   const [genIA, setGenIA] = useState(false);
+  const [genLignesIA, setGenLignesIA] = useState(false);
+  const [descriptionLibre, setDescriptionLibre] = useState("");
+  const genererLignesIA = async () => {
+    const texte = descriptionLibre.trim();
+    if(!texte){alert("Décrivez d'abord les travaux à réaliser (ou collez la transcription de l'appel).");return;}
+    setGenLignesIA(true);
+    try {
+      const prompt = `Tu es un assistant qui prépare des lignes de devis au forfait pour une entreprise d'assainissement/plomberie en France. À partir de la description ci-dessous (texte libre ou transcription d'appel client), génère une liste de lignes de devis avec désignation, quantité et prix unitaire HT en euros (prix de marché raisonnables pour ce secteur en France).
+Description des travaux :
+"""${texte}"""
+Réponds UNIQUEMENT avec un JSON valide, sans texte autour, sans balises markdown, au format exact :
+[{"label":"Désignation de la prestation","qte":1,"pu":150}]
+Règles : 2 à 6 lignes maximum, prix HT réalistes et arrondis, quantité entière sauf mètres linéaires (ml) qui peuvent être décimaux. Ne mets aucun commentaire, uniquement le tableau JSON.`;
+      const r = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}] })
+      });
+      if(!r.ok) throw new Error("API "+r.status);
+      const data = await r.json();
+      const text = (data.content||[]).map(c=>c.text||"").join("").trim();
+      if(!text) throw new Error(data.error?.message||"Réponse vide");
+      const clean = text.replace(/```json|```/g,"").trim();
+      const lignesIA = JSON.parse(clean);
+      if(!Array.isArray(lignesIA) || !lignesIA.length) throw new Error("Format de réponse inattendu");
+      const nouvellesLignes = lignesIA.map(l=>({label:String(l.label||"").trim(),qte:l.qte||1,pu:l.pu||""}));
+      setD(p=>({...p, lignes:[...p.lignes.filter(l=>l.label||l.pu), ...nouvellesLignes]}));
+    } catch(e) { alert("Erreur lors de la génération des lignes : "+(e?.message||e)); }
+    setGenLignesIA(false);
+  };
   const genererDescriptifIA = async () => {
     const lignesValides = d.lignes.filter(l=>l.label?.trim());
     if(!lignesValides.length){alert("Ajoutez d'abord des lignes au devis.");return;}
@@ -3592,6 +3725,17 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
               )}
             </div>
           )}
+        </div>
+        <div style={{marginBottom:14,padding:"12px 14px",background:"rgba(124,58,237,0.06)",border:"1.5px solid rgba(124,58,237,0.3)",borderRadius:10}}>
+          <div style={{fontSize:12.5,fontWeight:800,color:"#A78BFA",marginBottom:8}}>✨ Générer les lignes par IA</div>
+          <div style={{fontSize:11.5,color:T.textMuted,marginBottom:8}}>Décrivez les travaux en texte libre (ou collez la transcription de l'appel client) : l'IA propose des lignes chiffrées, entièrement modifiables ensuite.</div>
+          <textarea value={descriptionLibre} onChange={e=>setDescriptionLibre(e.target.value)} rows={3}
+            placeholder="Ex : Débouchage cuisine par furet, environ 8 ml de canalisation, plus inspection caméra pour vérifier l'état du réseau…"
+            style={{...inp,resize:"vertical",marginBottom:8}}/>
+          <button onClick={genererLignesIA} disabled={genLignesIA}
+            style={{padding:"9px 16px",background:genLignesIA?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:genLignesIA?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:genLignesIA?"default":"pointer",fontFamily:"inherit"}}>
+            {genLignesIA?"⏳ Génération…":"✨ Générer les lignes"}
+          </button>
         </div>
         <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
@@ -3990,6 +4134,7 @@ export default function App() {
   const [showProfil, setShowProfil] = useState(false);
   const [prestaLabelsVersion, setPrestaLabelsVersion] = useState(0);
   const [champsCustom, setChampsCustom] = useState({});
+  const [prestationsCustomVersion, setPrestationsCustomVersion] = useState(0);
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
   const monRole = useMemo(() => {
@@ -4050,14 +4195,18 @@ export default function App() {
     const unsubST = watchSousTraitants(data => setSousTraitants(data));
     const unsubPL = watchPrestationLabels(data => { applyPrestationLabels(data); setPrestaLabelsVersion(v=>v+1); });
     const unsubCh = watchChamps(data => setChampsCustom(data));
+    const unsubPC = watchPrestationsCustom(data => { applyPrestationsCustom(data); setPrestationsCustomVersion(v=>v+1); });
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => setUserRoles(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubM(); unsubR(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); };
   },[]);
+
+  const creerModuleService = (item) => { savePrestationCustom(item); };
+  const supprimerModuleService = (id) => { deletePrestationCustom(id); };
 
   const ajouterSociete = (nom) => {
     if (!societesLoaded) { console.warn("Liste sociétés pas encore chargée — ajout ignoré pour éviter d'écraser les données."); return; }
@@ -4458,7 +4607,7 @@ export default function App() {
             )}
 
             {nav==="dashboard"&&<TableauDeBord fiches={fichesVisibles} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
-            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme}/>}
+            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme} onCreateModule={creerModuleService} onDeleteModule={supprimerModuleService}/>}
             {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} techColors={techColors} logos={logos} champs={champsCustom}
               sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
