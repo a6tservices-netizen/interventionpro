@@ -4146,6 +4146,13 @@ export default function App() {
   }, [currentUser, userRoles, userRolesLoaded]);
   const estRestreint = monRole.role === "technicien";
   const [authReady, setAuthReady] = useState(false);
+  // Filet de sécurité : si la liste des comptes restreints n'a pas fini de charger après
+  // 4s (souci réseau, règle Firebase, etc.), on démarre quand même l'app plutôt que de
+  // rester bloqué indéfiniment sur l'écran de chargement pour tout le monde.
+  useEffect(()=>{
+    const t = setTimeout(()=>{ setUserRolesLoaded(true); }, 4000);
+    return ()=>clearTimeout(t);
+  },[]);
   useEffect(()=>{
     const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
     window.addEventListener("online",on); window.addEventListener("offline",off);
