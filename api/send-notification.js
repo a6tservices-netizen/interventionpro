@@ -24,14 +24,33 @@ export default async function handler(req, res) {
   }
   try {
     const { technicien, titre, corps, ficheId } = req.body || {};
-    if (!technicien || !titre) {
-      res.status(400).json({ error: "Paramètres manquants (technicien, titre requis)" });
+    if (!titre) {
+      res.status(400).json({ error: "Paramètre manquant (titre requis)" });
       return;
     }
     const app = getAdminApp();
     const db = admin.database(app);
-
     const logoKey = (nom) => (nom || "").replace(/[.#$/\[\]]/g, "_");
+
+    // Aucun technicien précisé → on notifie TOUTE l'équipe (tous les tokens enregistrés).
+    if (!technicien) {
+      const snapAll = await db.ref("fcmTokens").get();
+      const tokensObj = snapAll.val() || {};
+      const tokens = Object.values(tokensObj).filter(Boolean);
+      if (!tokens.length) {
+        res.status(200).json({ ok: false, reason: "no-token", message: "Aucune notification activée dans l'équipe" });
+        return;
+      }
+      const message = {
+        notification: { title: titre, body: corps || "" },
+        data: { ficheId: ficheId || "" },
+        webpush: { fcmOptions: { link: "/" }, notification: { icon: "/icon-192.png" } },
+      };
+      const resp = await admin.messaging(app).sendEachForMulticast({ tokens, ...message });
+      res.status(200).json({ ok: true, envoyes: resp.successCount, echecs: resp.failureCount });
+      return;
+    }
+
     const snap = await db.ref(`fcmTokens/${logoKey(technicien)}`).get();
     const token = snap.val();
     if (!token) {

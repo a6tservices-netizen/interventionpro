@@ -4254,6 +4254,9 @@ export default function App() {
       const prev = prevAvantSave;
       if (fiche.technicien?.trim() && fiche.technicien.trim()!==prev?.technicien) {
         envoyerNotification(fiche.technicien.trim(), "🔧 Intervention assignée", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
+      } else if (!fiche.technicien?.trim() && !prevAvantSave) {
+        // Nouvelle fiche créée sans technicien assigné → toute l'équipe est notifiée (libre à prendre)
+        envoyerNotification(null, "🆓 Nouvelle intervention libre", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
       }
     } catch(e) { console.error(e); }
     setSelected(fiche); setView("detail"); showToast("✓ Fiche enregistrée");
@@ -4273,6 +4276,9 @@ export default function App() {
     const prevRdv = fiches.find(x=>x.id===rdv.id);
     if (rdv.technicien?.trim() && rdv.technicien.trim()!==prevRdv?.technicien) {
       envoyerNotification(rdv.technicien.trim(), "📅 Nouveau RDV assigné", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}`, rdv.id);
+    } else if (!rdv.technicien?.trim() && !prevRdv) {
+      // Nouveau RDV créé sans technicien assigné → toute l'équipe est notifiée (libre à prendre)
+      envoyerNotification(null, "🆓 Nouveau RDV libre", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}`, rdv.id);
     }
     setShowRdvForm(false); setView("accueil"); setNav("agenda"); showToast("📅 RDV planifié !");
   };
@@ -4367,14 +4373,26 @@ export default function App() {
         const supported = await fcmIsSupported();
         if (!supported) return;
         const messaging = getMessaging(app);
-        unsub = onMessage(messaging, (payload) => {
+        unsub = onMessage(messaging, async (payload) => {
           const title = payload.notification?.title || payload.data?.title || "InterventionPro";
           const body = payload.notification?.body || payload.data?.body || "";
           showToast(`🔔 ${title} — ${body}`);
-          // Sans ça, une notification reçue app ouverte reste silencieuse (juste le bandeau ci-dessus).
-          // new Notification(...) déclenche le vrai son/vibration du téléphone, comme les autres apps.
+          // IMPORTANT : `new Notification(...)` ne fonctionne PAS sur iOS Safari/PWA, même une fois
+          // la permission accordée — l'appel échoue silencieusement (d'où le bandeau visible mais
+          // aucun son/vibration réel sur iPhone). Sur iOS, seul le Service Worker peut déclencher une
+          // vraie notification système. On passe donc par navigator.serviceWorker.ready, qui fonctionne
+          // aussi bien sur iOS que sur Android/desktop.
           if ("Notification" in window && Notification.permission === "granted") {
-            try { new Notification(title, { body, icon: "/icon-192.png" }); } catch(e) {}
+            try {
+              const reg = await navigator.serviceWorker.ready;
+              if (reg && reg.showNotification) {
+                await reg.showNotification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", vibrate: [200,100,200], tag: payload.data?.ficheId || undefined });
+              } else {
+                new Notification(title, { body, icon: "/icon-192.png" });
+              }
+            } catch(e) {
+              try { new Notification(title, { body, icon: "/icon-192.png" }); } catch(e2) {}
+            }
           }
         });
       } catch (e) { console.error("onMessage error", e); }
