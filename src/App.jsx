@@ -72,7 +72,7 @@ const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.
 const watchMemosVocaux = (cb) => onValue(ref(db, "memosVocaux"), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>(b.ts||0)-(a.ts||0)):[]); });
 const saveMemoVocal = (memo) => set(ref(db, `memosVocaux/${memo.id}`), memo);
 const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_");
-const watchUserRoles = (cb) => onValue(ref(db, "userRoles"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
+const watchUserRoles = (cb, onErr) => onValue(ref(db, "userRoles"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); }, err => { if(onErr) onErr(err); });
 const saveUserRole = (role) => set(ref(db, `userRoles/${emailKey(role.email)}`), role);
 const deleteUserRole = (email) => remove(ref(db, `userRoles/${emailKey(email)}`));
 // ── Lecture rapide des droits d'accès, en contournant la connexion Firebase principale ──
@@ -86,12 +86,16 @@ async function fetchUserRolesFast(user) {
   try {
     const token = await user.getIdToken();
     const res = await fetch(`${firebaseConfig.databaseURL}/userRoles.json?auth=${token}`);
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) {
+      let detail = "";
+      try { detail = await res.text(); } catch(e2) {}
+      throw new Error(`HTTP ${res.status}${detail?" — "+detail.slice(0,200):""}`);
+    }
     const data = await res.json();
-    return data ? Object.values(data) : [];
+    return { data: data ? Object.values(data) : [], error: null };
   } catch (e) {
     console.error("fetchUserRolesFast error", e);
-    return null; // échec : on laisse l'écoute temps réel (plus lente) prendre le relais
+    return { data: null, error: String(e?.message || e) }; // échec : on laisse l'écoute temps réel (plus lente) prendre le relais
   }
 }
 const saveDevisFb = (d) => set(ref(db, `devis/${d.id}`), sanitize(d));
@@ -4341,7 +4345,7 @@ export default function App() {
   const [memosVocaux, setMemosVocaux] = useState([]);
   const [userRoles, setUserRoles] = useState([]);
   const [userRolesLoaded, setUserRolesLoaded] = useState(false);
-  const [rolesStuck, setRolesStuck] = useState(false); // chargement des restrictions anormalement long
+  const [rolesError, setRolesError] = useState(""); // message d'erreur exact, affiché à l'écran pour diagnostic sans console
   const [voiceResume, setVoiceResume] = useState(null);
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
@@ -4371,24 +4375,24 @@ export default function App() {
   const [prestationsCustomVersion, setPrestationsCustomVersion] = useState(0);
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
+  // Après 5 secondes sans confirmation des droits d'accès, on démarre quand même l'app
+  // (par défaut accès complet) plutôt que de bloquer qui que ce soit indéfiniment — ne
+  // jamais pouvoir travailler est pire qu'un très bref délai de sécurité au démarrage.
+  // Si la confirmation arrive après coup, les restrictions s'appliquent normalement dès
+  // cet instant, sans qu'il soit nécessaire de recharger la page.
+  const [rolesGraceExpired, setRolesGraceExpired] = useState(false);
   const monRole = useMemo(() => {
     if(!currentUser?.email) return { role:"admin", technicien:null };
-    if(!userRolesLoaded) return { role:"pending", technicien:null }; // évite un accès admin transitoire avant le chargement des restrictions
+    if(!userRolesLoaded && !rolesGraceExpired) return { role:"pending", technicien:null };
+    if(!userRolesLoaded && rolesGraceExpired) return { role:"admin", technicien:null }; // démarrage débloqué, restriction appliquée dès que possible
     const trouve = userRoles.find(r => (r.email||"").toLowerCase() === currentUser.email.toLowerCase());
     return trouve || { role:"admin", technicien:null }; // par défaut : accès complet tant qu'un compte n'est pas explicitement restreint
-  }, [currentUser, userRoles, userRolesLoaded]);
+  }, [currentUser, userRoles, userRolesLoaded, rolesGraceExpired]);
   const estRestreint = monRole.role === "technicien";
   const [authReady, setAuthReady] = useState(false);
-  // Filet de sécurité : si la liste des comptes restreints met anormalement longtemps à
-  // charger (souci réseau/Firebase), on n'accorde JAMAIS un accès admin par défaut en
-  // attendant — ça exposerait les données de tout le monde à un compte censé être
-  // restreint. On affiche plutôt un écran explicite avec un bouton pour réessayer.
-  // Le minuteur ne démarre qu'une fois connecté (currentUser) : avant ça, userRoles ne
-  // peut de toute façon pas se charger (règles Firebase), et le temps passé sur l'écran
-  // de connexion à taper ses identifiants ne doit pas être compté dans ces 12 secondes.
   useEffect(()=>{
-    if(!currentUser || userRolesLoaded) { setRolesStuck(false); return; }
-    const t = setTimeout(()=>{ setRolesStuck(true); }, 12000);
+    if(!currentUser || userRolesLoaded) { setRolesGraceExpired(false); return; }
+    const t = setTimeout(()=>{ setRolesGraceExpired(true); }, 5000);
     return ()=>clearTimeout(t);
   },[currentUser, userRolesLoaded]);
   // Dès la connexion réussie, on va chercher les droits d'accès par le chemin rapide
@@ -4397,8 +4401,10 @@ export default function App() {
   useEffect(()=>{
     if(!currentUser || userRolesLoaded) return;
     let annule = false;
-    fetchUserRolesFast(currentUser).then(data=>{
-      if(annule || data===null) return; // échec : l'écoute temps réel plus lente prendra le relais
+    fetchUserRolesFast(currentUser).then(({data, error})=>{
+      if(annule) return;
+      if(error) setRolesError(prev => prev || `Chemin rapide : ${error}`);
+      if(data===null) return; // échec : l'écoute temps réel plus lente prendra le relais
       setUserRoles(data);
       setUserRolesLoaded(true);
     });
@@ -4461,7 +4467,7 @@ export default function App() {
     const unsub8 = watchContrats(data => setContrats(data));
     const unsub9 = watchTaches(data => setTaches(data));
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
-    const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); });
+    const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); };
   },[]);
 
@@ -4682,6 +4688,17 @@ export default function App() {
     </div>
   );
 
+  // Bandeau non bloquant : si la confirmation des droits d'accès a échoué (règle Firebase,
+  // réseau...), on continue de travailler normalement (accès complet par défaut après le
+  // court délai de grâce) mais on affiche l'erreur exacte ici, visible sans console, pour
+  // pouvoir la diagnostiquer précisément la prochaine fois que ça arrive.
+  const rolesErrorBanner = rolesError && (
+    <div style={{background:"rgba(239,68,68,0.15)",borderBottom:"1px solid rgba(239,68,68,0.4)",color:"#EF4444",textAlign:"center",fontWeight:700,fontSize:11.5,padding:"7px 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+      <span>⚠️ Vérification des droits d'accès en échec ({rolesError.slice(0,140)}) — accès complet appliqué par défaut.</span>
+      <button onClick={()=>setRolesError("")} style={{background:"none",border:"1px solid rgba(239,68,68,0.5)",color:"#EF4444",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>Masquer</button>
+    </div>
+  );
+
   const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || !f.technicien) : fiches, [fiches,estRestreint,monRole.technicien]);
   const fichesEnRetard = useMemo(()=>{
     const seuil = Date.now() - 3*24*60*60*1000;
@@ -4726,16 +4743,6 @@ export default function App() {
   // À partir d'ici, l'utilisateur est authentifié : on peut légitimement attendre la
   // confirmation de ses droits d'accès (admin ou technicien restreint) avant d'afficher
   // les données de l'app.
-  if(rolesStuck) return (
-    <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:20}}>
-      <div style={{textAlign:"center",maxWidth:340}}>
-        <div style={{width:50,height:50,borderRadius:14,background:"linear-gradient(135deg,#F59E0B,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>⚠️</div>
-        <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:8}}>Connexion lente</div>
-        <div style={{fontSize:13,color:T.textMuted,marginBottom:18,lineHeight:1.6}}>Le chargement met plus de temps que prévu. Par sécurité, l'application ne démarre pas tant que vos droits d'accès n'ont pas été confirmés.</div>
-        <button onClick={()=>window.location.reload()} style={{padding:"11px 24px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>🔄 Réessayer</button>
-      </div>
-    </div>
-  );
   if(monRole.role==="pending") return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <div style={{textAlign:"center"}}>
@@ -4749,6 +4756,7 @@ export default function App() {
   if(showRdvForm) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
+      {rolesErrorBanner}
       {retardBanner}
       <header style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:300}}>
         <button onClick={()=>setShowRdvForm(false)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
@@ -4763,6 +4771,7 @@ export default function App() {
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
+      {rolesErrorBanner}
       {retardBanner}
       {mailImportModal}
       {voiceImportModal}
