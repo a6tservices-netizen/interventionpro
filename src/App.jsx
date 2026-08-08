@@ -4450,6 +4450,12 @@ export default function App() {
   };
 
   useEffect(()=>{
+    // Toutes ces écoutes nécessitent d'être connecté (les règles Firebase l'exigent) —
+    // on ne les démarre donc qu'une fois currentUser confirmé, plutôt qu'au chargement de
+    // la page. Avant ce correctif, elles démarraient immédiatement, avant même la connexion,
+    // ce qui provoquait des erreurs "permission_denied" bénignes mais trompeuses (le temps
+    // que la connexion se termine), pour TOUTES les données, pas seulement les droits d'accès.
+    if(!currentUser) return;
     // Firebase — écoute en temps réel
     const unsub1 = watchFiches(data => { setFiches(data); setLoaded(true); lsSet("cache_fiches", data.map(stripLourd)); });
     const unsub2 = watchPositions(data => setPositions(data));
@@ -4469,7 +4475,7 @@ export default function App() {
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); };
-  },[]);
+  },[currentUser]);
 
   const creerModuleService = (item) => { savePrestationCustom(item); };
   const supprimerModuleService = (id) => { deletePrestationCustom(id); };
