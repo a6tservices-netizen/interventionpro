@@ -26,6 +26,13 @@ function getAdminApp() {
   });
 }
 
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout (${label}) après ${ms}ms — vérifier FIREBASE_SERVICE_ACCOUNT (clé invalide/révoquée ?)`)), ms)),
+  ]);
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Méthode non autorisée" });
@@ -42,11 +49,25 @@ export default async function handler(req, res) {
     const messaging = getMessaging(app);
     const logoKey = (nom) => (nom || "").replace(/[.#$/\[\]]/g, "_");
 
-    // Aucun technicien précisé → on notifie TOUTE l'équipe (tous les tokens enregistrés).
+    // Aucun technicien précisé → on notifie TOUTE l'équipe (tous les tokens enregistrés),
+    // à l'exception des comptes marqués "sous-traitant" (userRoles/*/sousTraitant=true) —
+    // eux ne doivent recevoir que les notifications des fiches qui leur sont directement
+    // assignées, jamais les fiches "libres" proposées à toute l'équipe.
     if (!technicien) {
-      const snapAll = await db.ref("fcmTokens").get();
+      const [snapAll, snapRoles] = await Promise.all([
+        withTimeout(db.ref("fcmTokens").get(), 8000, "lecture fcmTokens"),
+        withTimeout(db.ref("userRoles").get(), 8000, "lecture userRoles"),
+      ]);
       const tokensObj = snapAll.val() || {};
-      const tokens = Object.values(tokensObj).filter(Boolean);
+      const rolesObj = snapRoles.val() || {};
+      const sousTraitantsKeys = new Set(
+        Object.values(rolesObj)
+          .filter(r => r && r.sousTraitant && r.technicien)
+          .map(r => logoKey(r.technicien))
+      );
+      const tokens = Object.entries(tokensObj)
+        .filter(([key, tok]) => tok && !sousTraitantsKeys.has(key))
+        .map(([, tok]) => tok);
       if (!tokens.length) {
         res.status(200).json({ ok: false, reason: "no-token", message: "Aucune notification activée dans l'équipe" });
         return;
@@ -56,19 +77,19 @@ export default async function handler(req, res) {
         data: { ficheId: ficheId || "" },
         webpush: { fcmOptions: { link: "/" }, notification: { icon: "/icon-192.png" } },
       };
-      const resp = await messaging.sendEachForMulticast({ tokens, ...message });
+      const resp = await withTimeout(messaging.sendEachForMulticast({ tokens, ...message }), 8000, "envoi multicast");
       res.status(200).json({ ok: true, envoyes: resp.successCount, echecs: resp.failureCount });
       return;
     }
 
-    const snap = await db.ref(`fcmTokens/${logoKey(technicien)}`).get();
+    const snap = await withTimeout(db.ref(`fcmTokens/${logoKey(technicien)}`).get(), 8000, "lecture token technicien");
     const token = snap.val();
     if (!token) {
       res.status(200).json({ ok: false, reason: "no-token", message: `Aucune notification activée pour "${technicien}"` });
       return;
     }
 
-    await messaging.send({
+    await withTimeout(messaging.send({
       token,
       notification: { title: titre, body: corps || "" },
       data: { ficheId: ficheId || "" },
@@ -76,7 +97,7 @@ export default async function handler(req, res) {
         fcmOptions: { link: "/" },
         notification: { icon: "/icon-192.png" },
       },
-    });
+    }), 8000, "envoi notification");
 
     res.status(200).json({ ok: true });
   } catch (e) {

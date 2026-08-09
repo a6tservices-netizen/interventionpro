@@ -589,72 +589,73 @@ function buildReportHTML(fiche, hideInternal = false) {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
 <title>Rapport ${fiche.id}</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12px;line-height:1.7}
-.header{position:relative;background:linear-gradient(120deg,#0a1c3a 0%,#102b54 55%,#16356b 100%);padding:30px 34px;border-radius:0 0 26px 26px;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.header{position:relative;background:linear-gradient(135deg,#0c1e3d 0%,#132d54 100%);padding:32px 36px;border-radius:0 0 20px 20px;overflow:hidden}
+.header::after{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#38bdf8,#818cf8,#38bdf8);opacity:.7}
 
 .header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;position:relative;z-index:1}
 .brand{display:flex;align-items:center;gap:13px}
-.brand-logo{background:#fff;border-radius:11px;padding:6px;width:54px;height:54px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.25)}
+.brand-logo{background:#fff;border-radius:10px;padding:6px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.2)}
 .brand-logo img{max-width:100%;max-height:100%;display:block}
-.brand-name{font-family:'Fraunces',serif;font-size:17px;font-weight:800;color:#fff}
-.report-title{font-family:'Fraunces',serif;font-size:25px;font-weight:900;color:#fff;margin-top:18px;position:relative;z-index:1;line-height:1.15}
-.report-subtitle{font-size:12px;color:#9fc4f0;margin-top:5px;position:relative;z-index:1}
-.result-pill{display:inline-flex;align-items:center;gap:9px;margin-top:18px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.45);border-radius:30px;padding:9px 18px;position:relative;z-index:1}
-.result-pill .dot{width:18px;height:18px;border-radius:50%;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
-.result-pill .txt{font-size:12.5px;font-weight:700;color:#6ee7b7}
-.result-pill .txt b{color:#fff;font-weight:800}
-.ref-card{background:rgba(8,20,42,0.55);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:15px 18px;min-width:188px}
-.ref-label{font-size:8px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#7fb0e6;background:rgba(56,189,248,0.16);display:inline-block;padding:2px 8px;border-radius:5px;margin-bottom:7px}
-.ref-id{font-family:'Fraunces',serif;font-size:20px;font-weight:900;color:#fff;border-bottom:1px solid rgba(255,255,255,0.13);padding-bottom:11px;margin-bottom:11px}
+.brand-name{font-family:'Fraunces',serif;font-size:15.5px;font-weight:700;color:#cfe0f5;letter-spacing:.02em}
+.report-title{font-family:'Fraunces',serif;font-size:26px;font-weight:900;color:#fff;margin-top:16px;position:relative;z-index:1;line-height:1.15;letter-spacing:-.01em}
+.report-subtitle{font-size:11.5px;color:#8fb3dd;margin-top:5px;position:relative;z-index:1;font-weight:500}
+.result-pill{display:inline-flex;align-items:center;gap:9px;margin-top:18px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.35);border-radius:10px;padding:8px 16px;position:relative;z-index:1}
+.result-pill .dot{width:17px;height:17px;border-radius:50%;background:#34d399;color:#0c1e3d;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;flex-shrink:0}
+.result-pill .txt{font-size:12px;font-weight:600;color:#a7f3d0}
+.result-pill .txt b{color:#fff;font-weight:700}
+.ref-card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);border-radius:12px;padding:16px 19px;min-width:190px;backdrop-filter:blur(2px)}
+.ref-label{font-size:8px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#8fb3dd;margin-bottom:9px}
+.ref-id{font-family:'Fraunces',serif;font-size:19px;font-weight:700;color:#fff;border-bottom:1px solid rgba(255,255,255,0.12);padding-bottom:12px;margin-bottom:12px;letter-spacing:.01em}
 .ref-row{display:flex;align-items:center;gap:9px;margin-bottom:9px}
-.ref-row .ic{font-size:12px;opacity:.8}
-.ref-row .rl{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#7fb0e6;line-height:1.3}
-.ref-row .rv{font-size:12px;font-weight:700;color:#fff;line-height:1.3}
-.ref-status{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.13);padding-top:11px;margin-top:3px}
-.ref-status .sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7fb0e6}
-.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:9px;font-weight:800;text-transform:uppercase;background:${status.bg};color:${status.color};border:1px solid ${status.color}55}
-.urgent-badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid #EF444466}
-.body{padding:28px 32px}
-.client-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
-.info-card{background:#f8fafc;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0}
+.ref-row .ic{font-size:12px;opacity:.75}
+.ref-row .rl{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#7fa3cc;line-height:1.3}
+.ref-row .rv{font-size:12px;font-weight:600;color:#f1f5f9;line-height:1.3}
+.ref-status{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.12);padding-top:12px;margin-top:3px}
+.ref-status .sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7fa3cc}
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:7px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:${status.bg};color:${status.color};border:1px solid ${status.color}44}
+.urgent-badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:7px;font-size:9px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid #EF444444}
+.body{padding:30px 34px}
+.client-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
+.info-card{background:#f8fafc;border-radius:9px;padding:11px 15px;border:1px solid #e8edf3}
 .info-card.full{grid-column:1/-1}
-.info-label{font-size:8px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;margin-bottom:3px}
-.info-value{font-size:12px;font-weight:600;color:#0f172a}
-.loc-banner{background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 16px;margin-bottom:20px;font-size:12px;font-weight:600;color:#0369a1}
-.section-block{margin-bottom:20px}
-.section-title{font-size:8.5px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;padding-bottom:7px;border-bottom:1.5px solid #e2e8f0;margin-bottom:12px}
-.presta-card{background:#f8fafc;border-radius:8px;margin-bottom:10px;border-left:4px solid #0ea5e9;overflow:hidden}
-.presta-header{padding:10px 14px;background:#f1f5f9;display:flex;align-items:center;gap:8px}
-.presta-icon{font-size:16px}
-.presta-title{font-family:'Fraunces',serif;font-size:13px;font-weight:700}
-.presta-body{padding:12px 16px}
-.phrase{font-size:12px;color:#334155;line-height:1.8;margin-bottom:3px}
-.resp-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:24px;font-size:11px;font-weight:700;background:${resp?.color||'#64748b'}15;color:${resp?.color||'#64748b'};border:1.5px solid ${resp?.color||'#64748b'}33}
-.conclusion-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;color:#166534;font-size:12px;line-height:1.8}
-.conclusion-box::before{content:"";display:block;width:28px;height:3px;background:#22c55e;border-radius:2px;margin-bottom:10px}
-.preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:5px}
-.preco-list li{font-size:11px;font-weight:600;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;padding:6px 10px}
-.preco-list li::before{content:"▸ ";opacity:.6}
-.photo-subtitle{font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin:10px 0 6px}
-.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.photo-item{border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e2e8f0;max-height:160px;background:#f1f5f9;display:flex;align-items:center;justify-content:center}
+.info-label{font-size:8px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:#8896a8;margin-bottom:4px}
+.info-value{font-size:12.5px;font-weight:600;color:#1e293b}
+.loc-banner{background:#f0f7fd;border:1px solid #cfe3f5;border-radius:9px;padding:11px 16px;margin-bottom:22px;font-size:12px;font-weight:600;color:#1d5686}
+.section-block{margin-bottom:22px}
+.section-title{font-size:8.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#5c6b80;padding-left:9px;border-left:3px solid #cbd5e1;margin-bottom:13px;line-height:1.5}
+.presta-card{background:#fbfcfd;border-radius:9px;margin-bottom:11px;border:1px solid #e8edf3;border-left:3px solid #0ea5e9;overflow:hidden}
+.presta-header{padding:11px 15px;background:linear-gradient(90deg,rgba(0,0,0,0.025),transparent);display:flex;align-items:center;gap:9px;border-bottom:1px solid #eef1f5}
+.presta-icon{font-size:15px}
+.presta-title{font-family:'Fraunces',serif;font-size:13px;font-weight:700;letter-spacing:.01em}
+.presta-body{padding:13px 17px}
+.phrase{font-size:12px;color:#3d4a5c;line-height:1.85;margin-bottom:4px}
+.resp-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:8px;font-size:11px;font-weight:600;background:${resp?.color||'#64748b'}12;color:${resp?.color||'#64748b'};border:1px solid ${resp?.color||'#64748b'}2e}
+.conclusion-box{background:#f6fbf8;border:1px solid #d3ead9;border-radius:9px;padding:15px 19px;color:#20553a;font-size:12px;line-height:1.85}
+.conclusion-box::before{content:"";display:block;width:24px;height:3px;background:#3ba873;border-radius:2px;margin-bottom:11px}
+.preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1px solid #e2ddf5;border-radius:7px;padding:7px 11px}
+.preco-list li::before{content:"▸ ";opacity:.55}
+.photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e8edf3;max-height:160px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
 .photo-item img{width:100%;height:100%;object-fit:contain;display:block;max-height:160px}
-.sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
-.sig-box{border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;min-height:100px;background:#fafafa}
-.sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#94a3b8;margin-bottom:12px}
+.sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px}
+.sig-box{border:1px solid #e8edf3;border-radius:9px;padding:15px 17px;min-height:100px;background:#fbfcfd}
+.sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#8896a8;margin-bottom:13px}
 .sig-img{max-height:64px;max-width:100%;display:block}
-.sig-line{border-bottom:1.5px solid #cbd5e1;height:48px}
-.sig-name{font-size:11px;font-weight:600;color:#334155;margin-top:8px;border-top:1px solid #e2e8f0;padding-top:7px}
-.internal{margin-top:20px;background:#fff7ed;border-radius:8px;padding:14px 18px;border:1.5px dashed #fdba74}
-.internal-title{font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c2410c;margin-bottom:10px}
+.sig-line{border-bottom:1.5px solid #d6dde5;height:48px}
+.sig-name{font-size:11px;font-weight:600;color:#3d4a5c;margin-top:9px;border-top:1px solid #e8edf3;padding-top:8px}
+.internal{margin-top:22px;background:#fdf8f2;border-radius:9px;padding:15px 19px;border:1.5px dashed #ecc491}
+.internal-title{font-size:8px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#a8631f;margin-bottom:11px}
 .internal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.int-card{background:#fff;border:1px solid #fed7aa;border-radius:6px;padding:8px 11px}
+.int-card{background:#fff;border:1px solid #f0d9b5;border-radius:7px;padding:9px 12px}
 @media print{.internal{display:none!important}}
-.footer{margin-top:20px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
-.footer-logo{font-family:'Fraunces',serif;font-size:11px;font-weight:700;color:#cbd5e1}
-.footer-logo em{color:#38bdf8;font-style:normal}
+.footer{margin-top:22px;padding-top:11px;border-top:1px solid #e8edf3;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+.footer-logo{font-family:'Fraunces',serif;font-size:11px;font-weight:700;color:#94a3b8}
+.footer-logo em{color:#0ea5e9;font-style:normal}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <div class="header">
@@ -2137,6 +2138,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
   const row = (last)=>({display:"flex",alignItems:"center",gap:8,padding:"8px 4px",borderBottom:last?"none":`1px solid ${T.border}`});
   const [nouvelEmail, setNouvelEmail] = useState("");
   const [nouveauRoleTech, setNouveauRoleTech] = useState("");
+  const [nouveauEstSousTraitant, setNouveauEstSousTraitant] = useState(false);
 
   /* Listes simples éditables via champs/_global */
   const simpleList = (key, def) => (champs?._global?.[key]?.length ? champs._global[key] : def);
@@ -2188,8 +2190,9 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           <div key={r.email} style={row(false)}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:12.5,fontWeight:700,color:T.text,wordBreak:"break-all"}}>{r.email}</div>
-              <div style={{fontSize:11,color:"#0EA5E9"}}>👤 {r.technicien}</div>
+              <div style={{fontSize:11,color:"#0EA5E9"}}>👤 {r.technicien}{r.sousTraitant?<span style={{color:"#F59E0B",marginLeft:6}}>· 🧰 sous-traitant (pas de notif. fiches libres)</span>:""}</div>
             </div>
+            <button onClick={()=>onSaveUserRole({...r, sousTraitant: !r.sousTraitant})} style={{...btn,width:"auto",padding:"0 8px",fontSize:11,color:r.sousTraitant?"#F59E0B":T.textMuted}} title="Basculer sous-traitant">🧰</button>
             <button onClick={()=>onDeleteUserRole(r.email)} style={btn}>🗑️</button>
           </div>
         ))}
@@ -2202,7 +2205,11 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             <option value="">— technicien —</option>
             {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
-          <button onClick={()=>{ if(!nouvelEmail.trim()||!nouveauRoleTech) return; onSaveUserRole({email:nouvelEmail.trim().toLowerCase(),role:"technicien",technicien:nouveauRoleTech}); setNouvelEmail("");setNouveauRoleTech(""); }} style={addBtn}>+ Lier ce compte</button>
+          <button onClick={()=>{ if(!nouvelEmail.trim()||!nouveauRoleTech) return; onSaveUserRole({email:nouvelEmail.trim().toLowerCase(),role:"technicien",technicien:nouveauRoleTech,sousTraitant:nouveauEstSousTraitant}); setNouvelEmail("");setNouveauRoleTech("");setNouveauEstSousTraitant(false); }} style={addBtn}>+ Lier ce compte</button>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11.5,color:T.textMuted,cursor:"pointer",width:"100%",marginTop:2}}>
+            <input type="checkbox" checked={nouveauEstSousTraitant} onChange={e=>setNouveauEstSousTraitant(e.target.checked)} style={{width:14,height:14,cursor:"pointer"}}/>
+            🧰 Sous-traitant externe — ne recevra jamais les notifications "fiche libre" de l'équipe, uniquement ce qui lui est assigné directement
+          </label>
         </div>
       </div>
 
