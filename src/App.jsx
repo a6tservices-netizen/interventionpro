@@ -2853,7 +2853,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
 function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = [], onAddTechnicien }) {
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
-  const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv" });
+  const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv", natureRdv:"intervention" });
   const [errors, setErrors] = useState({});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
@@ -2902,6 +2902,16 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
       </div>
 
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"20px 22px"}}>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          <button onClick={()=>set("natureRdv","intervention")}
+            style={{flex:1,padding:"10px 14px",borderRadius:9,cursor:"pointer",fontWeight:800,fontSize:13,fontFamily:"inherit",border:`1.5px solid ${(f.natureRdv||"intervention")==="intervention"?"#3B82F6":T.border}`,background:(f.natureRdv||"intervention")==="intervention"?"rgba(59,130,246,0.12)":T.surface2,color:(f.natureRdv||"intervention")==="intervention"?"#3B82F6":T.textMuted}}>
+            🔧 Intervention
+          </button>
+          <button onClick={()=>set("natureRdv","devis")}
+            style={{flex:1,padding:"10px 14px",borderRadius:9,cursor:"pointer",fontWeight:800,fontSize:13,fontFamily:"inherit",border:`1.5px solid ${f.natureRdv==="devis"?"#F59E0B":T.border}`,background:f.natureRdv==="devis"?"rgba(245,158,11,0.12)":T.surface2,color:f.natureRdv==="devis"?"#F59E0B":T.textMuted}}>
+            💰 Devis (visite pour chiffrer)
+          </button>
+        </div>
         <div style={{background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:10,padding:"10px 14px",marginBottom:20,fontSize:13,color:"#93C5FD",fontWeight:600}}>
           📅 RDV planifié — La fiche complète sera remplie sur place avec le bouton ▶ Démarrer. Sans date, il ira dans la rubrique 📌 À programmer de l'agenda.
         </div>
@@ -3285,11 +3295,12 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 ═══════════════════════════════════════════ */
 function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], techColors={} }) {
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
+  const isDevis = isRdv && fiche.natureRdv==="devis";
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
   const aProg = estAProgrammer(fiche);
   const e = aProg ? "prog" : (etat || (isRdv?"rdv":"complete"));
-  const COUL = { rdv:"#3B82F6", complete:"#10B981", prog:"#64748B" };
-  const BADGE = { rdv:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"}, prog:{t:"📌 À planifier",c:"#64748B"} };
+  const COUL = { rdv: isDevis?"#F59E0B":"#3B82F6", complete:"#10B981", prog:"#64748B" };
+  const BADGE = { rdv: isDevis?{t:"💰 Devis à faire",c:"#F59E0B"}:{t:"📅 RDV à faire",c:"#3B82F6"}, complete:{t:"✅ Terminée",c:"#10B981"}, prog:{t:"📌 À planifier",c:"#64748B"} };
   const badgeInfo = (e==="complete" && fiche.status==="a_prevoir") ? {t:"⚠️ Retour à prévoir",c:"#F97316"}
     : (e==="complete" && fiche.status==="annule") ? {t:"✕ Annulée",c:"#EF4444"}
     : BADGE[e];
@@ -3299,8 +3310,8 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
     <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:58,flexShrink:0}}>
         {fiche.dateRdv&&<div style={{fontSize:10,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
-        <div style={{fontSize:15,fontWeight:800,color:isRdv?"#3B82F6":"#0EA5E9"}}>{fiche.heureRdv||"--:--"}</div>
-        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color)}}>{aProg?"📌 À planifier":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`)}</div>
+        <div style={{fontSize:15,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
+        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
         {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
       </div>
       <div style={{width:1,height:36,background:T.border}}/>
@@ -4633,7 +4644,7 @@ export default function App() {
 
   const filtered = useMemo(()=>{
     let r=fiches;
-    if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || !f.technicien);
+    if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant));
     if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien} ${f.numeroOS||""}`.toLowerCase().includes(search.toLowerCase()));
     if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
@@ -4643,7 +4654,7 @@ export default function App() {
     else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
     if(filterTech) r=r.filter(f=>f.technicien===filterTech);
     return r;
-  },[fiches,search,filterStatus,filterTech,estRestreint,monRole.technicien]);
+  },[fiches,search,filterStatus,filterTech,estRestreint,monRole.technicien,monRole.sousTraitant]);
 
   // Notifications reçues pendant que l'app est ouverte au premier plan
   // (le service worker ne gère que les notifications reçues quand l'app est en arrière-plan/fermée)
@@ -4714,7 +4725,7 @@ export default function App() {
     </div>
   );
 
-  const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || !f.technicien) : fiches, [fiches,estRestreint,monRole.technicien]);
+  const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant)) : fiches, [fiches,estRestreint,monRole.technicien,monRole.sousTraitant]);
   const fichesEnRetard = useMemo(()=>{
     const seuil = Date.now() - 3*24*60*60*1000;
     return fichesVisibles.filter(f => f.status==="a_prevoir" && (f.createdAt||0) < seuil);
@@ -4833,7 +4844,7 @@ export default function App() {
           <DetailFiche fiche={selected} theme={theme} techTels={techTels} onSaveTechTel={saveTechTel}
             sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
             monTechnicien={estRestreint?monRole.technicien:null}
-            onClaim={estRestreint?(f)=>{const nf={...f,technicien:monRole.technicien};saveFiche(nf);setSelected(nf);showToast(`✋ Intervention attribuée à ${monRole.technicien}`);}:null}
+            onClaim={estRestreint&&!monRole.sousTraitant?(f)=>{const nf={...f,technicien:monRole.technicien};saveFiche(nf);setSelected(nf);showToast(`✋ Intervention attribuée à ${monRole.technicien}`);}:null}
             onConfirmerPriseEnCharge={(f)=>{const nf={...f,priseEnCharge:{par:f.technicien,ts:Date.now()}};saveFiche(nf);setSelected(nf);showToast(`✅ Prise en charge confirmée`);}}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
