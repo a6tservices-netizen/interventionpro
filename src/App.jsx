@@ -335,7 +335,7 @@ const resizePhoto = (file) => new Promise(res => {
 });
 const CONTRAT_TYPES = ["Bac à graisse","Poste de relevage","Curage annuel","Entretien copropriété","Autre entretien"];
 const FREQUENCES = { mensuel:{label:"Mensuel",mois:1}, bimestriel:{label:"Tous les 2 mois",mois:2}, trimestriel:{label:"Trimestriel",mois:3}, semestriel:{label:"Semestriel",mois:6}, annuel:{label:"Annuel",mois:12} };
-const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:{label:"Facturé",color:"#10B981"} };
+const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:{label:"Facturé",color:"#10B981"}, ne_pas_facturer:{label:"Ne pas facturer",color:"#64748B"} };
 const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.setMonth(d.getMonth() + (FREQUENCES[freq]?.mois||12)); return d.toISOString().split("T")[0]; };
 const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
 const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
@@ -352,6 +352,16 @@ const uid    = () => "INT-" + Math.random().toString(36).slice(2,8).toUpperCase(
 const ts     = () => new Date().toLocaleString("fr-FR");
 const today  = () => new Date().toISOString().split("T")[0];
 const dateFr = (d) => d ? new Date(d).toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"long",year:"numeric"}) : "—";
+// Certaines fiches ont deux numéros notés dans le même champ (ex: "06 12 34 56 78 / 07 98 76 54 32",
+// client + gardien...). Un lien tel: ne peut composer qu'UN seul numéro — sinon l'appel ne
+// se déclenche pas directement. On extrait ici uniquement le premier numéro valide pour l'appel,
+// tout en laissant le texte complet affiché tel quel.
+const telHref = (raw) => {
+  if (!raw) return "";
+  const m = String(raw).match(/(\+?\d[\d\s.\-]{6,})/);
+  const brut = m ? m[1] : raw;
+  return `tel:${String(brut).replace(/[^\d+]/g,"")}`;
+};
 
 function formatLoc(loc) {
   if (!loc) return null;
@@ -3242,7 +3252,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
                 style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
                 📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
               </div>
-              {f.tel&&<a href={`tel:${f.tel}`} style={{fontSize:11,color:"#10B981",fontWeight:600,textDecoration:"none"}}>📞 {f.tel}</a>}
+              {f.tel&&<a href={telHref(f.tel)} style={{fontSize:11,color:"#10B981",fontWeight:600,textDecoration:"none"}}>📞 {f.tel}</a>}
               {f.technicien&&<div style={{fontSize:10,color:T.textMuted}}>👤 {f.technicien}</div>}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
@@ -3380,7 +3390,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
         </div>
         {fiche.tel&&(
-          <a href={`tel:${fiche.tel}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
+          <a href={telHref(fiche.tel)} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
         )}
         {fiche.technicien&&tColor&&(
           <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:tColor,background:tColor+"1A",padding:"2px 8px",borderRadius:12,marginTop:2}}>
@@ -3723,7 +3733,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
         )}
         {locStr&&<div style={{fontSize:13,color:"#38BDF8",fontWeight:600,marginTop:6,background:"rgba(14,165,233,0.08)",padding:"6px 12px",borderRadius:8,border:"1px solid rgba(14,165,233,0.15)"}}>📍 {locStr}</div>}
         {fiche.tel&&(
-          <a href={`tel:${fiche.tel}`} style={{color:"#10B981",fontSize:13,fontWeight:700,marginTop:6,display:"flex",alignItems:"center",gap:4,textDecoration:"none"}}>
+          <a href={telHref(fiche.tel)} style={{color:"#10B981",fontSize:13,fontWeight:700,marginTop:6,display:"flex",alignItems:"center",gap:4,textDecoration:"none"}}>
             📞 {fiche.tel} <span style={{fontSize:11,opacity:.7}}>→ Appeler</span>
           </a>
         )}
@@ -3740,12 +3750,22 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                     background:fiche.facturation===k?v.color+"22":"transparent",
                     border:`1.5px solid ${fiche.facturation===k?v.color:T.border}`,
                     color:fiche.facturation===k?v.color:T.textMuted}}>
-                  {k==="facture"?"✅ ":"💶 "}{v.label}
+                  {k==="facture"?"✅ ":k==="ne_pas_facturer"?"🚫 ":"💶 "}{v.label}
                 </button>
               ))}
             </span>
           )}
         </div>
+        {fiche.facturation==="ne_pas_facturer"&&(
+          <div style={{marginTop:6,fontSize:11.5,color:T.textMuted,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontStyle:fiche.raisonNonFacture?"normal":"italic"}}>🚫 Motif : {fiche.raisonNonFacture || "non précisé"}</span>
+            <button onClick={()=>{
+              const saisie=window.prompt("Motif — pourquoi cette intervention n'est pas facturée ?",fiche.raisonNonFacture||"");
+              if(saisie===null) return;
+              onToggleFacturation&&onToggleFacturation(fiche,"ne_pas_facturer",saisie.trim());
+            }} style={{background:"none",border:"none",color:"#0EA5E9",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0}}>✏️ Modifier</button>
+          </div>
+        )}
         {fiche.noteRdv&&isRdv&&<div style={{marginTop:10,background:"rgba(59,130,246,0.08)",borderRadius:8,padding:"9px 12px",fontSize:13,color:"#93C5FD"}}>💬 {fiche.noteRdv}</div>}
       </div>
 
@@ -4493,14 +4513,14 @@ export default function App() {
 
   const exporterExcel = () => {
     try {
-      const entete = ["Reference","Date RDV","Heure","Statut","Client","Adresse","Telephone","Email","Technicien","Societe","Prestations","Temps passe","Majorations","Facturation","Conclusion"];
+      const entete = ["Reference","Date RDV","Heure","Statut","Client","Adresse","Telephone","Email","Technicien","Societe","Prestations","Temps passe","Majorations","Facturation","Motif non facture","Conclusion"];
       const echap = (v)=>{ const s=(v==null?"":String(v)).replace(/"/g,'""').replace(/\r?\n/g," "); return '"'+s+'"'; };
       const majLib = {soir50:"Soir +50%",weekend100:"Nuit/WE +100%"};
       const lignes = fiches.map(f=>{
         const prest = (f.prestations||[]).map(p=>{const m=PRESTATIONS.find(x=>x.id===p.id);return m?m.label:p.id;}).join(" / ");
         const maj = (f.majorations||[]).map(m=>majLib[m]||m).join(" + ");
         const stat = STATUTS[f.status]?.label || f.status || "";
-        return [f.id,f.dateRdv||"",f.heureRdv||"",stat,f.client||"",f.adresse||"",f.tel||"",f.email||"",f.technicien||"",f.societe||"",prest,f.tempsInterne||"",maj,f.facturation||"",f.conclusion||""].map(echap).join(";");
+        return [f.id,f.dateRdv||"",f.heureRdv||"",stat,f.client||"",f.adresse||"",f.tel||"",f.email||"",f.technicien||"",f.societe||"",prest,f.tempsInterne||"",maj,f.facturation||"",f.raisonNonFacture||"",f.conclusion||""].map(echap).join(";");
       });
       const csv = "\uFEFF" + entete.map(echap).join(";") + "\r\n" + lignes.join("\r\n");
       const blob = new Blob([csv],{type:"text/csv;charset=utf-8;"});
@@ -4685,7 +4705,22 @@ export default function App() {
     setView("devisform");
   };
   const handleSaveDevis = (d) => { saveDevisFb(d); setEditingDevis(null); setView("accueil"); setNav("devis"); showToast("📄 Devis enregistré"); };
-  const handleToggleFacturation = (fiche, val) => { const nf={...fiche, facturation: val}; saveFiche(nf); setSelected(nf); };
+  const handleToggleFacturation = (fiche, val, raisonPreDefinie) => {
+    let raison = fiche.raisonNonFacture || "";
+    if (val === "ne_pas_facturer") {
+      if (raisonPreDefinie !== undefined) {
+        raison = raisonPreDefinie;
+      } else {
+        const saisie = window.prompt("Motif (optionnel) — pourquoi cette intervention n'est pas facturée ?\nEx : geste commercial, sous garantie, erreur précédente…", raison);
+        if (saisie === null) return; // annulé : on ne change rien
+        raison = saisie.trim();
+      }
+    } else if (val !== fiche.facturation) {
+      raison = ""; // on quitte "ne pas facturer" → motif remis à zéro
+    }
+    const nf={...fiche, facturation: val, raisonNonFacture: raison};
+    saveFiche(nf); setSelected(nf);
+  };
 
   const filtered = useMemo(()=>{
     let r=fiches;
