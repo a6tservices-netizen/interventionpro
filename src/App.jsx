@@ -341,7 +341,7 @@ const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits
 const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
 const lsGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
-const stripLourd = (f) => { const {photos, signature, signatureTech, logoSociete, ...rest} = f; return {...rest, _nbPhotos:(photos||[]).length, _signee:!!signature}; };
+const stripLourd = (f) => { const {photos, signature, signatureTech, signaturesSupp, logoSociete, ...rest} = f; return {...rest, _nbPhotos:(photos||[]).length, _signee:!!signature}; };
 const nextDevisNum = (list=[]) => {
   const y = new Date().getFullYear();
   let max = 0;
@@ -583,8 +583,11 @@ function buildReportHTML(fiche, hideInternal = false) {
 
   const sigBoxes = [];
   if (fiche.signatureTech) sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature technicien</div><img src="${fiche.signatureTech}" class="sig-img"/><div class="sig-name">${fiche.technicien||"Technicien"}</div></div>`);
+  (fiche.signaturesSupp||[]).forEach(s => {
+    sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature — co-intervenant</div><img src="${s.data}" class="sig-img"/><div class="sig-name">${s.nom}</div></div>`);
+  });
   if (fiche.signature) sigBoxes.push(`<div class="sig-box"><div class="sig-box-label">Signature client — Bon pour accord</div><img src="${fiche.signature}" class="sig-img"/>${fiche.nomSignataire?`<div class="sig-name">${fiche.nomSignataire}</div>`:""}</div>`);
-  const sigZone = sigBoxes.length ? `<div class="sig-zone" style="grid-template-columns:repeat(${sigBoxes.length},1fr)">${sigBoxes.join("")}</div>` : "";
+  const sigZone = sigBoxes.length ? `<div class="sig-zone" style="grid-template-columns:repeat(${Math.min(sigBoxes.length,2)},1fr)">${sigBoxes.join("")}</div>` : "";
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
 <title>Rapport ${fiche.id}</title>
@@ -639,9 +642,9 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1px solid #e2ddf5;border-radius:7px;padding:7px 11px}
 .preco-list li::before{content:"▸ ";opacity:.55}
 .photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px}
-.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
-.photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e8edf3;max-height:160px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
-.photo-item img{width:100%;height:100%;object-fit:contain;display:block;max-height:160px}
+.photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
+.photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e8edf3;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
+.photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:240px}
 .sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px}
 .sig-box{border:1px solid #e8edf3;border-radius:9px;padding:15px 17px;min-height:100px;background:#fbfcfd}
 .sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#8896a8;margin-bottom:13px}
@@ -681,7 +684,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 <div class="body">
   <div class="client-grid">
     ${fiche.client?`<div class="info-card"><div class="info-label">Client / Société</div><div class="info-value">${fiche.client}</div></div>`:""}
-    <div class="info-card"><div class="info-label">Technicien</div><div class="info-value">${fiche.technicien||"—"}</div></div>
+    <div class="info-card"><div class="info-label">Technicien${fiche.techniciensSupp?.length?"s":""}</div><div class="info-value">${[fiche.technicien, ...(fiche.techniciensSupp||[])].filter(Boolean).join(" + ")||"—"}</div></div>
     ${fiche.adresse?`<div class="info-card full"><div class="info-label">Adresse d'intervention</div><div class="info-value">${fiche.adresse}${fiche.diametreCanalisation?" — DN "+fiche.diametreCanalisation:""}</div></div>`:""}
     ${fiche.tel?`<div class="info-card"><div class="info-label">Téléphone</div><div class="info-value">${fiche.tel}</div></div>`:""}
     ${fiche.email?`<div class="info-card"><div class="info-label">Email</div><div class="info-value">${fiche.email}</div></div>`:""}
@@ -1441,7 +1444,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     societe:"A6T Services",
     prestations:[], responsabilite:"na", preconisations:[],
     conclusion:"", photos:[], signature:null, signatureTech:null,
-    nomSignataire:"", materiels:[], difficulte:"",
+    nomSignataire:"", materiels:[], difficulte:"", techniciensSupp:[], signaturesSupp:[],
     tempsInterne:"", majorations:[], tarifHoraire:"", notesInternes:"", numeroOS:"",
     status:"planifie", loc:{...EMPTY_LOC}, urgent:false,
     ...(initial||{}),
@@ -1471,6 +1474,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
   const [showSig, setShowSig] = useState(false);
   const [showSigTech, setShowSigTech] = useState(false);
+  const [signingSuppNom, setSigningSuppNom] = useState(null);
   const [showTemps, setShowTemps] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [precoOpen, setPrecoOpen] = useState(false);
@@ -1616,6 +1620,11 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     <div style={{maxWidth:720, margin:"0 auto"}}>
       {showSig && <SignatureCanvas title="Signature client" onSave={d=>{set("signature",d);setShowSig(false);}} onCancel={()=>setShowSig(false)}/>}
       {showSigTech && <SignatureCanvas title="Signature technicien" onSave={d=>{set("signatureTech",d);setShowSigTech(false);}} onCancel={()=>setShowSigTech(false)}/>}
+      {signingSuppNom && <SignatureCanvas title={`Signature — ${signingSuppNom}`} onSave={d=>{
+        const autres=(f.signaturesSupp||[]).filter(s=>s.nom!==signingSuppNom);
+        set("signaturesSupp",[...autres,{nom:signingSuppNom,data:d}]);
+        setSigningSuppNom(null);
+      }} onCancel={()=>setSigningSuppNom(null)}/>}
       {showTemps && <TempsPopup onSave={handleTempsValidated} tarifHoraire={f.tarifHoraire} initialTemps={f.tempsInterne} initialMaj={f.majorations}/>}
 
       {/* Header */}
@@ -1768,6 +1777,27 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           </div>
           <div><div style={lblStyle}>Date</div><input type="date" value={f.dateRdv} onChange={e=>set("dateRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
           <div><div style={lblStyle}>Heure</div><input type="time" value={f.heureRdv} onChange={e=>set("heureRdv",e.target.value)} style={{...inpStyle(),colorScheme:isDark?"dark":"light"}}/></div>
+        </div>
+
+        <div style={{marginTop:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            {(f.techniciensSupp||[]).map((nom,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:6,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:20,padding:"5px 6px 5px 12px",fontSize:12.5,fontWeight:700,color:T.text}}>
+                👤 {nom}
+                <button onClick={()=>{
+                  set("techniciensSupp",(f.techniciensSupp||[]).filter((_,j)=>j!==i));
+                  set("signaturesSupp",(f.signaturesSupp||[]).filter(s=>s.nom!==nom));
+                }} style={{width:18,height:18,borderRadius:"50%",border:"none",background:"rgba(239,68,68,0.15)",color:"#EF4444",cursor:"pointer",fontSize:11,fontFamily:"inherit",lineHeight:1}}>✕</button>
+              </div>
+            ))}
+            <button onClick={()=>{
+              const nom=prompt("Nom du co-intervenant (deuxième technicien sur cette intervention) :");
+              if(nom?.trim() && nom.trim()!==f.technicien && !(f.techniciensSupp||[]).includes(nom.trim())){
+                set("techniciensSupp",[...(f.techniciensSupp||[]),nom.trim()]);
+              }
+            }} style={{padding:"6px 14px",borderRadius:20,border:`1.5px dashed ${T.border}`,background:"none",color:T.textMuted,cursor:"pointer",fontSize:12.5,fontWeight:700,fontFamily:"inherit"}}>➕ Ajouter un co-intervenant</button>
+          </div>
+          {(f.techniciensSupp||[]).length>0 && <div style={{fontSize:11,color:T.textMuted,marginTop:6}}>💡 Chaque co-intervenant pourra signer séparément plus bas, et apparaîtra dans le rapport PDF.</div>}
         </div>
         {/* Localisation précise (repliable) */}
         <div style={{marginTop:16,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
@@ -2048,6 +2078,21 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
               {f.signatureTech&&<button onClick={()=>set("signatureTech",null)} style={{padding:"7px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#EF4444",fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Effacer</button>}
             </div>
           </div>
+          {(f.techniciensSupp||[]).map(nom=>{
+            const sig=(f.signaturesSupp||[]).find(s=>s.nom===nom);
+            return (
+              <div key={nom}>
+                <div style={{fontSize:10,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>{nom} <span style={{textTransform:"none",fontWeight:500}}>(co-intervenant)</span></div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {sig
+                    ?<div style={{background:"#fff",borderRadius:8,padding:8,border:"1px solid #e2e8f0"}}><img src={sig.data} style={{height:56,display:"block",maxWidth:"100%"}} alt={`sig-${nom}`}/></div>
+                    :<div onClick={()=>setSigningSuppNom(nom)} style={{border:`2px dashed ${T.border}`,borderRadius:8,padding:"14px",color:T.textMuted,fontSize:12,textAlign:"center",cursor:"pointer"}}>✍️ Touchez ici pour signer</div>}
+                  <button onClick={()=>setSigningSuppNom(nom)} style={{padding:"8px",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✍️ {sig?"Modifier":"Signer"}</button>
+                  {sig&&<button onClick={()=>set("signaturesSupp",(f.signaturesSupp||[]).filter(s=>s.nom!==nom))} style={{padding:"7px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#EF4444",fontWeight:700,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Effacer</button>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
