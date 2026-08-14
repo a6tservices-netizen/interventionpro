@@ -632,31 +632,31 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .urgent-badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:7px;font-size:9px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid #EF444444}
 .body{padding:30px 34px}
 .client-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
-.info-card{background:#f8fafc;border-radius:9px;padding:11px 15px;border:1px solid #e8edf3}
+.info-card{background:#f8fafc;border-radius:9px;padding:11px 15px;border:1.5px solid #b8c2cf}
 .info-card.full{grid-column:1/-1}
 .info-label{font-size:8px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:#8896a8;margin-bottom:4px}
 .info-value{font-size:12.5px;font-weight:600;color:#1e293b}
-.loc-banner{background:#f0f7fd;border:1px solid #cfe3f5;border-radius:9px;padding:11px 16px;margin-bottom:22px;font-size:12px;font-weight:600;color:#1d5686}
+.loc-banner{background:#f0f7fd;border:1.5px solid #7fb0d9;border-radius:9px;padding:11px 16px;margin-bottom:22px;font-size:12px;font-weight:600;color:#1d5686}
 .section-block{margin-bottom:22px}
-.section-title{font-size:8.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#5c6b80;padding-left:9px;border-left:3px solid #cbd5e1;margin-bottom:13px;line-height:1.5}
-.presta-card{background:#fbfcfd;border-radius:9px;margin-bottom:11px;border:1px solid #e8edf3;border-left:3px solid #0ea5e9;overflow:hidden}
-.presta-header{padding:11px 15px;background:linear-gradient(90deg,rgba(0,0,0,0.025),transparent);display:flex;align-items:center;gap:9px;border-bottom:1px solid #eef1f5}
+.section-title{font-size:8.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#111;padding-left:9px;padding-bottom:6px;border-bottom:2px solid #111;margin-bottom:13px;line-height:1.5}
+.presta-card{background:#fbfcfd;border-radius:9px;margin-bottom:11px;border:1.5px solid #b8c2cf;border-left:4px solid #0ea5e9;overflow:hidden}
+.presta-header{padding:11px 15px;background:linear-gradient(90deg,rgba(0,0,0,0.025),transparent);display:flex;align-items:center;gap:9px;border-bottom:1.5px solid #d5dae1}
 .presta-icon{font-size:15px}
 .presta-title{font-family:'Fraunces',serif;font-size:13px;font-weight:700;letter-spacing:.01em}
 .presta-body{padding:13px 17px}
 .phrase{font-size:12px;color:#3d4a5c;line-height:1.85;margin-bottom:4px}
-.resp-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:8px;font-size:11px;font-weight:600;background:${resp?.color||'#64748b'}12;color:${resp?.color||'#64748b'};border:1px solid ${resp?.color||'#64748b'}2e}
-.conclusion-box{background:#f6fbf8;border:1px solid #d3ead9;border-radius:9px;padding:15px 19px;color:#20553a;font-size:12px;line-height:1.85}
+.resp-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:8px;font-size:11px;font-weight:600;background:${resp?.color||'#64748b'}12;color:${resp?.color||'#64748b'};border:1.5px solid ${resp?.color||'#64748b'}}
+.conclusion-box{background:#f6fbf8;border:1.5px solid #7fb896;border-radius:9px;padding:15px 19px;color:#20553a;font-size:12px;line-height:1.85}
 .conclusion-box::before{content:"";display:block;width:24px;height:3px;background:#3ba873;border-radius:2px;margin-bottom:11px}
 .preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1px solid #e2ddf5;border-radius:7px;padding:7px 11px}
+.preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1.5px solid #b7a9e0;border-radius:7px;padding:7px 11px}
 .preco-list li::before{content:"▸ ";opacity:.55}
 .photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px}
 .photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
-.photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1px solid #e8edf3;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
+.photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1.5px solid #9aa5b1;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
 .photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:240px}
 .sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px}
-.sig-box{border:1px solid #e8edf3;border-radius:9px;padding:15px 17px;min-height:100px;background:#fbfcfd}
+.sig-box{border:1.5px solid #b8c2cf;border-radius:9px;padding:15px 17px;min-height:100px;background:#fbfcfd}
 .sig-box-label{font-size:8.5px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#8896a8;margin-bottom:13px}
 .sig-img{max-height:64px;max-width:100%;display:block}
 .sig-line{border-bottom:1.5px solid #d6dde5;height:48px}
@@ -670,6 +670,29 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .footer-logo{font-family:'Fraunces',serif;font-size:11px;font-weight:700;color:#94a3b8}
 .footer-logo em{color:#0ea5e9;font-style:normal}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* Pagination à l'impression : chaque bloc reste toujours entier — soit il tient sur la
+   page, soit il bascule intégralement à la page suivante, jamais coupé en plein milieu.
+   L'en-tête est aussi resserré pour l'impression afin de libérer de la place pour le
+   contenu, quelle que soit la longueur du rapport. */
+@media print{
+  .info-card,.presta-card,.conclusion-box,.sig-box,.photo-item,.resp-badge,.loc-banner,.preco-list li,.int-card{
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  .section-title{break-after:avoid;page-break-after:avoid}
+  .presta-header{break-after:avoid;page-break-after:avoid}
+  .conclusion-box,.phrase{orphans:3;widows:3}
+  .header{padding:18px 30px}
+  .report-title{font-size:21px;margin-top:10px}
+  .report-subtitle{margin-top:3px}
+  .result-pill{margin-top:10px;padding:6px 13px}
+  .ref-card{padding:11px 15px;min-width:150px}
+  .ref-id{font-size:15px;padding-bottom:8px;margin-bottom:8px}
+  .ref-row{margin-bottom:6px}
+  .body{padding:18px 30px}
+  .section-block{margin-bottom:14px}
+  .client-grid{margin-bottom:14px}
+}
 </style></head><body>
 <div class="header">
   <div class="header-top">
@@ -1140,6 +1163,10 @@ td{padding:9px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
 .pitem img{width:100%;height:100%;object-fit:contain}
 .footer{margin-top:24px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media print{
+  tr,.pitem,.notes,.totaux{break-inside:avoid;page-break-inside:avoid}
+  thead{display:table-header-group}
+}
 </style></head><body>
 <div class="header">
   <div class="hl">
@@ -2228,6 +2255,24 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
         🛠️ <b>Administration</b> — gérez ici toutes les données de l'application, sans toucher au code. Les modifications sont immédiates pour toute l'équipe.
       </div>
 
+      {/* Bilan hebdomadaire */}
+      <div style={card}>
+        <div style={head}>📋 Bilan hebdomadaire</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
+          Une notification automatique chaque dimanche en fin d'après-midi, récapitulant en un coup d'œil : les interventions non clôturées, les devis en attente de réponse client, et les rapports terminés jamais envoyés. Envoyée à toute l'équipe (hors sous-traitants).
+        </div>
+        <button onClick={async()=>{
+          try{
+            const r = await fetch("/api/weekly-digest",{method:"POST"});
+            const d = await r.json();
+            if(d.ok && d.sent) alert(`✅ Bilan envoyé (${d.envoyes} appareil(s)).\n${d.counts.nonCloturees} non clôturées · ${d.counts.devisEnAttente} devis en attente · ${d.counts.rapportsNonEnvoyes} rapports non envoyés`);
+            else if(d.ok && !d.sent && d.reason==="rien-a-signaler") alert("✅ Rien à signaler cette semaine — aucune notification envoyée.");
+            else if(d.ok && !d.sent && d.reason==="no-token") alert("⚠️ Rien n'a pu être envoyé : aucun appareil avec les notifications activées.");
+            else alert("❌ Erreur : "+(d.error||"inconnue"));
+          } catch(e){ alert("❌ Erreur réseau : "+e.message); }
+        }} style={{padding:"9px 16px",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📋 Tester le bilan maintenant</button>
+      </div>
+
       {/* Export mensuel */}
       <div style={card}>
         <div style={head}>📊 Export mensuel</div>
@@ -3114,8 +3159,8 @@ function ReportPreview({ fiche, onClose }) {
       </div>
       {showSendOptions&&(
         <div style={{background:"#0A1525",borderBottom:"1px solid #1a3050",padding:"12px 16px",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={()=>envoyerRapportWhatsApp(fiche)} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
-          <button onClick={()=>envoyerRapportSMS(fiche)} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
+          <button onClick={()=>{envoyerRapportWhatsApp(fiche);onMarquerEnvoye&&onMarquerEnvoye(fiche);}} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
+          <button onClick={()=>{envoyerRapportSMS(fiche);onMarquerEnvoye&&onMarquerEnvoye(fiche);}} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
           <button onClick={()=>{download();envoyerRapportArchivageInterne(fiche,true);}} style={{padding:"8px 16px",background:"#1E293B",border:"1px solid #F97316",color:"#F97316",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📧 Archiver (interne A6T)</button>
         </div>
       )}
@@ -3656,7 +3701,7 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
@@ -4926,6 +4971,7 @@ export default function App() {
             monTechnicien={estRestreint?monRole.technicien:null}
             onClaim={estRestreint&&!monRole.sousTraitant?(f)=>{const nf={...f,technicien:monRole.technicien};saveFiche(nf);setSelected(nf);showToast(`✋ Intervention attribuée à ${monRole.technicien}`);}:null}
             onConfirmerPriseEnCharge={(f)=>{const nf={...f,priseEnCharge:{par:f.technicien,ts:Date.now()}};saveFiche(nf);setSelected(nf);showToast(`✅ Prise en charge confirmée`);}}
+            onMarquerEnvoye={(f)=>{const nf={...f,rapportEnvoye:true,rapportEnvoyeLe:Date.now()};saveFiche(nf);setSelected(nf);}}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
