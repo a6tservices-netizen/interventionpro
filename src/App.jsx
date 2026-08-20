@@ -47,12 +47,20 @@ async function initNotifications(nom) {
 }
 async function envoyerNotification(technicien, titre, corps, ficheId) {
   try {
-    await fetch("/api/send-notification", {
+    const r = await fetch("/api/send-notification", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ technicien, titre, corps, ficheId }),
     });
-  } catch (e) { console.error("envoyerNotification error", e); }
+    const d = await r.json().catch(()=>({}));
+    const resume = d.ok
+      ? (d.sent===false ? `Non envoyé (${d.reason||"?"})` : `Envoyé — ${d.envoyes ?? "?"} appareil(s), ${d.echecs ?? 0} échec(s)`)
+      : `ERREUR SERVEUR : ${d.error||"inconnue"}`;
+    logActivite("notification_envoyee", technicien, `${titre} — ${resume}`);
+  } catch (e) {
+    console.error("envoyerNotification error", e);
+    logActivite("notification_envoyee", technicien, `${titre} — ERREUR RÉSEAU : ${e.message}`);
+  }
 }
 const sanitize = (o) => JSON.parse(JSON.stringify(o ?? null));
 const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), sanitize(fiche));
@@ -2294,7 +2302,11 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
         <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:280,overflowY:"auto"}}>
           {activiteLog.length===0 && <div style={{fontSize:12,color:T.textFaint,padding:"6px 4px"}}>Aucune activité enregistrée pour l'instant.</div>}
           {activiteLog.slice(0,80).map((a,i)=>{
-            const meta = {connexion:{icon:"🔓",label:"Connexion",color:"#0EA5E9"},photo_ajoutee:{icon:"📸",label:"Photo ajoutée",color:"#A78BFA"}}[a.type]||{icon:"•",label:a.type,color:T.textMuted};
+            const meta = {
+              connexion:{icon:"🔓",label:"Connexion",color:"#0EA5E9"},
+              photo_ajoutee:{icon:"📸",label:"Photo ajoutée",color:"#A78BFA"},
+              notification_envoyee:{icon:a.detail?.includes("ERREUR")?"🔴":a.detail?.includes("Non envoyé")?"🟡":"🔔",label:"Notification",color:a.detail?.includes("ERREUR")?"#EF4444":a.detail?.includes("Non envoyé")?"#F59E0B":"#10B981"},
+            }[a.type]||{icon:"•",label:a.type,color:T.textMuted};
             return (
               <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"5px 8px",background:T.surface2,borderRadius:7}}>
                 <span>{meta.icon}</span>
