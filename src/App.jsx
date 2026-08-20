@@ -3782,7 +3782,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
             📞 {fiche.tel} <span style={{fontSize:11,opacity:.7}}>→ Appeler</span>
           </a>
         )}
-        {onLoguerAppel && !isRdv && (
+        {onLoguerAppel && (
           <div style={{marginTop:10,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
             <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>📋 Journal d'appels</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:(fiche.journalAppels||[]).length?10:0}}>
@@ -3793,8 +3793,12 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 {k:"injoignable",label:"📵 Injoignable",color:"#64748B"},
               ].map(opt=>(
                 <button key={opt.k} onClick={()=>{
-                  const note = window.prompt(`${opt.label} — note complémentaire (optionnel) :`,"");
+                  const question = opt.k==="reussi"
+                    ? "✅ Contact réussi — Qu'a dit le client ? (ex : dispo demain matin, à rappeler après 14h, veut reporter...)"
+                    : `${opt.label} — note complémentaire (optionnel) :`;
+                  const note = window.prompt(question,"");
                   if(note===null) return;
+                  if(opt.k==="reussi" && !note.trim() && !window.confirm("Aucune réponse notée — vraiment enregistrer sans détail sur ce que le client a dit ?")) return;
                   onLoguerAppel(fiche, opt.k, note.trim());
                 }} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${opt.color}55`,background:`${opt.color}14`,color:opt.color,fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
                   {opt.label}
