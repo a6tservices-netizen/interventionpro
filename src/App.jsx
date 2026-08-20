@@ -4875,7 +4875,11 @@ function AppInterne() {
       if (fiche.technicien?.trim() && !techniciens.includes(fiche.technicien.trim())) ajouterTechnicien(fiche.technicien.trim());
       const prev = prevAvantSave;
       if (fiche.technicien?.trim() && fiche.technicien.trim()!==prev?.technicien) {
-        envoyerNotification(fiche.technicien.trim(), "🔧 Intervention assignée", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
+        const details = [
+          fiche.adresse ? `📍 ${fiche.adresse}` : "",
+          (fiche.noteRdv||fiche.notesInternes) ? `📝 ${fiche.noteRdv||fiche.notesInternes}` : "",
+        ].filter(Boolean).join(" — ");
+        envoyerNotification(fiche.technicien.trim(), "🔧 Intervention assignée", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}${details?" — "+details:""}`, fiche.id);
       } else if (!fiche.technicien?.trim() && !prevAvantSave) {
         // Nouvelle fiche créée sans technicien assigné → toute l'équipe est notifiée (libre à prendre)
         envoyerNotification(null, "🆓 Nouvelle intervention libre", `${fiche.client||"Client"} — ${dateFr(fiche.dateRdv)}${fiche.heureRdv?" à "+fiche.heureRdv:""}`, fiche.id);
@@ -4897,7 +4901,11 @@ function AppInterne() {
     if (rdv.technicien?.trim() && !techniciens.includes(rdv.technicien.trim())) ajouterTechnicien(rdv.technicien.trim());
     const prevRdv = fiches.find(x=>x.id===rdv.id);
     if (rdv.technicien?.trim() && rdv.technicien.trim()!==prevRdv?.technicien) {
-      envoyerNotification(rdv.technicien.trim(), "📅 Nouveau RDV assigné", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}`, rdv.id);
+      const details = [
+        rdv.adresse ? `📍 ${rdv.adresse}` : "",
+        rdv.noteRdv ? `📝 ${rdv.noteRdv}` : "",
+      ].filter(Boolean).join(" — ");
+      envoyerNotification(rdv.technicien.trim(), "📅 Nouveau RDV assigné", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}${details?" — "+details:""}`, rdv.id);
     } else if (!rdv.technicien?.trim() && !prevRdv) {
       // Nouveau RDV créé sans technicien assigné → toute l'équipe est notifiée (libre à prendre)
       envoyerNotification(null, "🆓 Nouveau RDV libre", `${rdv.client||"Client"} — ${dateFr(rdv.dateRdv)}${rdv.heureRdv?" à "+rdv.heureRdv:""}`, rdv.id);
@@ -5023,7 +5031,8 @@ function AppInterne() {
             try {
               const reg = await navigator.serviceWorker.ready;
               if (reg && reg.showNotification) {
-                await reg.showNotification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", vibrate: [200,100,200], tag: payload.data?.ficheId || undefined });
+                const url = payload.data?.ficheId ? `/?fiche=${encodeURIComponent(payload.data.ficheId)}` : "/";
+                await reg.showNotification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", vibrate: [200,100,200], tag: payload.data?.ficheId || undefined, data: { ficheId: payload.data?.ficheId || "", url } });
               } else {
                 new Notification(title, { body, icon: "/icon-192.png" });
               }
@@ -5075,6 +5084,31 @@ function AppInterne() {
       <button onClick={()=>setDerniereErreur("")} style={{background:"none",border:"1px solid rgba(239,68,68,0.5)",color:"#EF4444",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>Masquer</button>
     </div>
   );
+
+  // Ouvre automatiquement la bonne fiche quand on arrive depuis une notification —
+  // soit via le paramètre ?fiche=... (nouvel onglet), soit via un message envoyé par
+  // le service worker si l'app était déjà ouverte (le focus seul ne change pas l'URL).
+  const ouvrirFicheParId = (id) => {
+    const cible = fiches.find(f=>f.id===id);
+    if(cible){ setSelected(cible); setView("detail"); }
+  };
+  useEffect(()=>{
+    if(!fiches.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("fiche");
+    if(id){ ouvrirFicheParId(id); window.history.replaceState({}, "", window.location.pathname); }
+  },[fiches.length>0]);
+  useEffect(()=>{
+    if(!("serviceWorker" in navigator)) return;
+    const onMsg = (e) => {
+      if(e.data?.type==="OUVRIR_FICHE" && e.data?.url){
+        const id = new URL(e.data.url, window.location.origin).searchParams.get("fiche");
+        if(id) ouvrirFicheParId(id);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return ()=>navigator.serviceWorker.removeEventListener("message", onMsg);
+  },[fiches]);
 
   const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant)) : fiches, [fiches,estRestreint,monRole.technicien,monRole.sousTraitant]);
   const fichesEnRetard = useMemo(()=>{
