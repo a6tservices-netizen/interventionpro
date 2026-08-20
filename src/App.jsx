@@ -3701,7 +3701,7 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
@@ -3781,6 +3781,43 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           <a href={telHref(fiche.tel)} style={{color:"#10B981",fontSize:13,fontWeight:700,marginTop:6,display:"flex",alignItems:"center",gap:4,textDecoration:"none"}}>
             📞 {fiche.tel} <span style={{fontSize:11,opacity:.7}}>→ Appeler</span>
           </a>
+        )}
+        {onLoguerAppel && !isRdv && (
+          <div style={{marginTop:10,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>📋 Journal d'appels</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:(fiche.journalAppels||[]).length?10:0}}>
+              {[
+                {k:"pas_de_reponse",label:"❌ Pas de réponse",color:"#EF4444"},
+                {k:"reussi",label:"✅ Contact réussi",color:"#10B981"},
+                {k:"message_laisse",label:"📧 Message laissé",color:"#F59E0B"},
+                {k:"injoignable",label:"📵 Injoignable",color:"#64748B"},
+              ].map(opt=>(
+                <button key={opt.k} onClick={()=>{
+                  const note = window.prompt(`${opt.label} — note complémentaire (optionnel) :`,"");
+                  if(note===null) return;
+                  onLoguerAppel(fiche, opt.k, note.trim());
+                }} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${opt.color}55`,background:`${opt.color}14`,color:opt.color,fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {(fiche.journalAppels||[]).length>0 && (
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:180,overflowY:"auto"}}>
+                {[...(fiche.journalAppels||[])].reverse().map((e,i)=>{
+                  const meta = {pas_de_reponse:{label:"❌ Pas de réponse",color:"#EF4444"},reussi:{label:"✅ Contact réussi",color:"#10B981"},message_laisse:{label:"📧 Message laissé",color:"#F59E0B"},injoignable:{label:"📵 Injoignable",color:"#64748B"}}[e.resultat]||{label:e.resultat,color:T.textMuted};
+                  return (
+                    <div key={i} style={{fontSize:11.5,padding:"6px 9px",background:T.surface,borderRadius:7,borderLeft:`2.5px solid ${meta.color}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                        <span style={{fontWeight:700,color:meta.color}}>{meta.label}</span>
+                        <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(e.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                      </div>
+                      <div style={{color:T.textMuted,fontSize:10.5,marginTop:1}}>{e.par||"—"}{e.note?` · ${e.note}`:""}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
         <div style={{display:"flex",gap:12,marginTop:10,fontSize:12,color:T.textMuted,flexWrap:"wrap"}}>
           {fiche.technicien&&<span>👤 {fiche.technicien}</span>}
@@ -4972,6 +5009,12 @@ export default function App() {
             onClaim={estRestreint&&!monRole.sousTraitant?(f)=>{const nf={...f,technicien:monRole.technicien};saveFiche(nf);setSelected(nf);showToast(`✋ Intervention attribuée à ${monRole.technicien}`);}:null}
             onConfirmerPriseEnCharge={(f)=>{const nf={...f,priseEnCharge:{par:f.technicien,ts:Date.now()}};saveFiche(nf);setSelected(nf);showToast(`✅ Prise en charge confirmée`);}}
             onMarquerEnvoye={(f)=>{const nf={...f,rapportEnvoye:true,rapportEnvoyeLe:Date.now()};saveFiche(nf);setSelected(nf);}}
+            onLoguerAppel={(f,resultat,note)=>{
+              const entry = { ts: Date.now(), par: (estRestreint?monRole.technicien:f.technicien)||"Admin", resultat, note: note||"" };
+              const nf = {...f, journalAppels:[...(f.journalAppels||[]), entry]};
+              saveFiche(nf); setSelected(nf);
+              showToast(resultat==="reussi" ? "✅ Contact réussi enregistré" : "📋 Tentative enregistrée");
+            }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}

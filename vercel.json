@@ -6,6 +6,14 @@
     {
       "path": "/api/weekly-digest",
       "schedule": "0 17 * * 0"
+    },
+    {
+      "path": "/api/alerte-soir",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/recap-matin",
+      "schedule": "0 7 * * *"
     }
   ]
 }
