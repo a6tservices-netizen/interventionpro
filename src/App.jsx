@@ -3858,7 +3858,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 </button>
               ))}
               {(()=>{
-                const dernier = (fiche.journalAppels||[])[fiche.journalAppels.length-1];
+                const _ja = fiche.journalAppels||[];
+                const dernier = _ja[_ja.length-1];
                 if(!dernier || dernier.resultat==="reussi") return null;
                 return (
                   <button onClick={()=>setShowQuandChips(v=>!v)} style={{padding:"6px 11px",borderRadius:8,border:"1px solid #6366F155",background:showQuandChips?"#6366F133":"#6366F114",color:"#6366F1",fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
