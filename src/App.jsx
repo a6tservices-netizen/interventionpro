@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
@@ -2306,6 +2306,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
               connexion:{icon:"🔓",label:"Connexion",color:"#0EA5E9"},
               photo_ajoutee:{icon:"📸",label:"Photo ajoutée",color:"#A78BFA"},
               notification_envoyee:{icon:a.detail?.includes("ERREUR")?"🔴":a.detail?.includes("Non envoyé")?"🟡":"🔔",label:"Notification",color:a.detail?.includes("ERREUR")?"#EF4444":a.detail?.includes("Non envoyé")?"#F59E0B":"#10B981"},
+              erreur_app:{icon:"🐞",label:"Erreur technique",color:"#EF4444"},
             }[a.type]||{icon:"•",label:a.type,color:T.textMuted};
             return (
               <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"5px 8px",background:T.surface2,borderRadius:7}}>
@@ -4633,7 +4634,40 @@ function LoginPage({ theme }) {
   );
 }
 
+// ── Filet de sécurité global : plus jamais de page blanche ──
+// Si un bug fait planter le rendu n'importe où dans l'app (comme le crash du journal
+// d'appels rencontré une fois), React affiche normalement une page blanche sans aucun
+// moyen de revenir en arrière. Cette classe intercepte ce genre de crash et affiche à la
+// place un écran explicite avec le message d'erreur et un bouton pour recharger — et
+// enregistre l'incident dans le journal d'activité pour qu'on puisse le corriger vite.
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { erreur: null }; }
+  static getDerivedStateFromError(erreur) { return { erreur }; }
+  componentDidCatch(erreur, info) {
+    console.error("Crash intercepté :", erreur, info);
+    try { logActivite("erreur_app", null, `${erreur?.message || erreur} — ${(info?.componentStack||"").split("\n")[1]?.trim()||""}`); } catch(e) {}
+  }
+  render() {
+    if (!this.state.erreur) return this.props.children;
+    return (
+      <div style={{minHeight:"100vh",background:"#0B1120",color:"#F1F5F9",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:20}}>
+        <div style={{textAlign:"center",maxWidth:380}}>
+          <div style={{width:54,height:54,borderRadius:16,background:"linear-gradient(135deg,#F59E0B,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 16px"}}>⚠️</div>
+          <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Un problème est survenu</div>
+          <div style={{fontSize:12.5,color:"#94A3B8",marginBottom:14,lineHeight:1.6}}>L'application a rencontré une erreur inattendue. Ce n'est pas de votre faute — l'incident a été enregistré.</div>
+          <div style={{fontSize:11,color:"#64748B",background:"#141F38",borderRadius:8,padding:"9px 12px",marginBottom:18,fontFamily:"monospace",textAlign:"left",wordBreak:"break-word"}}>{String(this.state.erreur?.message||this.state.erreur)}</div>
+          <button onClick={()=>window.location.reload()} style={{padding:"11px 26px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:9,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>🔄 Recharger l'application</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 export default function App() {
+  return <ErrorBoundary><AppInterne/></ErrorBoundary>;
+}
+
+function AppInterne() {
   const [fiches, setFiches] = useState(()=>lsGet("cache_fiches")||[]);
   const [societes, setSocietes] = useState(["A6T Services"]);
   const [techniciens, setTechniciens] = useState([]);
@@ -4649,6 +4683,7 @@ export default function App() {
   const [activiteLog, setActiviteLog] = useState([]);
   const [userRolesLoaded, setUserRolesLoaded] = useState(false);
   const [rolesError, setRolesError] = useState(""); // message d'erreur exact, affiché à l'écran pour diagnostic sans console
+  const [derniereErreur, setDerniereErreur] = useState(""); // dernière erreur technique en direct, visible sans aller dans Administration
   const [voiceResume, setVoiceResume] = useState(null);
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
@@ -4719,6 +4754,17 @@ export default function App() {
     try { if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{}); } catch(e){}
     setTimeout(flushPending, 3000);
     return ()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+  // Filet de sécurité (2/2) : capture les erreurs qui n'ont PAS fait planter l'affichage
+  // (erreurs dans du code asynchrone, promesses rejetées...) — l'ErrorBoundary plus haut
+  // n'attrape que les crashs de rendu React, pas celles-ci. On les enregistre quand même
+  // dans le journal d'activité pour ne rien perdre en silence.
+  useEffect(()=>{
+    const onErr = (e) => { const msg = `${e?.message||e}`; try { logActivite("erreur_app", null, msg); } catch(err){} setDerniereErreur(msg); };
+    const onRej = (e) => { const msg = `Promesse rejetée : ${e?.reason?.message||e?.reason||e}`; try { logActivite("erreur_app", null, msg); } catch(err){} setDerniereErreur(msg); };
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => { window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
   },[]);
   // Surveillance de la connexion (Firebase Auth)
   useEffect(()=>{
@@ -5023,6 +5069,12 @@ export default function App() {
       <button onClick={()=>setRolesError("")} style={{background:"none",border:"1px solid rgba(239,68,68,0.5)",color:"#EF4444",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>Masquer</button>
     </div>
   );
+  const derniereErreurBanner = derniereErreur && (
+    <div style={{background:"rgba(239,68,68,0.15)",borderBottom:"1px solid rgba(239,68,68,0.4)",color:"#EF4444",textAlign:"center",fontWeight:700,fontSize:11.5,padding:"7px 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+      <span>🐞 Une erreur technique vient de se produire : {derniereErreur.slice(0,140)}</span>
+      <button onClick={()=>setDerniereErreur("")} style={{background:"none",border:"1px solid rgba(239,68,68,0.5)",color:"#EF4444",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>Masquer</button>
+    </div>
+  );
 
   const fichesVisibles = useMemo(()=> estRestreint ? fiches.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant)) : fiches, [fiches,estRestreint,monRole.technicien,monRole.sousTraitant]);
   const fichesEnRetard = useMemo(()=>{
@@ -5082,6 +5134,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
       {rolesErrorBanner}
+      {derniereErreurBanner}
       {retardBanner}
       <header style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:300}}>
         <button onClick={()=>setShowRdvForm(false)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
@@ -5097,6 +5150,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       {offlineBanner}
       {rolesErrorBanner}
+      {derniereErreurBanner}
       {retardBanner}
       {mailImportModal}
       {voiceImportModal}
