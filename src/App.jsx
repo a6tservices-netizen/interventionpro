@@ -3420,6 +3420,11 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
           <span style={{fontSize:9.5,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
           {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:9.5,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
+          {(fiche.journalAppels||[]).length>0 && (()=>{
+            const dernier = fiche.journalAppels[fiche.journalAppels.length-1];
+            const meta = {pas_de_reponse:{label:"❌ Pas de réponse",color:"#EF4444"},reussi:{label:"✅ Contact pris",color:"#10B981"},message_laisse:{label:"📧 Messagerie",color:"#F59E0B"},injoignable:{label:"📵 Injoignable",color:"#64748B"}}[dernier.resultat]||{label:dernier.resultat,color:T.textMuted};
+            return <span title={dernier.note||""} style={{fontSize:9.5,fontWeight:800,color:meta.color,background:meta.color+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{meta.label}</span>;
+          })()}
         </div>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
           <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:4}}>
@@ -5018,6 +5023,23 @@ export default function App() {
               const nf = {...f, journalAppels:[...(f.journalAppels||[]), entry]};
               saveFiche(nf); setSelected(nf);
               showToast(resultat==="reussi" ? "✅ Contact réussi enregistré" : "📋 Tentative enregistrée");
+              // Notifie toute l'équipe (hors sous-traitants, filtré côté serveur) — pour que
+              // l'info soit vue sans avoir à rouvrir la fiche. Envoyé même si l'admin n'a pas
+              // fait l'appel lui-même : c'est justement le but, garder tout le monde informé.
+              const meta = {pas_de_reponse:"❌ Pas de réponse",reussi:"✅ Contact réussi",message_laisse:"📧 Message laissé",injoignable:"📵 Injoignable"}[resultat]||resultat;
+              envoyerNotification(null, `📞 ${f.client||"Client"}`, `${meta}${note?" — "+note:""}`, f.id);
+              // Après un contact réussi, propose de mettre à jour directement la date/heure
+              // du RDV sur la base de ce qui vient d'être dit au téléphone, sans repasser par
+              // le mode édition complet.
+              if(resultat==="reussi" && window.confirm("Mettre à jour la date/heure du RDV maintenant, sur la base de cet appel ?")){
+                const nvDate = window.prompt("Nouvelle date (AAAA-MM-JJ) :", f.dateRdv||today());
+                if(nvDate && nvDate.trim()){
+                  const nvHeure = window.prompt("Nouvelle heure (HH:MM, laisser vide si non précisée) :", f.heureRdv||"");
+                  const nf2 = {...nf, dateRdv:nvDate.trim(), heureRdv:(nvHeure||"").trim()};
+                  saveFiche(nf2); setSelected(nf2);
+                  showToast("📅 Date/heure mise à jour");
+                }
+              }
             }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
