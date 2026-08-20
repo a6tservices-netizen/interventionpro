@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, remove } from "firebase/database";
+import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
 /* ═══════════════════════════════════════════
@@ -72,6 +72,16 @@ const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.
 const watchMemosVocaux = (cb) => onValue(ref(db, "memosVocaux"), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>(b.ts||0)-(a.ts||0)):[]); });
 const saveMemoVocal = (memo) => set(ref(db, `memosVocaux/${memo.id}`), memo);
 const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_");
+// ── Journal d'activité (connexions, actions clés) ──
+// Trace qui a fait quoi et quand : connexions à l'app, ajout de photo... Visible dans
+// Administration → Journal d'activité. Sert aussi de "vu" implicite pour les alertes :
+// si la dernière connexion d'un technicien est APRÈS l'heure d'une alerte, on sait qu'il
+// a au moins ouvert l'app depuis (sans garantir qu'il ait lu la notification elle-même).
+const logActivite = (type, technicien, detail) => {
+  try { push(ref(db, "activiteLog"), sanitize({ type, technicien: technicien||null, detail: detail||"", ts: Date.now() })); }
+  catch(e) { console.error("logActivite error", e); }
+};
+const watchActiviteLog = (cb) => onValue(query(ref(db, "activiteLog"), orderByChild("ts"), limitToLast(300)), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>b.ts-a.ts):[]); });
 const watchUserRoles = (cb, onErr) => onValue(ref(db, "userRoles"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); }, err => { if(onErr) onErr(err); });
 const saveUserRole = (role) => set(ref(db, `userRoles/${emailKey(role.email)}`), role);
 const deleteUserRole = (email) => remove(ref(db, `userRoles/${emailKey(email)}`));
@@ -1583,6 +1593,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     if(videos.length) alert("Les vidéos ne sont pas encore prises en charge (limite de stockage). Seules les photos ont été ajoutées.");
     const imgs = await Promise.all(all.filter(x=>x.type.startsWith("image/")).map(resizePhoto));
     setF(p=>({...p,photos:[...p.photos,...imgs]}));
+    if(imgs.length) logActivite("photo_ajoutee", f.technicien||null, `${imgs.length} photo(s) — ${f.client||f.id||"fiche"}`);
   };
 
   const handleGenererConclusion = async () => {
@@ -2209,7 +2220,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[] }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -2253,6 +2264,47 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
         🛠️ <b>Administration</b> — gérez ici toutes les données de l'application, sans toucher au code. Les modifications sont immédiates pour toute l'équipe.
+      </div>
+
+      {/* Journal d'activité — connexions, ajouts de photo... */}
+      <div style={card}>
+        <div style={head}>🕵️ Journal d'activité</div>
+        <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
+          Qui a ouvert l'application, quand, et quelques actions clés (ajout de photo…). Sert aussi de "vu" implicite pour les alertes : si la dernière connexion d'une personne est après l'heure d'une alerte, elle a au moins rouvert l'app depuis.
+        </div>
+        {(()=>{
+          const dernieresConnexions = {};
+          activiteLog.filter(a=>a.type==="connexion").forEach(a=>{ if(!dernieresConnexions[a.detail]||a.ts>dernieresConnexions[a.detail]) dernieresConnexions[a.detail]=a.ts; });
+          const noms = Object.keys(dernieresConnexions);
+          return noms.length>0 && (
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+              {noms.map(email=>{
+                const ilYA = Date.now()-dernieresConnexions[email];
+                const recent = ilYA < 3*3600*1000; // vu il y a moins de 3h
+                return (
+                  <span key={email} title={new Date(dernieresConnexions[email]).toLocaleString("fr-FR")}
+                    style={{fontSize:11,fontWeight:700,padding:"5px 11px",borderRadius:20,background:recent?"rgba(16,185,129,0.14)":T.surface2,color:recent?"#10B981":T.textMuted,border:`1px solid ${recent?"#10B98155":T.border}`}}>
+                    {recent?"🟢":"⚪"} {email} — {ilYA<3600000?`${Math.round(ilYA/60000)} min`:ilYA<86400000?`${Math.round(ilYA/3600000)} h`:`${Math.round(ilYA/86400000)} j`}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })()}
+        <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:280,overflowY:"auto"}}>
+          {activiteLog.length===0 && <div style={{fontSize:12,color:T.textFaint,padding:"6px 4px"}}>Aucune activité enregistrée pour l'instant.</div>}
+          {activiteLog.slice(0,80).map((a,i)=>{
+            const meta = {connexion:{icon:"🔓",label:"Connexion",color:"#0EA5E9"},photo_ajoutee:{icon:"📸",label:"Photo ajoutée",color:"#A78BFA"}}[a.type]||{icon:"•",label:a.type,color:T.textMuted};
+            return (
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"5px 8px",background:T.surface2,borderRadius:7}}>
+                <span>{meta.icon}</span>
+                <span style={{fontWeight:700,color:meta.color,flexShrink:0}}>{meta.label}</span>
+                <span style={{color:T.textMuted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.technicien||a.detail||""}</span>
+                <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(a.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Bilan hebdomadaire */}
@@ -3706,11 +3758,12 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
   const [showSousTraitant, setShowSousTraitant] = useState(false);
+  const [showQuandChips, setShowQuandChips] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
@@ -3790,7 +3843,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
         {onLoguerAppel && (
           <div style={{marginTop:10,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
             <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>📋 Journal d'appels</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:(fiche.journalAppels||[]).length?10:0}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:showQuandChips?8:((fiche.journalAppels||[]).length?10:0)}}>
               {[
                 {k:"pas_de_reponse",label:"❌ Pas de réponse",color:"#EF4444"},
                 {k:"reussi",label:"✅ Contact réussi",color:"#10B981"},
@@ -3798,18 +3851,53 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 {k:"injoignable",label:"📵 Injoignable",color:"#64748B"},
               ].map(opt=>(
                 <button key={opt.k} onClick={()=>{
-                  const question = opt.k==="reussi"
-                    ? "✅ Contact réussi — Qu'a dit le client ? (ex : dispo demain matin, à rappeler après 14h, veut reporter...)"
-                    : `${opt.label} — note complémentaire (optionnel) :`;
-                  const note = window.prompt(question,"");
-                  if(note===null) return;
-                  if(opt.k==="reussi" && !note.trim() && !window.confirm("Aucune réponse notée — vraiment enregistrer sans détail sur ce que le client a dit ?")) return;
-                  onLoguerAppel(fiche, opt.k, note.trim());
-                }} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${opt.color}55`,background:`${opt.color}14`,color:opt.color,fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
+                  if(opt.k==="reussi"){ setShowQuandChips(v=>!v); return; }
+                  onLoguerAppel(fiche, opt.k, "");
+                }} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${opt.color}55`,background:(opt.k==="reussi"&&showQuandChips)?opt.color+"33":`${opt.color}14`,color:opt.color,fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
                   {opt.label}
                 </button>
               ))}
+              {(()=>{
+                const dernier = (fiche.journalAppels||[])[fiche.journalAppels.length-1];
+                if(!dernier || dernier.resultat==="reussi") return null;
+                return (
+                  <button onClick={()=>setShowQuandChips(v=>!v)} style={{padding:"6px 11px",borderRadius:8,border:"1px solid #6366F155",background:showQuandChips?"#6366F133":"#6366F114",color:"#6366F1",fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit"}}>
+                    🔄 Il a rappelé
+                  </button>
+                );
+              })()}
             </div>
+            {showQuandChips && (()=>{
+              const fmtHM = (mins) => { const d=new Date(Date.now()+mins*60000); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+              const tomorrowISO = () => { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+              const CHIPS = [
+                {label:"⏱ Dans 30 min", dateRdv:today(), heureRdv:fmtHM(30)},
+                {label:"⏱ Dans 45 min", dateRdv:today(), heureRdv:fmtHM(45)},
+                {label:"⏱ Dans 1h", dateRdv:today(), heureRdv:fmtHM(60)},
+                {label:"🌅 Demain matin", dateRdv:tomorrowISO(), heureRdv:"09:00"},
+                {label:"🌇 Demain après-midi", dateRdv:tomorrowISO(), heureRdv:"14:00"},
+              ];
+              return (
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:(fiche.journalAppels||[]).length?10:0,padding:"8px 0",borderTop:`1px dashed ${T.border}`,borderBottom:`1px dashed ${T.border}`}}>
+                  {CHIPS.map(c=>(
+                    <button key={c.label} onClick={()=>{
+                      onLoguerAppel(fiche.dateRdv!==c.dateRdv||fiche.heureRdv!==c.heureRdv ? {...fiche,dateRdv:c.dateRdv,heureRdv:c.heureRdv} : fiche, "reussi", c.label);
+                      setShowQuandChips(false);
+                    }} style={{padding:"6px 12px",borderRadius:20,border:"1px solid #10B98155",background:"#10B98114",color:"#10B981",fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                      {c.label}
+                    </button>
+                  ))}
+                  <button onClick={()=>{
+                    const q = window.prompt("Autre — qu'a dit le client ? (la date sera à ajuster manuellement ensuite si besoin)","");
+                    if(q===null) return;
+                    onLoguerAppel(fiche, "reussi", q.trim());
+                    setShowQuandChips(false);
+                  }} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:11.5,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    📅 Autre…
+                  </button>
+                </div>
+              );
+            })()}
             {(fiche.journalAppels||[]).length>0 && (
               <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:180,overflowY:"auto"}}>
                 {[...(fiche.journalAppels||[])].reverse().map((e,i)=>{
@@ -3826,6 +3914,31 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 })}
               </div>
             )}
+          </div>
+        )}
+        {onAjouterCommentaire && (
+          <div style={{marginTop:10,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>💬 Notes d'équipe</div>
+            {(fiche.commentaires||[]).length>0 && (
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:180,overflowY:"auto",marginBottom:9}}>
+                {[...(fiche.commentaires||[])].reverse().map((c,i)=>(
+                  <div key={i} style={{fontSize:11.5,padding:"6px 9px",background:T.surface,borderRadius:7,borderLeft:"2.5px solid #6366F1"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                      <span style={{fontWeight:700,color:"#6366F1"}}>{c.par||"—"}</span>
+                      <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(c.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                    </div>
+                    <div style={{color:T.text,fontSize:11.5,marginTop:2,whiteSpace:"pre-wrap"}}>{c.texte}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={()=>{
+              const texte = window.prompt("Note visible par toute l'équipe sur cette fiche :","");
+              if(texte===null || !texte.trim()) return;
+              onAjouterCommentaire(fiche, texte.trim());
+            }} style={{width:"100%",padding:"8px",borderRadius:8,border:"1px dashed #6366F155",background:"#6366F114",color:"#6366F1",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+              ➕ Ajouter une note
+            </button>
           </div>
         )}
         <div style={{display:"flex",gap:12,marginTop:10,fontSize:12,color:T.textMuted,flexWrap:"wrap"}}>
@@ -4520,6 +4633,7 @@ export default function App() {
   const [taches, setTaches] = useState([]);
   const [memosVocaux, setMemosVocaux] = useState([]);
   const [userRoles, setUserRoles] = useState([]);
+  const [activiteLog, setActiviteLog] = useState([]);
   const [userRolesLoaded, setUserRolesLoaded] = useState(false);
   const [rolesError, setRolesError] = useState(""); // message d'erreur exact, affiché à l'écran pour diagnostic sans console
   const [voiceResume, setVoiceResume] = useState(null);
@@ -4595,7 +4709,7 @@ export default function App() {
   },[]);
   // Surveillance de la connexion (Firebase Auth)
   useEffect(()=>{
-    const unsub = onAuthStateChanged(auth, (u)=>{ setCurrentUser(u); setAuthReady(true); });
+    const unsub = onAuthStateChanged(auth, (u)=>{ setCurrentUser(u); setAuthReady(true); if(u?.email) logActivite("connexion", null, u.email); });
     return ()=>unsub();
   },[]);
 
@@ -4650,7 +4764,8 @@ export default function App() {
     const unsub9 = watchTaches(data => setTaches(data));
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); };
+    const unsubAct = watchActiviteLog(data => setActiviteLog(data));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); unsubAct(); };
   },[currentUser]);
 
   const creerModuleService = (item) => { savePrestationCustom(item); };
@@ -5026,20 +5141,19 @@ export default function App() {
               // Notifie toute l'équipe (hors sous-traitants, filtré côté serveur) — pour que
               // l'info soit vue sans avoir à rouvrir la fiche. Envoyé même si l'admin n'a pas
               // fait l'appel lui-même : c'est justement le but, garder tout le monde informé.
+              // Le "f" reçu ici porte déjà la date/heure mise à jour si un raccourci rapide
+              // ("Dans 30 min", "Demain matin"...) a été utilisé côté interface — un seul tap,
+              // pas de confirmation supplémentaire ici.
               const meta = {pas_de_reponse:"❌ Pas de réponse",reussi:"✅ Contact réussi",message_laisse:"📧 Message laissé",injoignable:"📵 Injoignable"}[resultat]||resultat;
               envoyerNotification(null, `📞 ${f.client||"Client"}`, `${meta}${note?" — "+note:""}`, f.id);
-              // Après un contact réussi, propose de mettre à jour directement la date/heure
-              // du RDV sur la base de ce qui vient d'être dit au téléphone, sans repasser par
-              // le mode édition complet.
-              if(resultat==="reussi" && window.confirm("Mettre à jour la date/heure du RDV maintenant, sur la base de cet appel ?")){
-                const nvDate = window.prompt("Nouvelle date (AAAA-MM-JJ) :", f.dateRdv||today());
-                if(nvDate && nvDate.trim()){
-                  const nvHeure = window.prompt("Nouvelle heure (HH:MM, laisser vide si non précisée) :", f.heureRdv||"");
-                  const nf2 = {...nf, dateRdv:nvDate.trim(), heureRdv:(nvHeure||"").trim()};
-                  saveFiche(nf2); setSelected(nf2);
-                  showToast("📅 Date/heure mise à jour");
-                }
-              }
+            }}
+            onAjouterCommentaire={(f,texte)=>{
+              const auteur = (estRestreint?monRole.technicien:f.technicien) || "Admin";
+              const c = { ts: Date.now(), par: auteur, texte };
+              const nf = {...f, commentaires:[...(f.commentaires||[]), c]};
+              saveFiche(nf); setSelected(nf);
+              showToast("💬 Note ajoutée");
+              envoyerNotification(null, `💬 ${f.client||"Client"}`, `${auteur} : ${texte}`, f.id);
             }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
@@ -5147,7 +5261,7 @@ export default function App() {
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
-              userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme}/>}
+              userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
