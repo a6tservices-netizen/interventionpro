@@ -3473,59 +3473,59 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   const accent = COUL[e];
   const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens, techColors) : null;
   return(
-    <div style={{display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:12,padding:"12px 16px",marginBottom:6,transition:"all .2s"}}>
-      <div style={{textAlign:"center",minWidth:58,flexShrink:0}}>
-        {fiche.dateRdv&&<div style={{fontSize:10,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
-        <div style={{fontSize:15,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
-        <div style={{fontSize:9,fontWeight:700,marginTop:2,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
-        {fiche.urgent&&<div style={{fontSize:8,color:"#EF4444",fontWeight:800,marginTop:1}}>🚨 URGENCE</div>}
+    <div style={{display:"flex",alignItems:"center",gap:14,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:14,padding:"16px 20px",marginBottom:10,transition:"all .2s"}}>
+      <div style={{textAlign:"center",minWidth:66,flexShrink:0}}>
+        {fiche.dateRdv&&<div style={{fontSize:11.5,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
+        <div style={{fontSize:19,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
+        <div style={{fontSize:10.5,fontWeight:700,marginTop:3,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
+        {fiche.urgent&&<div style={{fontSize:9.5,color:"#EF4444",fontWeight:800,marginTop:2}}>🚨 URGENCE</div>}
       </div>
-      <div style={{width:1,height:36,background:T.border}}/>
+      <div style={{width:1,height:44,background:T.border}}/>
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
-        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <div style={{fontWeight:700,fontSize:14,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
-          <span style={{fontSize:9.5,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
-          {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:9.5,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:5}}>
+          <div style={{fontWeight:700,fontSize:16.5,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
+          <span style={{fontSize:11,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
+          {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
           {(fiche.journalAppels||[]).length>0 && (()=>{
             const dernier = fiche.journalAppels[fiche.journalAppels.length-1];
             const meta = {pas_de_reponse:{label:"❌ Pas de réponse",color:"#EF4444"},reussi:{label:"✅ Contact pris",color:"#10B981"},message_laisse:{label:"📧 Messagerie",color:"#F59E0B"},injoignable:{label:"📵 Injoignable",color:"#64748B"}}[dernier.resultat]||{label:dernier.resultat,color:T.textMuted};
-            return <span title={dernier.note||""} style={{fontSize:9.5,fontWeight:800,color:meta.color,background:meta.color+"1A",padding:"2px 7px",borderRadius:10,whiteSpace:"nowrap"}}>{meta.label}</span>;
+            return <span title={dernier.note||""} style={{fontSize:11,fontWeight:800,color:meta.color,background:meta.color+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{meta.label}</span>;
           })()}
         </div>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
-          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginTop:4}}>
-            {fiche.tempsInterne&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 9px",borderRadius:12,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
-            {fiche.majorations?.includes("soir50")&&<span style={{fontSize:10.5,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"3px 8px",borderRadius:12,whiteSpace:"nowrap"}}>🌙 +50%</span>}
-            {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:10.5,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.14)",padding:"3px 8px",borderRadius:12,whiteSpace:"nowrap"}}>🌃 +100%</span>}
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:5}}>
+            {fiche.tempsInterne&&<span style={{fontSize:12,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"4px 10px",borderRadius:13,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
+            {fiche.majorations?.includes("soir50")&&<span style={{fontSize:12,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"4px 9px",borderRadius:13,whiteSpace:"nowrap"}}>🌙 +50%</span>}
+            {fiche.majorations?.includes("weekend100")&&<span style={{fontSize:12,fontWeight:800,color:"#EF4444",background:"rgba(239,68,68,0.14)",padding:"4px 9px",borderRadius:13,whiteSpace:"nowrap"}}>🌃 +100%</span>}
           </div>
         )}
-        <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        <div style={{fontSize:13,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>
           {fiche.adresse
             ? <span onClick={e=>{e.stopPropagation();window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
             : "📍 —"}
           {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
         </div>
         {fiche.tel&&(
-          <a href={telHref(fiche.tel)} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
+          <a href={telHref(fiche.tel)} onClick={e=>e.stopPropagation()} style={{fontSize:13,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
         )}
         {fiche.technicien&&tColor&&(
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:tColor,background:tColor+"1A",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:tColor,background:tColor+"1A",padding:"3px 10px",borderRadius:13,marginTop:4}}>
             👤 {fiche.technicien} {fiche.priseEnCharge?"✅":"⏳"}
           </span>
         )}
         {!fiche.technicien&&(
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.12)",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.12)",padding:"3px 10px",borderRadius:13,marginTop:4}}>
             🆓 Libre
           </span>
         )}
         {fiche.numeroOS&&(
-          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.12)",padding:"2px 8px",borderRadius:12,marginTop:2}}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.12)",padding:"3px 10px",borderRadius:13,marginTop:4}}>
             📋 {fiche.numeroOS}
           </span>
         )}
         {fiche.typesIntervention?.length>0&&(
-          <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
-            {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:10,fontWeight:600,color:p.color,background:p.color+"18",padding:"1px 7px",borderRadius:12}}>{p.icon} {p.label}</span>:null;})}
+          <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+            {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:11.5,fontWeight:600,color:p.color,background:p.color+"18",padding:"2px 9px",borderRadius:13}}>{p.icon} {p.label}</span>:null;})}
           </div>
         )}
       </div>
