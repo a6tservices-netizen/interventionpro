@@ -545,7 +545,7 @@ function majorationsTexte(fiche){ return (fiche.majorations||[]).map(m=>MAJORATI
 
 function buildReportHTML(fiche, hideInternal = false) {
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
-  const presta = fiche.prestations.map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
+  const presta = (fiche.prestations||[]).map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
   const status = STATUTS[fiche.status] || STATUTS.planifie;
   const locStr = formatLoc(fiche.loc);
   const isUrgent = fiche.urgent;
