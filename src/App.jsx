@@ -4689,7 +4689,7 @@ function AppInterne() {
   const [showExportMensuel, setShowExportMensuel] = useState(false);
   const [editingDevis, setEditingDevis] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState(()=>lsGet("theme")||"light");
   const [positions, setPositions] = useState({}); // { nomTech: { lat, lng, updatedAt, statut } }
   const [view, setView] = useState("accueil");
   const [nav, setNav] = useState("agenda");
@@ -5299,7 +5299,7 @@ function AppInterne() {
                         <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>🎨 Couleur de l'écran</div>
                         <div style={{display:"flex",gap:6,paddingLeft:8,paddingBottom:4}}>
                           {Object.values(THEMES).map(t=>(
-                            <button key={t.id} onClick={()=>setTheme(t.id)} title={t.label}
+                            <button key={t.id} onClick={()=>{setTheme(t.id);lsSet("theme",t.id);}} title={t.label}
                               style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,
                                 border:`1.5px solid ${theme===t.id?"#0EA5E9":T.border}`,
                                 background:theme===t.id?"rgba(14,165,233,0.14)":"transparent",
