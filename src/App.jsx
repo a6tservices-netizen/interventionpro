@@ -3473,12 +3473,12 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   const accent = COUL[e];
   const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens, techColors) : null;
   return(
-    <div style={{display:"flex",alignItems:"center",gap:14,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${tColor||accent}`,borderRadius:14,padding:"16px 20px",marginBottom:10,transition:"all .2s"}}>
+    <div style={{display:"flex",alignItems:"center",gap:14,background:fiche.urgent?"rgba(239,68,68,0.06)":T.surface,border:`1px solid ${fiche.urgent?"rgba(239,68,68,0.35)":T.border}`,borderLeft:`7px solid ${fiche.urgent?"#EF4444":(tColor||accent)}`,borderRadius:14,padding:"16px 20px",marginBottom:10,transition:"all .2s"}}>
       <div style={{textAlign:"center",minWidth:66,flexShrink:0}}>
         {fiche.dateRdv&&<div style={{fontSize:11.5,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
         <div style={{fontSize:19,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:10.5,fontWeight:700,marginTop:3,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
-        {fiche.urgent&&<div style={{fontSize:9.5,color:"#EF4444",fontWeight:800,marginTop:2}}>🚨 URGENCE</div>}
+        {fiche.urgent&&<div style={{fontSize:10.5,color:"#fff",fontWeight:800,marginTop:4,background:"#EF4444",padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>🚨 URGENCE</div>}
       </div>
       <div style={{width:1,height:44,background:T.border}}/>
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
