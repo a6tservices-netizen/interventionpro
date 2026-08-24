@@ -358,6 +358,37 @@ const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.
 const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
 const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
 const lsGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
+// Recherche insensible aux accents — utile car beaucoup de recherches sont dictées à la voix,
+// et un accent manquant ou différent ne doit pas empêcher de retrouver une fiche.
+const sansAccents = (s) => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+// ── Recherche floue (tolérante aux fautes de frappe/dictée) ──
+// Utilisée uniquement en secours quand la recherche exacte ne trouve rien : propose les
+// fiches les plus proches du terme tapé, au lieu de "Aucun résultat".
+function distanceLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({length:n+1}, (_,j)=>j);
+  for (let i=1;i<=m;i++){
+    const cur = [i];
+    for (let j=1;j<=n;j++){
+      cur[j] = a[i-1]===b[j-1] ? prev[j-1] : 1+Math.min(prev[j], cur[j-1], prev[j-1]);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+function scoreRessemblance(recherche, texte) {
+  const motsRecherche = sansAccents(recherche).toLowerCase().split(/\s+/).filter(Boolean);
+  const motsTexte = sansAccents(texte).toLowerCase().split(/[\s,.\-]+/).filter(Boolean);
+  if (!motsRecherche.length || !motsTexte.length) return Infinity;
+  let total = 0;
+  motsRecherche.forEach(mr=>{
+    let meilleur = Infinity;
+    motsTexte.forEach(mt=>{ const d = distanceLevenshtein(mr, mt); if (d<meilleur) meilleur = d; });
+    total += meilleur / Math.max(mr.length, 3); // normalisé : tolère ~1 lettre d'écart tous les 3 caractères
+  });
+  return total / motsRecherche.length;
+}
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 const stripLourd = (f) => { const {photos, signature, signatureTech, signaturesSupp, logoSociete, ...rest} = f; return {...rest, _nbPhotos:(photos||[]).length, _signee:!!signature}; };
 const nextDevisNum = (list=[]) => {
@@ -2229,10 +2260,11 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[] }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[] }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
+  const [statsOuvertes, setStatsOuvertes] = useState(null); // nom du technicien dont on affiche les stats
   const card = {background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:14};
   const head = {fontWeight:800,fontSize:14,color:T.text,marginBottom:10,display:"flex",alignItems:"center",gap:8};
   const btn = {border:`1px solid ${T.border}`,background:T.surface2,color:T.textMuted,borderRadius:6,width:28,height:28,cursor:"pointer",fontFamily:"inherit",fontSize:12};
@@ -2407,17 +2439,46 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
         </div>
         {techniciens.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun technicien — ils s'ajoutent aussi automatiquement à la 1ʳᵉ fiche.</div>}
-        {techniciens.map((t,i)=>(
-          <div key={t} style={row(i===techniciens.length-1)}>
-            <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{t}</span>
-            <input type="color" title="Couleur de l'agenda" value={techColor(t,techniciens,techColors)}
-              onChange={e=>onSaveTechColor(t,e.target.value)}
-              style={{width:34,height:30,padding:0,border:`1px solid ${T.border}`,borderRadius:6,background:"none",cursor:"pointer"}}/>
-            <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
-              style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-            <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+        {techniciens.map((t,i)=>{
+          const moisActuel = today().slice(0,7);
+          const fichesDuMoisT = fiches.filter(f=>f.technicien===t && f.status==="termine" && (f.dateRdv||"").slice(0,7)===moisActuel);
+          const minutesT = fichesDuMoisT.reduce((s,f)=>s+parseTempsMinutes(f.tempsInterne),0);
+          const caT = fichesDuMoisT.reduce((s,f)=>{
+            const base = f.tempsInterne && f.tarifHoraire ? parseFloat(calculerMontant(f.tempsInterne, f.tarifHoraire)) : 0;
+            let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
+            return s + ((base&&!isNaN(base))?base*coef:0);
+          },0);
+          return (
+          <div key={t}>
+            <div style={row(false)}>
+              <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{t}</span>
+              <button onClick={()=>setStatsOuvertes(statsOuvertes===t?null:t)} title="Statistiques du mois" style={{...btn,width:"auto",padding:"0 9px",color:statsOuvertes===t?"#0EA5E9":T.textMuted}}>📊</button>
+              <input type="color" title="Couleur de l'agenda" value={techColor(t,techniciens,techColors)}
+                onChange={e=>onSaveTechColor(t,e.target.value)}
+                style={{width:34,height:30,padding:0,border:`1px solid ${T.border}`,borderRadius:6,background:"none",cursor:"pointer"}}/>
+              <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
+                style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+              <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+            </div>
+            {statsOuvertes===t&&(
+              <div style={{display:"flex",gap:8,padding:"10px 4px 14px",flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:100,background:T.surface2,borderRadius:8,padding:"9px 12px",textAlign:"center"}}>
+                  <div style={{fontSize:18,fontWeight:800,color:T.text}}>{fichesDuMoisT.length}</div>
+                  <div style={{fontSize:10,color:T.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Interventions</div>
+                </div>
+                <div style={{flex:1,minWidth:100,background:T.surface2,borderRadius:8,padding:"9px 12px",textAlign:"center"}}>
+                  <div style={{fontSize:18,fontWeight:800,color:T.text}}>{(minutesT/60).toFixed(1)} h</div>
+                  <div style={{fontSize:10,color:T.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Temps total</div>
+                </div>
+                <div style={{flex:1,minWidth:100,background:T.surface2,borderRadius:8,padding:"9px 12px",textAlign:"center"}}>
+                  <div style={{fontSize:18,fontWeight:800,color:"#10B981"}}>{caT.toFixed(0)} €</div>
+                  <div style={{fontSize:10,color:T.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>CA estimé (mois)</div>
+                </div>
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Sous-traitants */}
@@ -3772,7 +3833,7 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
@@ -3921,7 +3982,10 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                     <div key={i} style={{fontSize:11.5,padding:"6px 9px",background:T.surface,borderRadius:7,borderLeft:`2.5px solid ${meta.color}`}}>
                       <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                         <span style={{fontWeight:700,color:meta.color}}>{meta.label}</span>
-                        <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(e.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                        <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
+                          {new Date(e.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
+                          {onSupprimerAppel && <button onClick={()=>{ if(window.confirm("Supprimer cette entrée du journal d'appels ?")) onSupprimerAppel(fiche, e.ts); }} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontFamily:"inherit",fontSize:11,padding:0}}>🗑️</button>}
+                        </span>
                       </div>
                       <div style={{color:T.textMuted,fontSize:10.5,marginTop:1}}>{e.par||"—"}{e.note?` · ${e.note}`:""}</div>
                     </div>
@@ -3940,7 +4004,15 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                   <div key={i} style={{fontSize:11.5,padding:"6px 9px",background:T.surface,borderRadius:7,borderLeft:"2.5px solid #6366F1"}}>
                     <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                       <span style={{fontWeight:700,color:"#6366F1"}}>{c.par||"—"}</span>
-                      <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(c.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                      <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
+                        {new Date(c.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
+                        {onModifierCommentaire && <button onClick={()=>{
+                          const nv = window.prompt("Modifier la note :", c.texte);
+                          if(nv===null) return;
+                          if(!nv.trim()){ if(window.confirm("Supprimer cette note ?")) onModifierCommentaire(fiche, c.ts, null); return; }
+                          onModifierCommentaire(fiche, c.ts, nv.trim());
+                        }} style={{background:"none",border:"none",color:"#6366F1",cursor:"pointer",fontFamily:"inherit",fontSize:11,padding:0}}>✏️</button>}
+                      </span>
                     </div>
                     <div style={{color:T.text,fontSize:11.5,marginTop:2,whiteSpace:"pre-wrap"}}>{c.texte}</div>
                   </div>
@@ -4465,7 +4537,7 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
     );
   }
 
-  const list = clients.filter(c=>!search||c.nom.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.nom.localeCompare(b.nom));
+  const list = clients.filter(c=>!search||sansAccents(c.nom).toLowerCase().includes(sansAccents(search).toLowerCase())).sort((a,b)=>a.nom.localeCompare(b.nom));
   return (
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
@@ -4696,8 +4768,10 @@ function AppInterne() {
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
+  const [rechercheFloue, setRechercheFloue] = useState(false); // true si les résultats affichés sont approchants, pas une correspondance exacte
   const [filterStatus, setFilterStatus] = useState("");
   const [filterTech, setFilterTech] = useState("");
+  const [sortMode, setSortMode] = useState("date_desc"); // date_desc | date_asc | alpha
   const [toast, setToast] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [showRdvForm, setShowRdvForm] = useState(false);
@@ -4915,6 +4989,13 @@ function AppInterne() {
   };
 
   const demarrerIntervention = rdv => {
+    // Une fiche marquée "Devis" (voir bouton 💰 dans le formulaire de RDV) bascule vers la
+    // création d'un vrai devis au lieu du formulaire d'intervention classique — pour éviter
+    // qu'un devis se retrouve par erreur transformé en intervention facturable.
+    if (rdv.natureRdv === "devis") {
+      handleCreateDevis(rdv);
+      return;
+    }
     setEditing({
       client:rdv.client||"", adresse:rdv.adresse||"", tel:rdv.tel||"",
       technicien:rdv.technicien||"", dateRdv:rdv.dateRdv, heureRdv:rdv.heureRdv||"",
@@ -4999,7 +5080,24 @@ function AppInterne() {
   const filtered = useMemo(()=>{
     let r=fiches;
     if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant));
-    if(search) r=r.filter(f=>`${f.client} ${f.adresse} ${f.id} ${f.technicien} ${f.numeroOS||""}`.toLowerCase().includes(search.toLowerCase()));
+    if(search){
+      const texteRecherche = sansAccents(search).toLowerCase().trim();
+      const exact = r.filter(f=>sansAccents(`${f.client} ${f.adresse} ${f.id} ${f.technicien} ${f.numeroOS||""} ${f.conclusion||""}`).toLowerCase().includes(texteRecherche));
+      if(exact.length===0 && texteRecherche.length>=3){
+        // Rien trouvé exactement : on propose les fiches les plus proches (fautes de frappe/dictée)
+        const notes = r.map(f=>({f, score:scoreRessemblance(texteRecherche, `${f.client} ${f.adresse} ${f.technicien} ${f.numeroOS||""} ${f.conclusion||""}`)}))
+          .filter(x=>Number.isFinite(x.score))
+          .sort((a,b)=>a.score-b.score);
+        const proches = notes.filter(x=>x.score<0.65).slice(0,6);
+        r = proches.map(x=>x.f);
+        setTimeout(()=>setRechercheFloue(r.length>0),0);
+      } else {
+        r = exact;
+        setTimeout(()=>setRechercheFloue(false),0);
+      }
+    } else {
+      setTimeout(()=>setRechercheFloue(false),0);
+    }
     if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
@@ -5009,6 +5107,13 @@ function AppInterne() {
     if(filterTech) r=r.filter(f=>f.technicien===filterTech);
     return r;
   },[fiches,search,filterStatus,filterTech,estRestreint,monRole.technicien,monRole.sousTraitant]);
+  const filteredTriee = useMemo(()=>{
+    const l = [...filtered];
+    if(sortMode==="alpha") l.sort((a,b)=>(a.client||"").localeCompare(b.client||""));
+    else if(sortMode==="date_asc") l.sort((a,b)=>(a.dateRdv||"").localeCompare(b.dateRdv||""));
+    else l.sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||""));
+    return l;
+  },[filtered,sortMode]);
 
   // Notifications reçues pendant que l'app est ouverte au premier plan
   // (le service worker ne gère que les notifications reçues quand l'app est en arrière-plan/fermée)
@@ -5257,6 +5362,19 @@ function AppInterne() {
               showToast("💬 Note ajoutée");
               envoyerNotification(null, `💬 ${f.client||"Client"}`, `${auteur} : ${texte}`, f.id);
             }}
+            onModifierCommentaire={(f,ts,nouveauTexte)=>{
+              const nf = {...f, commentaires:(f.commentaires||[])
+                .filter(c=>!(c.ts===ts && nouveauTexte===null))
+                .map(c=>c.ts===ts && nouveauTexte!==null ? {...c, texte:nouveauTexte, modifieLe:Date.now()} : c)
+              };
+              saveFiche(nf); setSelected(nf);
+              showToast(nouveauTexte===null ? "🗑️ Note supprimée" : "✏️ Note modifiée");
+            }}
+            onSupprimerAppel={(f,ts)=>{
+              const nf = {...f, journalAppels:(f.journalAppels||[]).filter(e=>e.ts!==ts)};
+              saveFiche(nf); setSelected(nf);
+              showToast("🗑️ Entrée supprimée");
+            }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
@@ -5336,12 +5454,36 @@ function AppInterne() {
                   <option value="__afacturer">💶 À facturer</option>
                   <option value="__facture">✅ Facturé</option>
                 </select>
-                <select value={filterTech} onChange={e=>{setFilterTech(e.target.value);if(e.target.value&&nav==="agenda")setNav("liste");}}
-                  style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
-                  <option value="">Tous techniciens</option>
-                  {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
-                </select>
+                {nav!=="liste"&&(
+                  <select value={filterTech} onChange={e=>{setFilterTech(e.target.value);if(e.target.value&&nav==="agenda")setNav("liste");}}
+                    style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
+                    <option value="">Tous techniciens</option>
+                    {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
+                )}
+                {nav==="liste"&&(
+                  <select value={sortMode} onChange={e=>setSortMode(e.target.value)} title="Trier"
+                    style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
+                    <option value="date_desc">↓ Plus récent</option>
+                    <option value="date_asc">↑ Plus ancien</option>
+                    <option value="alpha">A→Z Client</option>
+                  </select>
+                )}
                 <span style={{fontSize:12,color:T.textMuted}}>{filtered.length}/{fiches.length}</span>
+              </div>
+            )}
+            {nav==="liste"&&techniciens.length>0&&(
+              <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                <button onClick={()=>setFilterTech("")} style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${!filterTech?"#0EA5E9":T.border}`,background:!filterTech?"rgba(14,165,233,0.14)":T.surface,color:!filterTech?"#0EA5E9":T.textMuted,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Tous</button>
+                {techniciens.map(t=>{
+                  const c = techColor(t, techniciens, techColors);
+                  const actif = filterTech===t;
+                  return (
+                    <button key={t} onClick={()=>setFilterTech(actif?"":t)} style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${actif?c:T.border}`,background:actif?c+"22":T.surface,color:actif?c:T.textMuted,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                      👤 {t}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -5363,7 +5505,7 @@ function AppInterne() {
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
-              userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog}/>}
+              userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
                 <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
@@ -5377,8 +5519,13 @@ function AppInterne() {
                   <div style={{flex:1,height:1,background:T.border}}/>
                   <span style={{fontSize:12,color:T.textMuted}}>{filtered.length} fiche(s)</span>
                 </div>
+                {rechercheFloue&&filtered.length>0&&(
+                  <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:10,padding:"9px 14px",marginBottom:10,fontSize:12.5,color:"#F59E0B",fontWeight:600}}>
+                    🤔 Aucune correspondance exacte pour « {search} » — voici les fiches qui s'en rapprochent le plus.
+                  </div>
+                )}
                 {filtered.length===0
-                  ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} »</div>
+                  ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} », même en recherche approximative.</div>
                   : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
                       <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors}/>
                     ))}
@@ -5388,7 +5535,7 @@ function AppInterne() {
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
-            {nav==="liste"&&<ListeCartes fiches={filtered} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
+            {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
             {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
           </>
