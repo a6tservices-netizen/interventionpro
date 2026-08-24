@@ -600,7 +600,7 @@ function buildReportHTML(fiche, hideInternal = false) {
     }).join("");
 
   const photoSection = (titre, liste) => liste.length
-    ? `<div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div>` : "";
+    ? `<div class="photo-section"><div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div></div>` : "";
   const photosOntTag = fiche.photos?.some(p=>p.tag);
   const photoGrid = fiche.photos?.length
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
@@ -670,6 +670,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1.5px solid #b7a9e0;border-radius:7px;padding:7px 11px}
 .preco-list li::before{content:"▸ ";opacity:.55}
 .photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px}
+.photo-section{break-inside:avoid;page-break-inside:avoid}
 .photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
 .photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1.5px solid #9aa5b1;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
 .photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:240px}

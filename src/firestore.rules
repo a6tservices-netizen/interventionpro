@@ -1,0 +1,65 @@
+rules_version = '2';
+
+// ⚠️ Règles pour l'environnement de TEST (idel-pro-dev), à durcir avant toute mise en prod réelle.
+// Conforme au cahier des charges du 20/08/2026 :
+// - §8/9 : cotations réservées à l'IDE (acte médico-infirmier).
+// - §21.2 : principe du moindre privilège — l'aide-soignante n'accède
+//   qu'aux patients explicitement listés dans utilisateurs/{uid}.patientsAttribues.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function role() {
+      return get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role;
+    }
+
+    function patientsAttribues() {
+      return get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.patientsAttribues;
+    }
+
+    function estConnecte() {
+      return request.auth != null;
+    }
+
+    function aAccesAuPatient(patientId) {
+      return role() in ["idel", "coordinateur"] ||
+             (role() == "aide_soignante" && patientId in patientsAttribues());
+    }
+
+    match /utilisateurs/{uid} {
+      allow read: if estConnecte();
+      // En V1 test l'utilisateur choisit son rôle ; en prod seul un IDEL/coordinateur
+      // habilité pourra écrire patientsAttribues (§21.2 : attribution explicite).
+      allow write: if estConnecte() && request.auth.uid == uid;
+    }
+
+    match /patients/{id} {
+      allow read: if estConnecte() && aAccesAuPatient(id);
+      allow write: if estConnecte() && role() in ["idel", "coordinateur"];
+    }
+
+    match /tournees/{id} {
+      allow read: if estConnecte();
+      allow write: if estConnecte() && role() in ["idel", "coordinateur"];
+    }
+
+    // Cotations : lecture/écriture réservée aux IDE (acte médico-infirmier — §8/9/21)
+    match /actes/{id} {
+      allow read: if estConnecte() && role() in ["idel", "coordinateur"];
+      allow write: if estConnecte() && role() == "idel";
+    }
+
+    // Passages patient (§6/§21.1) : chaque profil confirme ses propres interventions,
+    // tout le monde peut lire (nécessaire au centre de coordination §21.3).
+    match /passages/{id} {
+      allow read: if estConnecte();
+      allow create: if estConnecte() && request.resource.data.auteurUid == request.auth.uid;
+      allow update, delete: if estConnecte() && role() in ["idel", "coordinateur"];
+    }
+
+    match /transmissions/{id} {
+      allow read: if estConnecte();
+      allow write: if estConnecte();
+    }
+  }
+}
