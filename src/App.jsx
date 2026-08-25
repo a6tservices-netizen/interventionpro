@@ -5499,6 +5499,17 @@ function AppInterne() {
               let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
               const prixUnitaire = tarifConnu ? (parseFloat(montant)*coef).toFixed(2) : "0.00";
               const labelPresta = ((f.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ") || "Intervention") + (tarifConnu?"":" (tarif à définir)");
+              // Détail de l'intervention pour la ligne de facture : la conclusion rédigée si elle
+              // existe, sinon on assemble les infos clés de chaque prestation (problème/action/résultat).
+              const detail = f.conclusion?.trim() || (f.prestations||[]).map(p=>{
+                const meta = PRESTATIONS.find(x=>x.id===p.id);
+                const bouts = [
+                  p.problemes?.length ? `Problème : ${p.problemes.join(", ")}` : "",
+                  p.actions?.length ? `Action : ${p.actions.join(", ")}` : "",
+                  p.resultats?.length ? `Résultat : ${p.resultats.join(", ")}` : "",
+                ].filter(Boolean).join(". ");
+                return bouts ? `${meta?.label||""} — ${bouts}` : "";
+              }).filter(Boolean).join("\n") || "";
               try {
                 const r = await fetch("/api/creer-facture-pennylane", {
                   method:"POST", headers:{"Content-Type":"application/json"},
@@ -5506,7 +5517,7 @@ function AppInterne() {
                     client: f.client || "Client",
                     adresse: f.adresseFacturation || f.adresse || "",
                     dateFacture: f.dateRdv || today(),
-                    lignes: [{ label: labelPresta, quantite: 1, prixUnitaire }],
+                    lignes: [{ label: labelPresta, description: detail, quantite: 1, prixUnitaire }],
                   }),
                 });
                 const d = await r.json().catch(()=>({}));
