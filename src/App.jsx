@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
+import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "firebase/storage";
 /* ═══════════════════════════════════════════
    FIREBASE CONFIG
 ═══════════════════════════════════════════ */
@@ -18,6 +19,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
+// ── Stockage des photos hors de la base de données ──
+// Chaque photo est envoyée à part dans Firebase Storage, et seul un lien léger est gardé
+// dans la fiche — l'affichage ne change rien (<img src=...> fonctionne pareil avec un lien
+// qu'avec une image encodée), mais ça évite d'alourdir la base à chaque photo ajoutée.
+async function uploadPhotoToStorage(dataUrl, pathPrefix) {
+  const path = `${pathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+  const r = storageRef(storage, path);
+  await uploadString(r, dataUrl, "data_url");
+  return await getDownloadURL(r);
+}
 // Persistance locale explicite : évite que Safari/iOS ne redemande une connexion
 // à chaque ouverture de la PWA (comportement par défaut moins fiable sur Safari).
 setPersistence(auth, browserLocalPersistence).catch(e => console.error("setPersistence error", e));
@@ -343,11 +355,19 @@ const DEVIS_CATALOGUE = [
 ];
 const resizePhoto = (file) => new Promise(res => {
   const r = new FileReader();
-  r.onload = e => { const img = new Image(); img.onload = () => {
+  r.onload = e => { const img = new Image(); img.onload = async () => {
     const max = 1024; const sc = Math.min(1, max / Math.max(img.width, img.height));
     const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    res({ name: file.name, data: c.toDataURL("image/jpeg", 0.82) });
+    const dataUrl = c.toDataURL("image/jpeg", 0.82);
+    try {
+      const url = await uploadPhotoToStorage(dataUrl, "photos-fiches");
+      res({ name: file.name, data: url });
+    } catch(err) {
+      // Pas de réseau (technicien en sous-sol, cave...) : on garde la photo en local
+      // pour ne jamais bloquer la prise de photo sur site.
+      res({ name: file.name, data: dataUrl, _uploadFailed: true });
+    }
   }; img.src = e.target.result; };
   r.readAsDataURL(file);
 });
@@ -1437,10 +1457,18 @@ function PhotoAnnotator({ photo, onSave, onClose, theme }) {
 
   const undo = () => { const next = shapes.slice(0, -1); setShapes(next); redraw(next); };
   const effacerTout = () => { setShapes([]); redraw([]); };
-  const enregistrer = () => {
+  const [enregistrement, setEnregistrement] = useState(false);
+  const enregistrer = async () => {
     const cv = canvasRef.current;
     const dataUrl = cv.toDataURL("image/jpeg", 0.92);
-    onSave(dataUrl);
+    setEnregistrement(true);
+    try {
+      const url = await uploadPhotoToStorage(dataUrl, "photos-fiches");
+      onSave(url);
+    } catch(err) {
+      onSave(dataUrl); // hors-ligne : on garde l'annotation en local plutôt que de la perdre
+    }
+    setEnregistrement(false);
   };
 
   const toolBtn = (id, label, icon) => (
@@ -1455,7 +1483,7 @@ function PhotoAnnotator({ photo, onSave, onClose, theme }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "#0A1525", flexShrink: 0 }}>
         <button onClick={onClose} style={{ background: "none", border: "1px solid #1a3050", color: "#94A3B8", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>← Annuler</button>
         <div style={{ fontWeight: 800, fontSize: 14, color: "#fff", flex: 1, textAlign: "center" }}>✏️ Annoter la photo</div>
-        <button onClick={enregistrer} disabled={!ready} style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>✓ Enregistrer</button>
+        <button onClick={enregistrer} disabled={!ready||enregistrement} style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit", opacity: enregistrement?0.7:1 }}>{enregistrement?"⏳ Envoi…":"✓ Enregistrer"}</button>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", padding: 12, touchAction: "none" }}>
         {!ready && <div style={{ color: "#64748B", fontSize: 13 }}>Chargement…</div>}
