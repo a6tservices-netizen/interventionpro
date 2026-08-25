@@ -763,8 +763,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1.5px solid #b7a9e0;border-radius:7px;padding:7px 11px}
 .preco-list li::before{content:"▸ ";opacity:.55}
-.photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px}
-.photo-section{break-inside:avoid;page-break-inside:avoid}
+.photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px;break-after:avoid;page-break-after:avoid}
 .photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
 .photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1.5px solid #9aa5b1;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
 .photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:240px}
@@ -803,8 +802,15 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
   .ref-id{font-size:15px;padding-bottom:8px;margin-bottom:8px}
   .ref-row{margin-bottom:6px}
   .body{padding:18px 30px}
-  .section-block{margin-bottom:14px}
-  .client-grid{margin-bottom:14px}
+  .section-block{margin-bottom:11px}
+  .client-grid{margin-bottom:11px}
+  .presta-card{margin-bottom:8px}
+  .presta-body{padding:10px 14px}
+  .phrase{margin-bottom:2px}
+  .photo-grid{gap:8px}
+  .photo-item{max-height:190px}
+  .photo-item img{max-height:190px}
+  .sig-zone{margin-top:14px;gap:14px}
 }
 </style></head><body>
 <div class="header">
@@ -5495,13 +5501,39 @@ function AppInterne() {
             }}
             onCreerFacturePennylane={estRestreint ? null : async (f)=>{
               const montant = calculerMontant(f.tempsInterne, f.tarifHoraire);
-              const tarifConnu = montant!=="—" && !isNaN(parseFloat(montant));
+              let tarifConnu = montant!=="—" && !isNaN(parseFloat(montant));
               let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
-              const prixUnitaire = tarifConnu ? (parseFloat(montant)*coef).toFixed(2) : "0.00";
+              let prixUnitaire = tarifConnu ? (parseFloat(montant)*coef).toFixed(2) : "0.00";
+              let tauxTva = 20;
+              // Si le temps/tarif horaire ne sont pas renseignés, on cherche un prix au forfait
+              // mentionné en texte libre (ex: "340€ht tva 10") dans les notes de prestation ou la
+              // conclusion — pour ne pas laisser 0€ alors que le prix a bien été dicté quelque part.
+              if(!tarifConnu){
+                const textesACherche = [...(f.prestations||[]).map(p=>p.note||""), f.conclusion||""];
+                for(const t of textesACherche){
+                  const m = t.match(/(\d+(?:[.,]\d+)?)\s*€?\s*(?:ht|h\.t\.?)\b[^.]*?tva\s*(\d+(?:[.,]\d+)?)/i) || t.match(/(\d+(?:[.,]\d+)?)\s*€\s*(?:ht|h\.t\.?)\b/i);
+                  if(m){ prixUnitaire=parseFloat(m[1].replace(",",".")).toFixed(2); if(m[2]) tauxTva=parseFloat(m[2].replace(",",".")); tarifConnu=true; break; }
+                }
+              }
               const labelPresta = ((f.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ") || "Intervention") + (tarifConnu?"":" (tarif à définir)");
               // Détail de l'intervention pour la ligne de facture : la conclusion rédigée si elle
               // existe, sinon on assemble les infos clés de chaque prestation (problème/action/résultat).
-              const detail = f.conclusion?.trim() || (f.prestations||[]).map(p=>{
+              // On retire aussi les formules de politesse type "restons à votre disposition..." qui
+              // n'ont pas leur place sur une ligne de facture (adaptées à un rapport, pas à une facture).
+              const nettoyer = (t) => (t||"").replace(/Nous restons (?:à votre disposition|disponibles) pour toute question relative[^.]*\.?/gi, "").replace(/N['’]hésitez pas à nous contacter[^.]*\.?/gi, "").trim();
+              // Une facture n'a pas besoin de toute la conclusion détaillée du rapport (déjà
+              // transmise au client à part) — juste un résumé court : quoi, sans tout le récit.
+              // Ça évite aussi une description trop longue qui ferait déborder la mise en page
+              // de la facture sur une deuxième page (mise en page que Pennylane ne permet pas
+              // d'ajuster de notre côté).
+              const resumer = (t, maxPhrases=5, maxChars=500) => {
+                if(!t) return "";
+                const phrases = t.match(/[^.!?]+[.!?]+/g) || [t];
+                let r = phrases.slice(0, maxPhrases).join(" ").trim();
+                if(r.length > maxChars) r = r.slice(0, maxChars).trim() + "…";
+                return r;
+              };
+              const detail = resumer(nettoyer(f.conclusion?.trim())) || (f.prestations||[]).map(p=>{
                 const meta = PRESTATIONS.find(x=>x.id===p.id);
                 const bouts = [
                   p.problemes?.length ? `Problème : ${p.problemes.join(", ")}` : "",
@@ -5517,7 +5549,7 @@ function AppInterne() {
                     client: f.client || "Client",
                     adresse: f.adresseFacturation || f.adresse || "",
                     dateFacture: f.dateRdv || today(),
-                    lignes: [{ label: labelPresta, description: detail, quantite: 1, prixUnitaire }],
+                    lignes: [{ label: labelPresta, description: detail, quantite: 1, prixUnitaire, tauxTva }],
                   }),
                 });
                 const d = await r.json().catch(()=>({}));

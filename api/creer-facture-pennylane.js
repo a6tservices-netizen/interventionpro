@@ -66,13 +66,22 @@ export default async function handler(req, res) {
 
     const customerId = await trouverOuCreerClient(client, adresse, headers);
 
+    // Correspondance taux de TVA (%) → code Pennylane. Le taux peut être détecté
+    // automatiquement dans le texte dicté (ex: "TVA 10") — sinon 20% par défaut.
+    const codeTva = (taux) => {
+      const t = Math.round(taux || 20);
+      if (t === 10) return "FR_100";
+      if (t === 5 || t === 6) return "FR_055"; // 5,5%
+      if (t === 2) return "FR_021"; // 2,1%
+      return "FR_200"; // 20% par défaut
+    };
     const invoiceLines = lignes.map(l => ({
       label: l.label || "Intervention",
       ...(l.description?.trim() ? { description: l.description.trim() } : {}),
       quantity: l.quantite || 1,
       unit: "piece",
       raw_currency_unit_price: String(l.prixUnitaire || 0),
-      vat_rate: "FR_200", // TVA 20% par défaut — à ajuster si besoin d'un autre taux
+      vat_rate: codeTva(l.tauxTva),
     }));
 
     const dateFactureFinale = dateFacture || new Date().toISOString().slice(0, 10);
