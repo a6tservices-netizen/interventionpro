@@ -91,6 +91,49 @@ const deleteClient = (id) => remove(ref(db, `clients/${id}`));
 const watchClients = (cb) => onValue(ref(db, "clients"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
 const watchMemosVocaux = (cb) => onValue(ref(db, "memosVocaux"), snap => { const d=snap.val(); cb(d?Object.values(d).sort((a,b)=>(b.ts||0)-(a.ts||0)):[]); });
 const saveMemoVocal = (memo) => set(ref(db, `memosVocaux/${memo.id}`), memo);
+// ── File d'attente hors-ligne pour les mémos vocaux ──
+// Si un technicien enregistre un mémo sans réseau (cave, sous-sol...), l'audio est gardé
+// localement sur l'appareil (IndexedDB — contrairement à localStorage, peut stocker de
+// l'audio) plutôt que d'être perdu. Dès que la connexion revient, chaque mémo en attente
+// est transcrit automatiquement et apparaît dans l'historique "Mémos vocaux" avec le badge
+// "⏳ En attente d'analyse" — comme un mémo dicté normalement, prêt à être repris.
+const IDB_NAME = "interventionpro_offline";
+const IDB_STORE = "memosEnAttente";
+function idbOuvrir() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE, { keyPath: "id" }); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbAjouterMemo(blob, mimeType, mode) {
+  const db = await idbOuvrir();
+  const id = "memo_" + Date.now() + "_" + Math.random().toString(36).slice(2,8);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put({ id, blob, mimeType, mode, ts: Date.now() });
+    tx.oncomplete = () => resolve(id);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbListerMemos() {
+  const db = await idbOuvrir();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSupprimerMemo(id) {
+  const db = await idbOuvrir();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_");
 // ── Journal d'activité (connexions, actions clés) ──
 // Trace qui a fait quoi et quand : connexions à l'app, ajout de photo... Visible dans
@@ -2733,7 +2776,18 @@ function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients, onLog
       const data = await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(data?.error || ("API "+r.status));
       setTexte(p => (p ? p+" " : "") + (data.text||"").trim());
-    } catch(e) { setErreur("Erreur de transcription : "+(e?.message||e)); }
+    } catch(e) {
+      if(!navigator.onLine){
+        try {
+          await idbAjouterMemo(blob, blob.type||dernierMimeRef.current||"audio/webm", mode);
+          setErreur("📴 Pas de réseau — mémo vocal sauvegardé sur l'appareil, il sera transcrit automatiquement dès le retour de la connexion (visible ensuite dans « Mémos vocaux »).");
+        } catch(e2) {
+          setErreur("Impossible de sauvegarder le mémo hors-ligne : "+(e2?.message||e2));
+        }
+      } else {
+        setErreur("Erreur de transcription : "+(e?.message||e));
+      }
+    }
     setTranscribing(false);
   };
 
@@ -4851,11 +4905,31 @@ function AppInterne() {
     });
     return ()=>{ annule = true; };
   },[currentUser, userRolesLoaded]);
+  const traiterMemosEnAttente = async () => {
+    let memos;
+    try { memos = await idbListerMemos(); } catch(e) { return; }
+    for (const m of memos) {
+      try {
+        const r = await fetch("/api/transcribe", { method:"POST", headers:{"Content-Type": m.mimeType||"audio/webm"}, body: m.blob });
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data?.error || ("API "+r.status));
+        const texte = (data.text||"").trim();
+        if(texte){
+          saveMemoVocal({ id: m.id, ts: m.ts, mode: m.mode, texte, statut: "en_attente_analyse", client: null });
+          showToast("🎙️ Mémo vocal hors-ligne transcrit — disponible dans « Mémos vocaux »");
+        }
+        await idbSupprimerMemo(m.id);
+      } catch(e) {
+        // Toujours pas de réseau exploitable, ou erreur ponctuelle : on retentera au prochain retour de connexion.
+        console.error("traiterMemosEnAttente error", e);
+      }
+    }
+  };
   useEffect(()=>{
-    const on=()=>{setOnline(true);flushPending();}, off=()=>setOnline(false);
+    const on=()=>{setOnline(true);flushPending();traiterMemosEnAttente();}, off=()=>setOnline(false);
     window.addEventListener("online",on); window.addEventListener("offline",off);
     try { if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{}); } catch(e){}
-    setTimeout(flushPending, 3000);
+    setTimeout(()=>{flushPending();traiterMemosEnAttente();}, 3000);
     return ()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
   },[]);
   // Filet de sécurité (2/2) : capture les erreurs qui n'ont PAS fait planter l'affichage
@@ -5198,7 +5272,7 @@ function AppInterne() {
 
   const offlineBanner = !online && (
     <div style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
-      📴 Mode hors ligne — consultation possible, vos enregistrements seront synchronisés au retour du réseau
+      📴 Mode hors ligne — consultation possible, vos enregistrements et mémos vocaux seront synchronisés au retour du réseau
     </div>
   );
 
