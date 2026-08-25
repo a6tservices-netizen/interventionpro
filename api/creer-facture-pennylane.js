@@ -13,13 +13,13 @@ const BASE = "https://app.pennylane.com/api/external/v2";
 // Pennylane exige une adresse de facturation structurée (rue / code postal / ville
 // séparés), alors que nos fiches ne stockent qu'une adresse complète en une seule ligne
 // (ex: "35 rue Jules Ferry, 94600 Choisy-le-Roi"). On l'extrait automatiquement ici.
-// Note : "country" n'est pas accepté sur cet objet précis (confirmé par un test réel) — on
-// ne l'envoie donc pas, Pennylane suppose France par défaut pour ce type de compte.
+// Note : le pays doit être transmis sous la clé "country_alpha2" (code à 2 lettres),
+// pas "country" — confirmé après un premier essai raté avec le mauvais nom de champ.
 function parseAdresseFr(adresseComplete) {
-  const defaut = { address: "Non renseignée", postal_code: "00000", city: "Non renseignée" };
+  const defaut = { address: "Non renseignée", postal_code: "00000", city: "Non renseignée", country_alpha2: "FR" };
   if (!adresseComplete) return defaut;
   const m = adresseComplete.match(/^(.*?),?\s*(\d{5})\s+(.+)$/);
-  if (m) return { address: m[1].trim() || "Non renseignée", postal_code: m[2], city: m[3].trim() };
+  if (m) return { address: m[1].trim() || "Non renseignée", postal_code: m[2], city: m[3].trim(), country_alpha2: "FR" };
   return { ...defaut, address: adresseComplete }; // format inattendu : on garde le texte tel quel, à corriger dans Pennylane si besoin
 }
 
