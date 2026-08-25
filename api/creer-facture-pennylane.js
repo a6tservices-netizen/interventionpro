@@ -74,11 +74,15 @@ export default async function handler(req, res) {
       vat_rate: "FR_200", // TVA 20% par défaut — à ajuster si besoin d'un autre taux
     }));
 
+    const dateFactureFinale = dateFacture || new Date().toISOString().slice(0, 10);
+    const echeance = new Date(dateFactureFinale);
+    echeance.setDate(echeance.getDate() + 30);
     const factureRes = await withTimeout(fetch(`${BASE}/customer_invoices`, {
       method: "POST", headers,
       body: JSON.stringify({
         customer_id: customerId,
-        date: dateFacture || new Date().toISOString().slice(0, 10),
+        date: dateFactureFinale,
+        deadline: echeance.toISOString().slice(0, 10), // échéance à 30 jours — probablement obligatoire côté Pennylane
         invoice_lines: invoiceLines,
         draft: true, // toujours en brouillon — validation manuelle dans Pennylane
       }),
