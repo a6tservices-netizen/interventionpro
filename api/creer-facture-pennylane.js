@@ -10,6 +10,17 @@
 
 const BASE = "https://app.pennylane.com/api/external/v2";
 
+// Pennylane exige une adresse de facturation structurée (rue / code postal / ville
+// séparés), alors que nos fiches ne stockent qu'une adresse complète en une seule ligne
+// (ex: "35 rue Jules Ferry, 94600 Choisy-le-Roi"). On l'extrait automatiquement ici.
+function parseAdresseFr(adresseComplete) {
+  const defaut = { address: "Non renseignée", postal_code: "00000", city: "Non renseignée", country: "FR" };
+  if (!adresseComplete) return defaut;
+  const m = adresseComplete.match(/^(.*?),?\s*(\d{5})\s+(.+)$/);
+  if (m) return { address: m[1].trim() || "Non renseignée", postal_code: m[2], city: m[3].trim(), country: "FR" };
+  return { ...defaut, address: adresseComplete }; // format inattendu : on garde le texte tel quel, à corriger dans Pennylane si besoin
+}
+
 function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
@@ -27,12 +38,10 @@ async function trouverOuCreerClient(client, adresse, headers) {
   }
   // Pas trouvé : on le crée — attention, l'endpoint de CRÉATION est différent de celui
   // de recherche (/company_customers, pas /customers — piège classique de l'API v2).
-  // Note : on ne transmet que le nom pour l'instant — l'adresse de facturation Pennylane
-  // attend un format structuré (rue/code postal/ville séparés) qu'on ne construit pas ici
-  // pour éviter une erreur de format ; à compléter manuellement dans Pennylane si besoin.
+  // billing_address est obligatoire côté Pennylane, au format structuré.
   const creationRes = await withTimeout(fetch(`${BASE}/company_customers`, {
     method: "POST", headers,
-    body: JSON.stringify({ name: client }),
+    body: JSON.stringify({ name: client, billing_address: parseAdresseFr(adresse) }),
   }), 8000, "création client");
   const creationData = await creationRes.json().catch(() => ({}));
   if (!creationRes.ok) throw new Error("Création du client Pennylane échouée : " + (creationData?.message || creationRes.status));

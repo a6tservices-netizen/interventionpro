@@ -1597,7 +1597,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const isDark = theme === "dark";
 
   const [f, setF] = useState(() => ({
-    client:"", adresse:"", tel:"", email:"", technicien:"", clientId:null, siteId:null, facturation:"",
+    client:"", adresse:"", adresseFacturation:"", contact:"", tel:"", email:"", technicien:"", clientId:null, siteId:null, facturation:"",
     dateRdv:today(), heureRdv:"", diametreCanalisation:"",
     societe:"A6T Services",
     prestations:[], responsabilite:"na", preconisations:[],
@@ -1908,6 +1908,12 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                 ))}
               </div>
             )}
+          </div>
+
+          <div style={{gridColumn:"1/-1"}}>
+            <div style={lblStyle}>🧾 Adresse de facturation <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(optionnel)</span></div>
+            <input value={f.adresseFacturation} onChange={e=>set("adresseFacturation",e.target.value)} placeholder="Laisser vide si identique à l'adresse d'intervention" style={inpStyle()}/>
+            <div style={{fontSize:11,color:T.textMuted,marginTop:5,fontWeight:500}}>Utile pour les syndics : l'intervention a lieu dans l'immeuble, mais la facture part au siège du syndic. Utilisée en priorité pour Pennylane si renseignée.</div>
           </div>
 
           <div><div style={lblStyle}>Téléphone</div><input value={f.tel} onChange={e=>set("tel",e.target.value)} placeholder="06 00 00 00 00" style={inpStyle()}/></div>
@@ -3113,7 +3119,7 @@ function MailImport({ onExtracted, onCancel, theme }) {
     try {
       const prompt = `Tu extrais les informations d'une demande d'intervention (plomberie/assainissement) reçue par mail ou message, pour créer un rendez-vous. Date du jour : ${today()}.
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide si l'info est absente) :
-{"client":"nom du client ou de la société demandeuse","tel":"téléphone","email":"email","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","note":"résumé en 1-2 phrases du problème ou de la demande"}`;
+{"client":"UNIQUEMENT le nom de la société/syndic/copropriété à qui la facture doit être adressée — JAMAIS le nom d'une personne physique qui a envoyé ou signé le mail. Si un syndic/société est mentionné n'importe où dans le message (même juste en signature ou en-tête), c'est TOUJOURS lui qui va ici, pas l'expéditeur individuel.","contact":"nom de la personne physique qui a envoyé le mail ou du contact sur place, si différent du client (vide sinon)","tel":"téléphone","email":"email","adresse":"adresse complète du lieu où l'intervention doit avoir lieu (l'immeuble/le site concerné)","adresseFacturation":"adresse de facturation du client/syndic, UNIQUEMENT si elle est explicitement différente de l'adresse d'intervention (ex: adresse du siège du syndic dans son en-tête ou sa signature) — vide si non précisée ou identique à l'adresse d'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","note":"résumé en 1-2 phrases du problème ou de la demande"}`;
       const content = [];
       if(img) content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:img.split(",")[1]}});
       content.push({type:"text",text:prompt+(texte.trim()?`\n\nContenu du mail :\n${texte.trim()}`:"\n\nLes informations sont dans l'image ci-jointe.")});
@@ -3125,7 +3131,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
       const data = await r.json();
       const raw = (data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
       const j = JSON.parse(raw);
-      onExtracted({ client:j.client||"", tel:j.tel||"", email:j.email||"", adresse:j.adresse||"",
+      onExtracted({ client:j.client||"", contact:j.contact||"", tel:j.tel||"", email:j.email||"", adresse:j.adresse||"", adresseFacturation:j.adresseFacturation||"",
         dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"" });
     } catch(e) { alert("Erreur lors de l'analyse : "+(e?.message||e)); }
     setBusy(false);
@@ -3162,7 +3168,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
 function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = [], onAddTechnicien }) {
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
-  const [f, setF] = useState(initial || { client:"", adresse:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv", natureRdv:"intervention" });
+  const [f, setF] = useState(initial || { client:"", adresse:"", adresseFacturation:"", contact:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv", natureRdv:"intervention" });
   const [errors, setErrors] = useState({});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
@@ -5109,7 +5115,7 @@ function AppInterne() {
       return;
     }
     setEditing({
-      client:rdv.client||"", adresse:rdv.adresse||"", tel:rdv.tel||"",
+      client:rdv.client||"", adresse:rdv.adresse||"", adresseFacturation:rdv.adresseFacturation||"", contact:rdv.contact||"", tel:rdv.tel||"",
       technicien:rdv.technicien||"", dateRdv:rdv.dateRdv, heureRdv:rdv.heureRdv||"",
       status:"en_cours", type:"intervention", id:rdv.id,
       createdAt:rdv.createdAt, noteRdv:rdv.noteRdv||"",
@@ -5498,7 +5504,7 @@ function AppInterne() {
                   method:"POST", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify({
                     client: f.client || "Client",
-                    adresse: f.adresse || "",
+                    adresse: f.adresseFacturation || f.adresse || "",
                     dateFacture: f.dateRdv || today(),
                     lignes: [{ label: labelPresta, quantite: 1, prixUnitaire }],
                   }),
