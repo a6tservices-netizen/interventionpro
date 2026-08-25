@@ -5489,13 +5489,10 @@ function AppInterne() {
             }}
             onCreerFacturePennylane={estRestreint ? null : async (f)=>{
               const montant = calculerMontant(f.tempsInterne, f.tarifHoraire);
-              if(montant==="—" || isNaN(parseFloat(montant))){
-                alert("Impossible de créer la facture : le temps passé et le tarif horaire doivent être renseignés sur cette fiche.");
-                return;
-              }
+              const tarifConnu = montant!=="—" && !isNaN(parseFloat(montant));
               let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
-              const prixUnitaire = (parseFloat(montant)*coef).toFixed(2);
-              const labelPresta = (f.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ") || "Intervention";
+              const prixUnitaire = tarifConnu ? (parseFloat(montant)*coef).toFixed(2) : "0.00";
+              const labelPresta = ((f.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ") || "Intervention") + (tarifConnu?"":" (tarif à définir)");
               try {
                 const r = await fetch("/api/creer-facture-pennylane", {
                   method:"POST", headers:{"Content-Type":"application/json"},
@@ -5510,7 +5507,7 @@ function AppInterne() {
                 if(d.ok){
                   const nf = {...f, pennylaneInvoiceId: d.invoiceId, pennylaneInvoiceNumber: d.invoiceNumber};
                   saveFiche(nf); setSelected(nf);
-                  showToast(`🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane`);
+                  showToast(tarifConnu ? `🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane` : `🧾 Facture créée (n° ${d.invoiceNumber||d.invoiceId}) — pensez à saisir le tarif directement dans Pennylane`);
                 } else {
                   alert("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
                 }
