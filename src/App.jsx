@@ -3915,12 +3915,13 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null, onCreerFacturePennylane = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
   const [showSousTraitant, setShowSousTraitant] = useState(false);
   const [showQuandChips, setShowQuandChips] = useState(false);
+  const [creationFactureEnCours, setCreationFactureEnCours] = useState(false);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
@@ -4129,6 +4130,15 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
             </span>
           )}
         </div>
+        {(fiche.facturation==="a_facturer"||fiche.facturation==="facture")&&onCreerFacturePennylane&&(
+          <div style={{marginTop:8}}>
+            {fiche.pennylaneInvoiceId
+              ? <span style={{fontSize:11.5,color:"#10B981",fontWeight:700}}>🧾 Facture Pennylane créée (n° {fiche.pennylaneInvoiceNumber||fiche.pennylaneInvoiceId}) — brouillon à valider dans Pennylane</span>
+              : <button onClick={async()=>{ setCreationFactureEnCours(true); await onCreerFacturePennylane(fiche); setCreationFactureEnCours(false); }} disabled={creationFactureEnCours} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(99,102,241,0.4)",background:"rgba(99,102,241,0.1)",color:"#6366F1",fontWeight:700,fontSize:12,cursor:creationFactureEnCours?"default":"pointer",fontFamily:"inherit",opacity:creationFactureEnCours?0.6:1}}>
+                  {creationFactureEnCours?"⏳ Création…":"🧾 Créer facture Pennylane (brouillon)"}
+                </button>}
+          </div>
+        )}
         {fiche.facturation==="ne_pas_facturer"&&(
           <div style={{marginTop:6,fontSize:11.5,color:T.textMuted,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
             <span style={{fontStyle:fiche.raisonNonFacture?"normal":"italic"}}>🚫 Motif : {fiche.raisonNonFacture || "non précisé"}</span>
@@ -5476,6 +5486,37 @@ function AppInterne() {
               const nf = {...f, journalAppels:(f.journalAppels||[]).filter(e=>e.ts!==ts)};
               saveFiche(nf); setSelected(nf);
               showToast("🗑️ Entrée supprimée");
+            }}
+            onCreerFacturePennylane={estRestreint ? null : async (f)=>{
+              const montant = calculerMontant(f.tempsInterne, f.tarifHoraire);
+              if(montant==="—" || isNaN(parseFloat(montant))){
+                alert("Impossible de créer la facture : le temps passé et le tarif horaire doivent être renseignés sur cette fiche.");
+                return;
+              }
+              let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
+              const prixUnitaire = (parseFloat(montant)*coef).toFixed(2);
+              const labelPresta = (f.prestations||[]).map(p=>PRESTATIONS.find(x=>x.id===p.id)?.label).filter(Boolean).join(", ") || "Intervention";
+              try {
+                const r = await fetch("/api/creer-facture-pennylane", {
+                  method:"POST", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify({
+                    client: f.client || "Client",
+                    adresse: f.adresse || "",
+                    dateFacture: f.dateRdv || today(),
+                    lignes: [{ label: labelPresta, quantite: 1, prixUnitaire }],
+                  }),
+                });
+                const d = await r.json().catch(()=>({}));
+                if(d.ok){
+                  const nf = {...f, pennylaneInvoiceId: d.invoiceId, pennylaneInvoiceNumber: d.invoiceNumber};
+                  saveFiche(nf); setSelected(nf);
+                  showToast(`🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane`);
+                } else {
+                  alert("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
+                }
+              } catch(e) {
+                alert("❌ Erreur réseau lors de la création de la facture : "+e.message);
+              }
             }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
