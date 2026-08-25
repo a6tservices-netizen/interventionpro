@@ -68,6 +68,7 @@ export default async function handler(req, res) {
 
     const invoiceLines = lignes.map(l => ({
       label: l.label || "Intervention",
+      ...(l.description?.trim() ? { description: l.description.trim() } : {}),
       quantity: l.quantite || 1,
       unit: "piece",
       raw_currency_unit_price: String(l.prixUnitaire || 0),
