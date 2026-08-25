@@ -25,10 +25,14 @@ async function trouverOuCreerClient(client, adresse, headers) {
   if (rechercheRes.ok && Array.isArray(rechercheData.items) && rechercheData.items.length) {
     return rechercheData.items[0].id;
   }
-  // Pas trouvé : on le crée.
-  const creationRes = await withTimeout(fetch(`${BASE}/customers`, {
+  // Pas trouvé : on le crée — attention, l'endpoint de CRÉATION est différent de celui
+  // de recherche (/company_customers, pas /customers — piège classique de l'API v2).
+  // Note : on ne transmet que le nom pour l'instant — l'adresse de facturation Pennylane
+  // attend un format structuré (rue/code postal/ville séparés) qu'on ne construit pas ici
+  // pour éviter une erreur de format ; à compléter manuellement dans Pennylane si besoin.
+  const creationRes = await withTimeout(fetch(`${BASE}/company_customers`, {
     method: "POST", headers,
-    body: JSON.stringify({ name: client, billing_address: adresse || undefined }),
+    body: JSON.stringify({ name: client }),
   }), 8000, "création client");
   const creationData = await creationRes.json().catch(() => ({}));
   if (!creationRes.ok) throw new Error("Création du client Pennylane échouée : " + (creationData?.message || creationRes.status));
