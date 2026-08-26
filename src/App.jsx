@@ -3927,13 +3927,16 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null, onCreerFacturePennylane = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null, onPreparerFacturePennylane = null, onEnvoyerFacturePennylane = null }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
   const [showSousTraitant, setShowSousTraitant] = useState(false);
   const [showQuandChips, setShowQuandChips] = useState(false);
   const [creationFactureEnCours, setCreationFactureEnCours] = useState(false);
+  const [draftPennylane, setDraftPennylane] = useState(null); // aperçu modifiable avant envoi réel
+  const lblStyle = {fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:5,textTransform:"uppercase",letterSpacing:".04em"};
+  const inpStyle = () => ({width:"100%",padding:"9px 12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"});
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const locStr = formatLoc(fiche.loc);
 
@@ -4142,13 +4145,61 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
             </span>
           )}
         </div>
-        {(fiche.facturation==="a_facturer"||fiche.facturation==="facture")&&onCreerFacturePennylane&&(
+        {(fiche.facturation==="a_facturer"||fiche.facturation==="facture")&&onPreparerFacturePennylane&&(
           <div style={{marginTop:8}}>
             {fiche.pennylaneInvoiceId
               ? <span style={{fontSize:11.5,color:"#10B981",fontWeight:700}}>🧾 Facture Pennylane créée (n° {fiche.pennylaneInvoiceNumber||fiche.pennylaneInvoiceId}) — brouillon à valider dans Pennylane</span>
-              : <button onClick={async()=>{ setCreationFactureEnCours(true); await onCreerFacturePennylane(fiche); setCreationFactureEnCours(false); }} disabled={creationFactureEnCours} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(99,102,241,0.4)",background:"rgba(99,102,241,0.1)",color:"#6366F1",fontWeight:700,fontSize:12,cursor:creationFactureEnCours?"default":"pointer",fontFamily:"inherit",opacity:creationFactureEnCours?0.6:1}}>
-                  {creationFactureEnCours?"⏳ Création…":"🧾 Créer facture Pennylane (brouillon)"}
+              : <button onClick={()=>setDraftPennylane(onPreparerFacturePennylane(fiche))} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(99,102,241,0.4)",background:"rgba(99,102,241,0.1)",color:"#6366F1",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                  🧾 Créer facture Pennylane (brouillon)
                 </button>}
+          </div>
+        )}
+        {draftPennylane && (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDraftPennylane(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+              <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🧾 Aperçu — avant envoi à Pennylane</div>
+              <div style={{fontSize:11.5,color:T.textMuted,marginBottom:16}}>Vérifie et corrige si besoin — rien ne part tant que tu n'as pas confirmé. La facture arrivera en brouillon, à valider ensuite dans Pennylane.</div>
+
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <div><div style={lblStyle}>Client (nom facturé)</div>
+                  <input value={draftPennylane.client} onChange={e=>setDraftPennylane(d=>({...d,client:e.target.value}))} style={inpStyle()}/>
+                </div>
+                <div><div style={lblStyle}>Adresse de facturation</div>
+                  <input value={draftPennylane.adresse} onChange={e=>setDraftPennylane(d=>({...d,adresse:e.target.value}))} style={inpStyle()}/>
+                </div>
+                <div><div style={lblStyle}>Libellé (nom du produit/service)</div>
+                  <input value={draftPennylane.label} onChange={e=>setDraftPennylane(d=>({...d,label:e.target.value}))} style={inpStyle()}/>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{flex:1}}><div style={lblStyle}>Prix HT (€)</div>
+                    <input type="number" step="0.01" value={draftPennylane.prixUnitaire} onChange={e=>setDraftPennylane(d=>({...d,prixUnitaire:e.target.value}))} style={inpStyle()}/>
+                  </div>
+                  <div style={{flex:1}}><div style={lblStyle}>TVA (%)</div>
+                    <select value={draftPennylane.tauxTva} onChange={e=>setDraftPennylane(d=>({...d,tauxTva:parseFloat(e.target.value)}))} style={{...inpStyle(),cursor:"pointer"}}>
+                      <option value={20}>20 %</option>
+                      <option value={10}>10 %</option>
+                      <option value={5.5}>5,5 %</option>
+                      <option value={2.1}>2,1 %</option>
+                    </select>
+                  </div>
+                </div>
+                <div><div style={lblStyle}>Description (résumé envoyé sur la facture)</div>
+                  <textarea value={draftPennylane.description} onChange={e=>setDraftPennylane(d=>({...d,description:e.target.value}))} rows={5} style={{...inpStyle(),resize:"vertical",fontFamily:"inherit"}}/>
+                </div>
+              </div>
+
+              <div style={{display:"flex",gap:10,marginTop:20}}>
+                <button onClick={()=>setDraftPennylane(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+                <button onClick={async()=>{
+                  setCreationFactureEnCours(true);
+                  await onEnvoyerFacturePennylane(fiche, draftPennylane);
+                  setCreationFactureEnCours(false);
+                  setDraftPennylane(null);
+                }} disabled={creationFactureEnCours} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#6366F1,#7C3AED)",color:"#fff",fontWeight:800,fontSize:13,cursor:creationFactureEnCours?"default":"pointer",fontFamily:"inherit",opacity:creationFactureEnCours?0.7:1}}>
+                  {creationFactureEnCours?"⏳ Envoi…":"✅ Confirmer et envoyer à Pennylane"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {fiche.facturation==="ne_pas_facturer"&&(
@@ -5499,7 +5550,7 @@ function AppInterne() {
               saveFiche(nf); setSelected(nf);
               showToast("🗑️ Entrée supprimée");
             }}
-            onCreerFacturePennylane={estRestreint ? null : async (f)=>{
+            onPreparerFacturePennylane={estRestreint ? null : (f)=>{
               const montant = calculerMontant(f.tempsInterne, f.tarifHoraire);
               let tarifConnu = montant!=="—" && !isNaN(parseFloat(montant));
               let coef=1; (f.majorations||[]).forEach(m=>{ if(m==="soir50")coef+=0.5; if(m==="weekend100")coef+=1; });
@@ -5542,21 +5593,24 @@ function AppInterne() {
                 ].filter(Boolean).join(". ");
                 return bouts ? `${meta?.label||""} — ${bouts}` : "";
               }).filter(Boolean).join("\n") || "";
+              return { label: labelPresta, description: detail, prixUnitaire, tauxTva, client: f.client||"Client", adresse: f.adresseFacturation||f.adresse||"" };
+            }}
+            onEnvoyerFacturePennylane={estRestreint ? null : async (f, draft)=>{
               try {
                 const r = await fetch("/api/creer-facture-pennylane", {
                   method:"POST", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify({
-                    client: f.client || "Client",
-                    adresse: f.adresseFacturation || f.adresse || "",
+                    client: draft.client,
+                    adresse: draft.adresse,
                     dateFacture: f.dateRdv || today(),
-                    lignes: [{ label: labelPresta, description: detail, quantite: 1, prixUnitaire, tauxTva }],
+                    lignes: [{ label: draft.label, description: draft.description, quantite: 1, prixUnitaire: draft.prixUnitaire, tauxTva: draft.tauxTva }],
                   }),
                 });
                 const d = await r.json().catch(()=>({}));
                 if(d.ok){
                   const nf = {...f, pennylaneInvoiceId: d.invoiceId, pennylaneInvoiceNumber: d.invoiceNumber};
                   saveFiche(nf); setSelected(nf);
-                  showToast(tarifConnu ? `🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane` : `🧾 Facture créée (n° ${d.invoiceNumber||d.invoiceId}) — pensez à saisir le tarif directement dans Pennylane`);
+                  showToast(`🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane`);
                 } else {
                   alert("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
                 }
