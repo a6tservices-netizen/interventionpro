@@ -296,11 +296,11 @@ const PRESTATIONS = [
   },
   {
     id: "alimentation_eau", label: "Alimentation générale", icon: "🚿", color: "#0891B2", groupe: "Plomberie",
-    localisations: ["Compteur","Gaine technique","Cave","Colonne montante","Extérieur/voirie","Local technique"],
-    problemes: ["Absence totale d'eau","Pression insuffisante générale","Fuite sur colonne montante","Vanne d'arrêt bloquée ou HS","Compteur défectueux"],
-    causes: ["Vétusté de la canalisation","Corrosion de la colonne montante","Vanne grippée","Gel","Travaux de voirie / intervention tiers"],
-    actions: ["Remplacement vanne d'arrêt général","Remplacement tronçon de colonne montante","Remplacement réducteur de pression général","Purge du réseau","Coordination avec le fournisseur d'eau"],
-    resultats: ["Alimentation rétablie","Pression normalisée","Remplacement réalisé","Intervention du fournisseur d'eau nécessaire"],
+    localisations: ["Compteur","Gaine technique","Cave","Colonne montante","Descente d'évacuation","Extérieur/voirie","Local technique","Vanne d'arrêt général immeuble","Vanne d'arrêt par étage/logement"],
+    problemes: ["Absence totale d'eau","Pression insuffisante générale","Fuite sur colonne montante","Vanne d'arrêt bloquée ou HS","Vanne d'arrêt introuvable / non identifiée","Compteur défectueux","Coupure d'eau générale de l'immeuble nécessaire"],
+    causes: ["Vétusté de la canalisation","Corrosion de la colonne montante","Vanne grippée","Gel","Travaux de voirie / intervention tiers","Intervention d'un autre corps de métier"],
+    actions: ["Recherche et localisation de la vanne d'arrêt","Remplacement vanne d'arrêt général","Remplacement vanne d'arrêt par étage/logement","Remplacement tronçon de colonne montante","Remplacement réducteur de pression général","Coupure d'eau générale de l'immeuble","Remise en eau de l'immeuble","Purge du réseau après remise en eau","Vérification / contrôle du réseau","Coordination avec le fournisseur d'eau"],
+    resultats: ["Vanne d'arrêt localisée et identifiée","Alimentation rétablie","Remise en eau effectuée","Pression normalisée","Remplacement réalisé","Vérification effectuée, réseau conforme","Intervention du fournisseur d'eau nécessaire"],
   },
   {
     id: "sanitaires", label: "Sanitaires (pose & remplacement)", icon: "🚽", color: "#8B5CF6", groupe: "Plomberie",
