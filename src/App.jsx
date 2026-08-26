@@ -46,7 +46,11 @@ async function initNotifications(nom) {
     if (!supported) return { ok:false, reason:"unsupported" };
     const perm = await Notification.requestPermission();
     if (perm !== "granted") return { ok:false, reason:"denied" };
-    const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    // Important : attendre que le service worker soit VRAIMENT actif avant de demander le
+    // jeton — sinon, sur iPhone en particulier, getToken() peut réussir avec un jeton qui ne
+    // fonctionne pas vraiment, donnant ce comportement "une fois ça marche, une fois pas".
+    const reg = await navigator.serviceWorker.ready;
     const messaging = getMessaging(app);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return { ok:false, reason:"no-token" };
@@ -356,6 +360,22 @@ const STATUTS = {
 // Une fiche "à programmer" = un RDV enregistré sans date
 const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
 
+// Section repliable — utilisée dans Administration pour que la page reste rapide à
+// parcourir malgré le nombre de sections. Fermée par défaut ; se souvient si l'utilisateur
+// l'a ouverte (par onglet de session, pas persisté entre visites — volontairement simple).
+function Repliable({ T, icone, titre, badge, defaultOpen=false, children }) {
+  const [ouvert, setOuvert] = useState(defaultOpen);
+  return (
+    <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+      <button onClick={()=>setOuvert(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+        <span style={{fontWeight:800,fontSize:14,color:T.text,flex:1,display:"flex",alignItems:"center",gap:8}}>{icone} {titre}{badge&&<span style={{fontSize:10.5,fontWeight:700,color:T.textMuted,background:T.surface2,padding:"2px 8px",borderRadius:10}}>{badge}</span>}</span>
+        <span style={{color:T.textMuted,fontSize:13,transition:"transform .15s",transform:ouvert?"rotate(90deg)":"none"}}>▶</span>
+      </button>
+      {ouvert && <div style={{padding:"0 16px 16px"}}>{children}</div>}
+    </div>
+  );
+}
+
 // Palette couleurs techniciens (agenda style Joynit) — utilisée seulement si aucune couleur n'a été choisie manuellement
 const TECH_COLORS = ["#0EA5E9","#8B5CF6","#EC4899","#06B6D4","#F97316","#A78BFA","#F59E0B","#EF4444","#14B8A6","#6366F1"];
 const techColor = (nom, techniciens=[], techColors={}) => {
@@ -440,17 +460,20 @@ function distanceLevenshtein(a, b) {
   }
   return prev[n];
 }
-function scoreRessemblance(recherche, texte) {
+function scoreRessemblance(recherche, texteOriginal) {
   const motsRecherche = sansAccents(recherche).toLowerCase().split(/\s+/).filter(Boolean);
-  const motsTexte = sansAccents(texte).toLowerCase().split(/[\s,.\-]+/).filter(Boolean);
-  if (!motsRecherche.length || !motsTexte.length) return Infinity;
+  const motsTexteOriginal = (texteOriginal||"").split(/[\s,.\-]+/).filter(Boolean); // garde la casse d'origine pour l'affichage
+  const motsTexte = motsTexteOriginal.map(m=>sansAccents(m).toLowerCase());
+  if (!motsRecherche.length || !motsTexte.length) return { score: Infinity, motTrouve: null };
   let total = 0;
+  let meilleurGlobal = Infinity, motTrouveGlobal = null;
   motsRecherche.forEach(mr=>{
-    let meilleur = Infinity;
-    motsTexte.forEach(mt=>{ const d = distanceLevenshtein(mr, mt); if (d<meilleur) meilleur = d; });
+    let meilleur = Infinity, idxMeilleur = -1;
+    motsTexte.forEach((mt,i)=>{ const d = distanceLevenshtein(mr, mt); if (d<meilleur) { meilleur = d; idxMeilleur = i; } });
     total += meilleur / Math.max(mr.length, 3); // normalisé : tolère ~1 lettre d'écart tous les 3 caractères
+    if (meilleur < meilleurGlobal) { meilleurGlobal = meilleur; motTrouveGlobal = motsTexteOriginal[idxMeilleur]; }
   });
-  return total / motsRecherche.length;
+  return { score: total / motsRecherche.length, motTrouve: motTrouveGlobal };
 }
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 const stripLourd = (f) => { const {photos, signature, signatureTech, signaturesSupp, logoSociete, ...rest} = f; return {...rest, _nbPhotos:(photos||[]).length, _signee:!!signature}; };
@@ -1180,7 +1203,7 @@ function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
   window.open(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
 }
 
-function envoyerRapportWhatsApp(fiche) {
+function composerRapportWhatsApp(fiche) {
   const locStr = formatLoc(fiche.loc);
   const msg = [
     `📋 Rapport d'intervention — ${fiche.id}`,
@@ -1197,14 +1220,19 @@ function envoyerRapportWhatsApp(fiche) {
     fiche.conclusion ? `\nConclusion :\n${fiche.conclusion}` : "",
     `\nTechnicien : ${fiche.technicien||"—"}`,
   ].filter(Boolean).join("\n");
+  return msg;
+}
+function envoyerRapportWhatsApp(fiche, texteModifie) {
   const num = (fiche.tel||"").replace(/[^0-9+]/g,"");
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(texteModifie ?? composerRapportWhatsApp(fiche))}`,"_blank");
 }
 
-function envoyerRapportSMS(fiche) {
-  const msg = `Rapport ${fiche.id} — ${fiche.client||"Client"}. Intervention du ${dateFr(fiche.dateRdv)}. Rapport PDF transmis séparément.`;
+function composerRapportSMS(fiche) {
+  return `Rapport ${fiche.id} — ${fiche.client||"Client"}. Intervention du ${dateFr(fiche.dateRdv)}. Rapport PDF transmis séparément.`;
+}
+function envoyerRapportSMS(fiche, texteModifie) {
   const num = (fiche.tel||"").replace(/[^0-9+]/g,"");
-  window.location.href = `sms:${num}?&body=${encodeURIComponent(msg)}`;
+  window.location.href = `sms:${num}?&body=${encodeURIComponent(texteModifie ?? composerRapportSMS(fiche))}`;
 }
 
 // Adresse interne A6T pour l'archivage/vérification des rapports (pas d'envoi au client).
@@ -2363,9 +2391,9 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
   const SimpleEditor = ({title, icon, k, def, addLabel}) => {
     const liste = simpleList(k, def);
     return (
-      <div style={card}>
-        <div style={head}>{icon} {title}
-          <button onClick={()=>{const v=window.prompt(addLabel||"Nouvel élément :");if(v&&v.trim())writeList(k,[...liste,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+      <Repliable T={T} icone={icon} titre={title}>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+          <button onClick={()=>{const v=window.prompt(addLabel||"Nouvel élément :");if(v&&v.trim())writeList(k,[...liste,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {liste.map((item,i)=>(
           <div key={i} style={row(i===liste.length-1)}>
@@ -2376,7 +2404,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             <button onClick={()=>{if(window.confirm(`Supprimer "${item}" ?`)){const l=[...liste];l.splice(i,1);writeList(k,l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
-      </div>
+      </Repliable>
     );
   };
 
@@ -2391,8 +2419,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       </div>
 
       {/* Journal d'activité — connexions, ajouts de photo... */}
-      <div style={card}>
-        <div style={head}>🕵️ Journal d'activité</div>
+      <Repliable T={T} icone="🕵️" titre="Journal d'activité">
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
           Qui a ouvert l'application, quand, et quelques actions clés (ajout de photo…). Sert aussi de "vu" implicite pour les alertes : si la dernière connexion d'une personne est après l'heure d'une alerte, elle a au moins rouvert l'app depuis.
         </div>
@@ -2434,11 +2461,10 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             );
           })}
         </div>
-      </div>
+      </Repliable>
 
       {/* Bilan hebdomadaire */}
-      <div style={card}>
-        <div style={head}>📋 Bilan hebdomadaire</div>
+      <Repliable T={T} icone="📋" titre="Bilan hebdomadaire">
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
           Une notification automatique chaque dimanche en fin d'après-midi, récapitulant en un coup d'œil : les interventions non clôturées, les devis en attente de réponse client, et les rapports terminés jamais envoyés. Envoyée à toute l'équipe (hors sous-traitants).
         </div>
@@ -2452,18 +2478,16 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             else alert("❌ Erreur : "+(d.error||"inconnue"));
           } catch(e){ alert("❌ Erreur réseau : "+e.message); }
         }} style={{padding:"9px 16px",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📋 Tester le bilan maintenant</button>
-      </div>
+      </Repliable>
 
       {/* Export mensuel */}
-      <div style={card}>
-        <div style={head}>📊 Export mensuel</div>
+      <Repliable T={T} icone="📊" titre="Export mensuel">
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Récapitulatif du chiffre d'affaires estimé et du temps travaillé, par technicien, pour un mois donné.</div>
         <button onClick={onOpenExport} style={{padding:"9px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📊 Générer l'export</button>
-      </div>
+      </Repliable>
 
       {/* Comptes techniciens restreints */}
-      <div style={card}>
-        <div style={head}>🔐 Comptes & accès restreints</div>
+      <Repliable T={T} icone="🔐" titre="Comptes & accès restreints">
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
           Pour donner un accès personnel à un technicien : créez d'abord son compte (email + mot de passe) dans <b>Firebase Console → Authentication</b>, puis liez cet email à son nom ci-dessous. Un email lié à un technicien ne verra plus que ses propres interventions. Un compte non listé ici garde un accès complet.
         </div>
@@ -2492,12 +2516,12 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             🧰 Sous-traitant externe — ne recevra jamais les notifications "fiche libre" de l'équipe, uniquement ce qui lui est assigné directement
           </label>
         </div>
-      </div>
+      </Repliable>
 
       {/* Sociétés + logos */}
-      <div style={card}>
-        <div style={head}>🏢 Sociétés intervenantes
-          <button onClick={()=>{const v=window.prompt("Nom de la société :");if(v&&v.trim()&&!societes.includes(v.trim()))onSaveSocietes([...societes,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+      <Repliable T={T} icone="🏢" titre="Sociétés intervenantes">
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+          <button onClick={()=>{const v=window.prompt("Nom de la société :");if(v&&v.trim()&&!societes.includes(v.trim()))onSaveSocietes([...societes,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {societes.map((s,i)=>{
           const lk = logoKey(s); const hasLogo = !!logos[lk];
@@ -2514,12 +2538,12 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           );
         })}
         <input ref={logoRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(file&&logoTarget){const d=await resizeLogo(file);onSaveLogo(logoTarget,d);}e.target.value="";}}/>
-      </div>
+      </Repliable>
 
       {/* Techniciens + numéros */}
-      <div style={card}>
-        <div style={head}>👤 Techniciens, couleurs & numéros WhatsApp
-          <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+      <Repliable T={T} icone="👤" titre="Techniciens, couleurs & numéros WhatsApp">
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+          <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {techniciens.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun technicien — ils s'ajoutent aussi automatiquement à la 1ʳᵉ fiche.</div>}
         {techniciens.map((t,i)=>{
@@ -2562,12 +2586,12 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           </div>
           );
         })}
-      </div>
+      </Repliable>
 
       {/* Sous-traitants */}
-      <div style={card}>
-        <div style={head}>📤 Sous-traitants
-          <button onClick={()=>{const nom=window.prompt("Nom du sous-traitant :");if(!nom||!nom.trim())return;const tel=window.prompt("Numéro WhatsApp (33612345678) :");if(!tel||!tel.trim())return;onSaveSousTraitants([...sousTraitants,{nom:nom.trim(),tel:tel.trim()}]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+      <Repliable T={T} icone="📤" titre="Sous-traitants">
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+          <button onClick={()=>{const nom=window.prompt("Nom du sous-traitant :");if(!nom||!nom.trim())return;const tel=window.prompt("Numéro WhatsApp (33612345678) :");if(!tel||!tel.trim())return;onSaveSousTraitants([...sousTraitants,{nom:nom.trim(),tel:tel.trim()}]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {sousTraitants.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun sous-traitant enregistré — ils s'ajoutent aussi automatiquement depuis le bouton "Envoyer au sous-traitant" sur une fiche.</div>}
         {sousTraitants.map((s,i)=>(
@@ -2578,12 +2602,12 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             <button onClick={()=>{if(window.confirm(`Supprimer "${s.nom}" ?`))onSaveSousTraitants(sousTraitants.filter((_,j)=>j!==i));}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
-      </div>
+      </Repliable>
 
       {/* Catalogue devis */}
-      <div style={card}>
-        <div style={head}>⚡ Prestations types des devis
-          <button onClick={()=>{const lab=window.prompt("Libellé de la prestation :");if(!lab||!lab.trim())return;const u=window.prompt("Unité (u, ml, colonne…) :","u")||"u";writeCat([...cat,{label:lab.trim(),unite:u.trim()||"u"}]);}} style={{...addBtn,marginLeft:"auto"}}>➕ Ajouter</button>
+      <Repliable T={T} icone="⚡" titre="Prestations types des devis">
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+          <button onClick={()=>{const lab=window.prompt("Libellé de la prestation :");if(!lab||!lab.trim())return;const u=window.prompt("Unité (u, ml, colonne…) :","u")||"u";writeCat([...cat,{label:lab.trim(),unite:u.trim()||"u"}]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {cat.map((c2,i)=>(
           <div key={i} style={row(i===cat.length-1)}>
@@ -2594,7 +2618,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             <button onClick={()=>{if(window.confirm(`Supprimer "${c2.label}" ?`)){const l=[...cat];l.splice(i,1);writeCat(l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
-      </div>
+      </Repliable>
 
       <SimpleEditor title="Matériels (usage interne)" icon="🧰" k="materiels" def={MATERIELS}/>
       <SimpleEditor title="Diamètres de canalisation" icon="📏" k="diametres" def={DIAMETRES} addLabel="Diamètre (mm), ex : 60"/>
@@ -3380,8 +3404,8 @@ function ReportPreview({ fiche, onClose }) {
       </div>
       {showSendOptions&&(
         <div style={{background:"#0A1525",borderBottom:"1px solid #1a3050",padding:"12px 16px",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={()=>{envoyerRapportWhatsApp(fiche);onMarquerEnvoye&&onMarquerEnvoye(fiche);}} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
-          <button onClick={()=>{envoyerRapportSMS(fiche);onMarquerEnvoye&&onMarquerEnvoye(fiche);}} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
+          <button onClick={()=>setApercuEnvoi({type:"whatsapp",texte:composerRapportWhatsApp(fiche)})} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
+          <button onClick={()=>setApercuEnvoi({type:"sms",texte:composerRapportSMS(fiche)})} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
           <button onClick={()=>{download();envoyerRapportArchivageInterne(fiche,true);}} style={{padding:"8px 16px",background:"#1E293B",border:"1px solid #F97316",color:"#F97316",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📧 Archiver (interne A6T)</button>
         </div>
       )}
@@ -3935,6 +3959,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
   const [showQuandChips, setShowQuandChips] = useState(false);
   const [creationFactureEnCours, setCreationFactureEnCours] = useState(false);
   const [draftPennylane, setDraftPennylane] = useState(null); // aperçu modifiable avant envoi réel
+  const [apercuEnvoi, setApercuEnvoi] = useState(null); // aperçu modifiable avant envoi WhatsApp/SMS
   const lblStyle = {fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:5,textTransform:"uppercase",letterSpacing:".04em"};
   const inpStyle = () => ({width:"100%",padding:"9px 12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"});
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
@@ -4197,6 +4222,26 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                   setDraftPennylane(null);
                 }} disabled={creationFactureEnCours} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#6366F1,#7C3AED)",color:"#fff",fontWeight:800,fontSize:13,cursor:creationFactureEnCours?"default":"pointer",fontFamily:"inherit",opacity:creationFactureEnCours?0.7:1}}>
                   {creationFactureEnCours?"⏳ Envoi…":"✅ Confirmer et envoyer à Pennylane"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {apercuEnvoi && (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setApercuEnvoi(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+              <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>{apercuEnvoi.type==="whatsapp"?"🟢 Aperçu — message WhatsApp":"💬 Aperçu — message SMS"}</div>
+              <div style={{fontSize:11.5,color:T.textMuted,marginBottom:14}}>Vérifie et corrige si besoin — rien n'est envoyé tant que tu n'as pas confirmé.</div>
+              <textarea value={apercuEnvoi.texte} onChange={e=>setApercuEnvoi(a=>({...a,texte:e.target.value}))} rows={10} style={{width:"100%",padding:"10px 12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical"}}/>
+              <div style={{display:"flex",gap:10,marginTop:16}}>
+                <button onClick={()=>setApercuEnvoi(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+                <button onClick={()=>{
+                  if(apercuEnvoi.type==="whatsapp") envoyerRapportWhatsApp(fiche, apercuEnvoi.texte);
+                  else envoyerRapportSMS(fiche, apercuEnvoi.texte);
+                  onMarquerEnvoye&&onMarquerEnvoye(fiche);
+                  setApercuEnvoi(null);
+                }} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:apercuEnvoi.type==="whatsapp"?"linear-gradient(135deg,#25D366,#128C7E)":"#334155",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✅ Confirmer et envoyer
                 </button>
               </div>
             </div>
@@ -4924,6 +4969,7 @@ function AppInterne() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [rechercheFloue, setRechercheFloue] = useState(false); // true si les résultats affichés sont approchants, pas une correspondance exacte
+  const [motsTrouvesFloue, setMotsTrouvesFloue] = useState({}); // id de fiche → mot qui a le mieux matché, pour expliquer le résultat approchant
   const [filterStatus, setFilterStatus] = useState("");
   const [filterTech, setFilterTech] = useState("");
   const [sortMode, setSortMode] = useState("date_desc"); // date_desc | date_asc | alpha
@@ -4937,6 +4983,16 @@ function AppInterne() {
   const [techColors, setTechColors] = useState({});
   const [sousTraitants, setSousTraitants] = useState([]);
   const [techNom, setTechNom] = useState(()=>localStorage.getItem("techNom")||"");
+  // Rafraîchissement silencieux du jeton de notification à chaque ouverture de l'app —
+  // si la permission a déjà été accordée une fois, on re-vérifie/re-sauvegarde le jeton en
+  // arrière-plan à chaque visite, sans rien demander à la personne. Ça évite d'avoir à
+  // repasser par "Activer" dans Profil si le jeton devient périmé avec le temps (fréquent
+  // sur iPhone après quelques jours sans ouvrir l'app).
+  useEffect(()=>{
+    if(!techNom) return;
+    if(typeof Notification==="undefined" || Notification.permission!=="granted") return;
+    initNotifications(techNom).catch(()=>{});
+  },[techNom]);
   const [showProfil, setShowProfil] = useState(false);
   const [prestaLabelsVersion, setPrestaLabelsVersion] = useState(0);
   const [champsCustom, setChampsCustom] = useState({});
@@ -5260,12 +5316,18 @@ function AppInterne() {
       const exact = r.filter(f=>sansAccents(`${f.client} ${f.adresse} ${f.id} ${f.technicien} ${f.numeroOS||""} ${f.conclusion||""}`).toLowerCase().includes(texteRecherche));
       if(exact.length===0 && texteRecherche.length>=3){
         // Rien trouvé exactement : on propose les fiches les plus proches (fautes de frappe/dictée)
-        const notes = r.map(f=>({f, score:scoreRessemblance(texteRecherche, `${f.client} ${f.adresse} ${f.technicien} ${f.numeroOS||""} ${f.conclusion||""}`)}))
+        const notes = r.map(f=>{
+          const res = scoreRessemblance(texteRecherche, `${f.client} ${f.adresse} ${f.technicien} ${f.numeroOS||""} ${f.conclusion||""}`);
+          return {f, score:res.score, motTrouve:res.motTrouve};
+        })
           .filter(x=>Number.isFinite(x.score))
           .sort((a,b)=>a.score-b.score);
         const proches = notes.filter(x=>x.score<0.65).slice(0,6);
         r = proches.map(x=>x.f);
-        setTimeout(()=>setRechercheFloue(r.length>0),0);
+        setTimeout(()=>{
+          setRechercheFloue(r.length>0);
+          setMotsTrouvesFloue(Object.fromEntries(proches.map(x=>[x.f.id, x.motTrouve])));
+        },0);
       } else {
         r = exact;
         setTimeout(()=>setRechercheFloue(false),0);
@@ -5520,14 +5582,10 @@ function AppInterne() {
               const nf = {...f, journalAppels:[...(f.journalAppels||[]), entry]};
               saveFiche(nf); setSelected(nf);
               showToast(resultat==="reussi" ? "✅ Contact réussi enregistré" : "📋 Tentative enregistrée");
-              // Notifie toute l'équipe (hors sous-traitants, filtré côté serveur) — pour que
-              // l'info soit vue sans avoir à rouvrir la fiche. Envoyé même si l'admin n'a pas
-              // fait l'appel lui-même : c'est justement le but, garder tout le monde informé.
-              // Le "f" reçu ici porte déjà la date/heure mise à jour si un raccourci rapide
-              // ("Dans 30 min", "Demain matin"...) a été utilisé côté interface — un seul tap,
-              // pas de confirmation supplémentaire ici.
-              const meta = {pas_de_reponse:"❌ Pas de réponse",reussi:"✅ Contact réussi",message_laisse:"📧 Message laissé",injoignable:"📵 Injoignable"}[resultat]||resultat;
-              envoyerNotification(null, `📞 ${f.client||"Client"}`, `${meta}${note?" — "+note:""}`, f.id);
+              // Plus de notification à toute l'équipe ici — trop bavard à l'usage. L'info reste
+              // visible dans le journal d'appels de la fiche ; les seules notifications qui
+              // partent désormais sont l'assignation, le rappel avant RDV, et les alertes sur les
+              // fiches non traitées (soir/matin) — pour éviter la lassitude côté technicien.
             }}
             onAjouterCommentaire={(f,texte)=>{
               const auteur = (estRestreint?monRole.technicien:f.technicien) || "Admin";
@@ -5535,7 +5593,7 @@ function AppInterne() {
               const nf = {...f, commentaires:[...(f.commentaires||[]), c]};
               saveFiche(nf); setSelected(nf);
               showToast("💬 Note ajoutée");
-              envoyerNotification(null, `💬 ${f.client||"Client"}`, `${auteur} : ${texte}`, f.id);
+              // Idem : plus de diffusion à toute l'équipe, la note reste visible sur la fiche.
             }}
             onModifierCommentaire={(f,ts,nouveauTexte)=>{
               const nf = {...f, commentaires:(f.commentaires||[])
@@ -5770,7 +5828,12 @@ function AppInterne() {
                 {filtered.length===0
                   ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} », même en recherche approximative.</div>
                   : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
-                      <AgendaCarte key={f.id} fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors}/>
+                      <div key={f.id}>
+                        <AgendaCarte fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors}/>
+                        {rechercheFloue&&motsTrouvesFloue[f.id]&&(
+                          <div style={{fontSize:11,color:"#F59E0B",marginTop:-6,marginBottom:8,paddingLeft:6}}>🔍 Ressemble à « {motsTrouvesFloue[f.id]} » dans « {search} »</div>
+                        )}
+                      </div>
                     ))}
               </div>
             )}
