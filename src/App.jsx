@@ -242,7 +242,7 @@ const THEMES = {
 ═══════════════════════════════════════════ */
 const PRESTATIONS = [
   {
-    id: "degorgement", label: "Débouchage", icon: "🔧", color: "#F97316",
+    id: "degorgement", label: "Débouchage", icon: "🔧", color: "#F97316", groupe: "Assainissement",
     localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Colonne commune","Gaine technique","Branchement principal","Regard","Siphon de sol","Vide-ordures","Horizontal","Vertical"],
     problemes: ["Bouchon total","Mauvais écoulement","Odeurs","Remontée d'eaux usées","Débordement"],
     causes: ["Corps étranger","Lingettes","Papier épais","Accumulation de graisses","Dépôts calcaires / tartre","Racines / végétation","Effondrement / casse de canalisation","Joint défaillant","Mauvaise pente","Chute de débris (travaux)","Remontée de nappes","Cause indéterminée"],
@@ -250,7 +250,7 @@ const PRESTATIONS = [
     resultats: ["Écoulement rétabli","Écoulement amélioré","Problème persistant","Colonne refermée — tampon existant reposé","Colonne refermée — tampon neuf posé"],
   },
   {
-    id: "inspection", label: "Inspection télévisée", icon: "📷", color: "#06B6D4",
+    id: "inspection", label: "Inspection télévisée", icon: "📷", color: "#06B6D4", groupe: "Assainissement",
     localisations: ["Réseau EU","Réseau EP","Branchement","Collecteur","Colonne","Canalisation enterrée"],
     problemes: ["Diagnostic avant travaux","Recherche obstruction","Contrôle après travaux","Recherche effondrement"],
     constatCamera: ["Cassure de canalisation","Déboîtement","Affaissement","Contre-pente","Corps étranger visible","Infiltration","Racines","Obturation partielle","Obturation totale"],
@@ -258,28 +258,94 @@ const PRESTATIONS = [
     resultats: ["Réseau en bon état","Défaut localisé","Effondrement détecté","Rapport vidéo fourni"],
   },
   {
-    id: "hydrocurage", label: "Hydrocurage", icon: "💧", color: "#0EA5E9",
+    id: "hydrocurage", label: "Hydrocurage", icon: "💧", color: "#0EA5E9", groupe: "Assainissement",
     localisations: ["Réseau EU","Réseau EP","Regard de visite","Collecteur","Branchement","Colonne"],
     problemes: ["Encrassement","Racines","Dépôts calcaires","Graisses accumulées"],
     actions: ["Hydrocurage HP","Curage mécanique","Extraction corps étranger","Traitement dégraissant"],
     resultats: ["Réseau curé","Débouchage réalisé","Racines extraites","Réseau opérationnel"],
   },
   {
-    id: "fosse", label: "Vidange fosse septique", icon: "⚗️", color: "#A78BFA",
+    id: "fosse", label: "Vidange fosse septique", icon: "⚗️", color: "#A78BFA", groupe: "Assainissement",
     localisations: ["Fosse toutes eaux","Bac dégraisseur","Regard","Épandage","Préfiltre","Micro-station"],
     problemes: ["Fosse pleine","Débordement","Odeurs","Entretien annuel"],
     actions: ["Vidange complète","Vidange partielle","Pompage","Nettoyage bac","Contrôle épandage"],
     resultats: ["Fosse vidangée","Bon fonctionnement","Anomalie détectée","Contrôle conforme"],
   },
   {
-    id: "plomberie", label: "Plomberie", icon: "🪛", color: "#10B981",
+    id: "plomberie", label: "Plomberie — autre", icon: "🪛", color: "#10B981", groupe: "Plomberie",
     localisations: ["Cuisine","Salle de bain","WC","Buanderie","Cave","Gaine technique","Compteur"],
     problemes: ["Fuite","Canalisation cassée","Joint usé","Robinetterie défaillante","Pression insuffisante"],
     actions: ["Remplacement joint","Remplacement robinet","Réparation fuite","Soudure","Déblocage"],
     resultats: ["Réparation effectuée","Fuite stoppée","Pression rétablie","Remplacement à prévoir"],
   },
   {
-    id: "nettoyage", label: "Nettoyage / Pompage", icon: "🧽", color: "#14B8A6",
+    id: "robinetterie", label: "Robinetterie", icon: "🚰", color: "#22C55E", groupe: "Plomberie",
+    localisations: ["Lavabo","Évier cuisine","Baignoire","Douche","WC","Bidet","Extérieur/jardin"],
+    problemes: ["Fuite au niveau du robinet","Robinet bloqué / dur à manœuvrer","Joint usé","Mitigeur défectueux","Chasse d'eau qui fuit","Siphon percé ou bouché","Flexible endommagé","Débit insuffisant"],
+    causes: ["Usure normale","Calcaire / entartrage","Joint détérioré","Mauvaise installation d'origine","Choc / casse accidentelle","Fin de vie du mécanisme"],
+    actions: ["Remplacement robinet lavabo","Remplacement robinet évier","Remplacement robinet baignoire/douche","Remplacement mitigeur","Remplacement joint","Remplacement flexible","Remplacement mécanisme chasse d'eau","Remplacement siphon","Détartrage"],
+    resultats: ["Robinet fonctionnel","Fuite stoppée","Mécanisme remplacé","Débit rétabli","Remplacement complet à prévoir"],
+  },
+  {
+    id: "chauffe_eau", label: "Ballon d'eau chaude", icon: "🔥", color: "#F97316", groupe: "Plomberie",
+    localisations: ["Cuisine","Salle de bain","Cave","Buanderie","Garage","Gaine technique","Extérieur"],
+    problemes: ["Absence d'eau chaude","Fuite sur le ballon","Groupe de sécurité qui fuit en continu","Bruit anormal","Corrosion visible","Ballon percé","Résistance / thermoplongeur HS","Eau tiède seulement"],
+    causes: ["Fin de vie du ballon (corrosion)","Entartrage important","Groupe de sécurité défectueux","Pression réseau trop élevée","Résistance grillée","Thermostat défaillant","Anode usée"],
+    actions: ["Remplacement ballon d'eau chaude","Remplacement groupe de sécurité","Remplacement réducteur de pression","Remplacement résistance / thermoplongeur","Détartrage du ballon","Purge / vidange","Réglage thermostat","Remplacement anode"],
+    resultats: ["Ballon remplacé et fonctionnel","Eau chaude rétablie","Groupe de sécurité remplacé","Fuite stoppée","Remplacement complet à prévoir"],
+  },
+  {
+    id: "alimentation_eau", label: "Alimentation générale", icon: "🚿", color: "#0891B2", groupe: "Plomberie",
+    localisations: ["Compteur","Gaine technique","Cave","Colonne montante","Extérieur/voirie","Local technique"],
+    problemes: ["Absence totale d'eau","Pression insuffisante générale","Fuite sur colonne montante","Vanne d'arrêt bloquée ou HS","Compteur défectueux"],
+    causes: ["Vétusté de la canalisation","Corrosion de la colonne montante","Vanne grippée","Gel","Travaux de voirie / intervention tiers"],
+    actions: ["Remplacement vanne d'arrêt général","Remplacement tronçon de colonne montante","Remplacement réducteur de pression général","Purge du réseau","Coordination avec le fournisseur d'eau"],
+    resultats: ["Alimentation rétablie","Pression normalisée","Remplacement réalisé","Intervention du fournisseur d'eau nécessaire"],
+  },
+  {
+    id: "sanitaires", label: "Sanitaires (pose & remplacement)", icon: "🚽", color: "#8B5CF6", groupe: "Plomberie",
+    localisations: ["Salle de bain","WC","Douche","Cuisine"],
+    problemes: ["WC fissuré ou cassé","Baignoire endommagée","Receveur de douche fissuré","Vasque / lavabo cassé","Installation vétuste ou non conforme","Fixation descellée"],
+    causes: ["Vétusté","Choc / casse accidentelle","Mauvaise fixation d'origine","Non-conformité de l'installation"],
+    actions: ["Remplacement WC complet","Remplacement baignoire","Remplacement receveur de douche","Pose douche à l'italienne","Remplacement vasque / lavabo","Reprise d'étanchéité","Renforcement de fixation"],
+    resultats: ["Équipement remplacé et fonctionnel","Étanchéité assurée","Installation conforme","Pose terminée"],
+  },
+  {
+    id: "chauffage", label: "Chauffage", icon: "🌡️", color: "#DC2626", groupe: "Plomberie",
+    localisations: ["Salon","Chambre","Salle de bain","Chaufferie / local technique","Cave","Circuit général"],
+    problemes: ["Radiateur froid / ne chauffe pas","Fuite sur radiateur","Chaudière en panne","Bruit anormal (coups de bélier, sifflement)","Pression du circuit trop basse ou trop haute","Purge nécessaire"],
+    causes: ["Air dans le circuit","Vanne bloquée","Embouage du circuit","Fuite sur raccord","Panne chaudière","Vétusté de l'équipement"],
+    actions: ["Purge radiateur","Remplacement radiateur","Remplacement vanne thermostatique","Désembouage du circuit","Remise en pression","Remplacement pièce chaudière","Réglage / mise en service"],
+    resultats: ["Chauffage rétabli","Fuite stoppée","Circuit purgé et fonctionnel","Pression normalisée","Intervention chaudiériste à prévoir"],
+  },
+  {
+    id: "traitement_eau", label: "Traitement de l'eau", icon: "🧪", color: "#0D9488", groupe: "Plomberie",
+    localisations: ["Compteur","Cuisine","Gaine technique","Cave","Local technique"],
+    problemes: ["Eau calcaire / entartrage important","Goût ou odeur anormale","Pression irrégulière","Coups de bélier","Retour d'eau constaté"],
+    causes: ["Absence de traitement","Filtre / cartouche usagé","Adoucisseur en panne ou mal réglé","Absence de clapet anti-retour","Absence d'anti-bélier"],
+    actions: ["Installation adoucisseur","Entretien / régénération adoucisseur","Installation filtre anticalcaire","Remplacement cartouche filtrante","Installation clapet anti-retour","Installation anti-bélier","Installation suppresseur"],
+    resultats: ["Qualité d'eau améliorée","Équipement installé et fonctionnel","Entretien réalisé","Pression stabilisée"],
+  },
+  {
+    id: "tuyauterie", label: "Tuyauterie / Réseau intérieur", icon: "🔧", color: "#7C3AED", groupe: "Plomberie",
+    localisations: ["Cuisine","Salle de bain","Cave","Gaine technique","Sous plafond","Sous plancher","Extérieur"],
+    problemes: ["Canalisation percée","Corrosion visible (acier galvanisé / plomb)","Raccord qui fuit","Tuyauterie vétuste à remplacer","Passage de réseau à créer"],
+    causes: ["Corrosion","Gel","Vétusté du matériau (plomb, acier galvanisé)","Choc accidentel","Mauvais raccordement"],
+    actions: ["Remplacement tronçon de canalisation","Reprise de raccord","Soudure","Passage de nouveau réseau (cuivre / PER / multicouche)","Test d'étanchéité","Calorifugeage"],
+    resultats: ["Réseau remplacé et étanche","Fuite stoppée","Test de pression concluant","Reprise complète à prévoir"],
+  },
+  {
+    id: "recherche_fuite", label: "Recherche de fuite", icon: "💧", color: "#0EA5E9", groupe: "Plomberie",
+    localisations: ["Cuisine","Salle de bain","WC","Sous dallage","Sous carrelage","Dans cloison/mur","Plafond","Terrasse/toiture","Compteur","Canalisation encastrée","Vide sanitaire","Gaine technique","Extérieur/jardin"],
+    problemes: ["Tache d'humidité","Compteur qui tourne en continu","Facture d'eau anormale","Moisissure / odeur","Dégât des eaux visible","Baisse de pression","Infiltration signalée par voisin/syndic"],
+    causes: ["Corrosion de la canalisation","Joint défectueux","Raccord desserré","Gel / éclatement","Usure de la canalisation","Perçage accidentel","Surpression du réseau","Défaut de raccordement"],
+    // Catégorie propre à la recherche de fuite : comment la fuite a été recherchée/localisée.
+    methodes: ["Inspection visuelle","Gaz traceur","Caméra thermique","Écoute acoustique / corrélateur","Colorant traceur","Inspection caméra canalisation","Test de mise en pression (tronçon par tronçon)","Humidimètre","Détecteur de réseaux enterrés"],
+    actions: ["Mise en pression du réseau testée tronçon par tronçon","Passage caméra thermique","Injection de gaz traceur","Passage caméra endoscopique dans canalisation","Test au colorant","Ouverture ciblée pour confirmation visuelle","Lecture et suivi du compteur"],
+    resultats: ["Fuite localisée avec précision","Origine de la fuite confirmée","Fuite réparée sur place","Fuite non localisable sans travaux destructifs","Aucune fuite détectée à ce jour","Rapport transmis pour expertise assurance","Reprise de réseau à prévoir"],
+  },
+  {
+    id: "nettoyage", label: "Nettoyage / Pompage", icon: "🧽", color: "#14B8A6", groupe: "Assainissement",
     localisations: ["Cuisine","Salle de bain","WC","Sous-sol","Cour","Parking","Local technique","Parties communes","Vide sanitaire"],
     problemes: ["Débordement","Refoulement eaux usées","Inondation","Stagnation","Dépôt de boue","Infiltration"],
     actions: ["Pompage eaux refoulées","Aspiration","Nettoyage des sols","Désinfection","Évacuation déchets","Assèchement","Descente d'homme dans regard","Descente d'homme dans vide sanitaire"],
@@ -302,7 +368,7 @@ const savePrestationLabel = (id, label) => set(ref(db, `prestationLabels/${id}`)
 // PRESTATIONS lui-même (par mutation, comme applyPrestationLabels) pour que tout le
 // reste du code (formulaires, PDF, listes, agenda…) les traite exactement comme les
 // modules d'origine, sans rien modifier ailleurs.
-const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","actions","resultats"];
+const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","methodes","actions","resultats"];
 const watchPrestationsCustom = (cb) => onValue(ref(db, "prestationsCustom"), snap => cb(snap.val()||{}));
 const savePrestationCustom = (item) => set(ref(db, `prestationsCustom/${item.id}`), sanitize(item));
 const deletePrestationCustom = (id) => remove(ref(db, `prestationsCustom/${id}`));
@@ -544,6 +610,7 @@ async function generateConclusionIA(prestations, locStr, responsabilite, preconi
       localisation: locStr || (p.localisations?.join(", ") || ""),
       problemes: p.problemes?.join(", ") || "",
       causes: p.causes?.join(", ") || "",
+      methodes: p.methodes?.join(", ") || "",
       actions: p.actions?.join(", ") || "",
       resultats: p.resultats?.join(", ") || "",
       note: p.note || "",
@@ -560,6 +627,7 @@ Prestation : ${d.prestation}
 ${d.localisation ? `Lieu : ${d.localisation}` : ""}
 ${d.problemes ? `Problème : ${d.problemes}` : ""}
 ${d.causes ? `Cause : ${d.causes}` : ""}
+${d.methodes ? `Méthode(s) de détection utilisée(s) : ${d.methodes}` : ""}
 ${d.actions ? `Actions : ${d.actions}` : ""}
 ${d.resultats ? `Résultat : ${d.resultats}` : ""}
 ${d.note ? `Note : ${d.note}` : ""}
@@ -579,6 +647,7 @@ Règles :
 - Mentionne le lieu seulement s'il est fourni
 - Résume simplement les actions et leur résultat
 - Ne présente JAMAIS une préconisation comme une action réalisée. Seules les lignes "Actions" ont été effectuées. Les préconisations sont introduites par "nous préconisons" ou "nous recommandons", au futur ou au conditionnel, et seulement si elles sont fournies
+- Si des méthodes de détection sont fournies (recherche de fuite), mentionne-les factuellement — ce sont souvent des informations importantes pour un dossier d'assurance
 - Si aucune inspection caméra ne figure dans les Actions, n'affirme pas qu'un passage caméra a eu lieu
 - Termine par une formule de politesse courte et simple
 - Maximum 4 phrases. Si peu d'informations sont fournies, fais encore plus court.
@@ -606,6 +675,7 @@ Prestation : ${meta?.label}
 ${locStr ? `Lieu : ${locStr}` : ""}
 ${presta.problemes?.length ? `Problème : ${presta.problemes.join(", ")}` : ""}
 ${presta.causes?.length ? `Cause : ${presta.causes.join(", ")}` : ""}
+${presta.methodes?.length ? `Méthode(s) de détection utilisée(s) : ${presta.methodes.join(", ")}` : ""}
 ${presta.actions?.length ? `Actions : ${presta.actions.join(", ")}` : ""}
 ${presta.resultats?.length ? `Résultat : ${presta.resultats.join(", ")}` : ""}
 
@@ -678,7 +748,7 @@ function buildReportHTML(fiche, hideInternal = false) {
   const prestaHTML = presta
     .filter(p => {
       const total = (p.localisations?.length||0)+(p.problemes?.length||0)+(p.causes?.length||0)+
-        (p.constatCamera?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0);
+        (p.constatCamera?.length||0)+(p.methodes?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0);
       return total > 0 || p.note?.trim();
     })
     .map(p => {
@@ -688,6 +758,7 @@ function buildReportHTML(fiche, hideInternal = false) {
       if (p.problemes?.length) sentences.push(`Problème constaté : ${p.problemes.map(s=>s.toLowerCase()).join(", ")}.`);
       if (p.causes?.length) sentences.push(`Cause identifiée : ${p.causes.map(s=>s.toLowerCase()).join(", ")}.`);
       if (p.constatCamera?.length) sentences.push(`Constat caméra : ${p.constatCamera.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.methodes?.length) sentences.push(`Méthode${p.methodes.length>1?"s":""} de détection utilisée${p.methodes.length>1?"s":""} : ${p.methodes.map(s=>s.toLowerCase()).join(", ")}.`);
       if (p.actions?.length) {
         // Phrase spéciale pour création ouverture + camion hydrocureur
         const hasCreation = p.actions.includes("Création ouverture sur colonne");
@@ -1724,7 +1795,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const hasPresta = id => f.prestations.some(p=>p.id===id);
   const togglePresta = id => setF(p=>{
     if(p.prestations.some(x=>x.id===id)) return{...p,prestations:p.prestations.filter(x=>x.id!==id)};
-    return{...p,prestations:[...p.prestations,{id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:"",...(PRESTA_DIAMETRE.includes(id)?{diametre:"100"}:{})}]};
+    return{...p,prestations:[...p.prestations,{id,localisations:[],problemes:[],causes:[],constatCamera:[],methodes:[],actions:[],resultats:[],note:"",...(PRESTA_DIAMETRE.includes(id)?{diametre:"100"}:{})}]};
   });
   const updatePresta = (id,key,val) => setF(p=>({...p,prestations:p.prestations.map(x=>x.id===id?{...x,[key]:val}:x)}));
   const togglePrestaItem = (id,key,val) => setF(p=>({...p,prestations:p.prestations.map(x=>{
@@ -2044,14 +2115,30 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>🔧 Prestations réalisées</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {PRESTATIONS.map(presta=>{
+          {(()=>{
+            const ordreGroupes = ["Assainissement","Plomberie"];
+            const trie = [...PRESTATIONS].sort((a,b)=>{
+              const ia=ordreGroupes.indexOf(a.groupe), ib=ordreGroupes.indexOf(b.groupe);
+              return (ia===-1?99:ia)-(ib===-1?99:ib);
+            });
+            let dernierGroupe = null;
+            return trie.map((presta,idx)=>{
+            const changementGroupe = presta.groupe && presta.groupe!==dernierGroupe;
+            const premierGroupe = idx===0;
+            dernierGroupe = presta.groupe;
             const active = hasPresta(presta.id);
             const data = f.prestations.find(p=>p.id===presta.id);
             const isOpen = expanded===presta.id;
-            const count = data ? (data.localisations?.length||0)+(data.problemes?.length||0)+(data.causes?.length||0)+(data.constatCamera?.length||0)+(data.actions?.length||0)+(data.resultats?.length||0) : 0;
+            const count = data ? (data.localisations?.length||0)+(data.problemes?.length||0)+(data.causes?.length||0)+(data.constatCamera?.length||0)+(data.methodes?.length||0)+(data.actions?.length||0)+(data.resultats?.length||0) : 0;
 
             return (
-              <div key={presta.id} style={{border:`1.5px solid ${active?presta.color:T.border}`,borderRadius:10,overflow:"hidden",background:active?presta.color+"0D":T.surface2,transition:"all .2s",cursor:"pointer"}}
+              <React.Fragment key={presta.id}>
+              {changementGroupe && (
+                <div style={{fontSize:10.5,fontWeight:800,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginTop:premierGroupe?0:12,marginBottom:1,paddingTop:premierGroupe?0:10,borderTop:premierGroupe?"none":`1px solid ${T.border}`}}>
+                  {presta.groupe==="Assainissement"?"🚛":"🪛"} {presta.groupe}
+                </div>
+              )}
+              <div style={{border:`1.5px solid ${active?presta.color:T.border}`,borderRadius:10,overflow:"hidden",background:active?presta.color+"0D":T.surface2,transition:"all .2s",cursor:"pointer"}}
                 onClick={()=>{if(!active){togglePresta(presta.id);setExpanded(presta.id);}else setExpanded(isOpen?null:presta.id);}}>
 
                 {/* Header ligne */}
@@ -2078,6 +2165,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                       {key:"problemes",icon:"⚠️",label:"Problème constaté",opts:co(presta,"problemes")},
                       ...(presta.causes?[{key:"causes",icon:"🔍",label:"Cause du bouchon",opts:co(presta,"causes"),badge:"Débouchage"}]:[]),
                       ...(presta.constatCamera?[{key:"constatCamera",icon:"📹",label:"Constat caméra",opts:co(presta,"constatCamera"),badge:"Inspection"}]:[]),
+                      ...(presta.methodes?[{key:"methodes",icon:"🔬",label:"Méthode de détection",opts:co(presta,"methodes"),badge:"Recherche de fuite"}]:[]),
                       {key:"actions",icon:"🔨",label:"Action réalisée",opts:co(presta,"actions")},
                       {key:"resultats",icon:"✅",label:"Résultat",opts:co(presta,"resultats")},
                     ].map(sec=>(
@@ -2120,8 +2208,10 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                   </div>
                 )}
               </div>
+              </React.Fragment>
             );
-          })}
+          });
+          })()}
         </div>
       </div>
 
@@ -2643,6 +2733,7 @@ const CHAMPS_CATS = [
   {key:"problemes",icon:"⚠️",label:"Problème constaté"},
   {key:"causes",icon:"🔍",label:"Cause du bouchon"},
   {key:"constatCamera",icon:"📹",label:"Constat caméra"},
+  {key:"methodes",icon:"🔬",label:"Méthode de détection"},
   {key:"actions",icon:"🔨",label:"Action réalisée"},
   {key:"resultats",icon:"✅",label:"Résultat"},
 ];
@@ -2899,7 +2990,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
           diametreCanalisation: j.diametreCanalisation||"",
           urgent: !!j.urgent,
           notesInternes: j.notesInternes||"",
-          prestations: idsValides.map(id=>({id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:j.note||""})),
+          prestations: idsValides.map(id=>({id,localisations:[],problemes:[],causes:[],constatCamera:[],methodes:[],actions:[],resultats:[],note:j.note||""})),
           clientId: matchClient?.id||null,
         };
         const audio = await audioEnBase64();
@@ -2930,7 +3021,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
   const togglePrestation = (id) => setApercu(p => {
     const arr = p.data.prestations || [];
     const existe = arr.some(x=>x.id===id);
-    const next = existe ? arr.filter(x=>x.id!==id) : [...arr, {id,localisations:[],problemes:[],causes:[],constatCamera:[],actions:[],resultats:[],note:""}];
+    const next = existe ? arr.filter(x=>x.id!==id) : [...arr, {id,localisations:[],problemes:[],causes:[],constatCamera:[],methodes:[],actions:[],resultats:[],note:""}];
     return { ...p, data: { ...p.data, prestations: next } };
   });
 
@@ -4265,7 +4356,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           <div style={secHead}>🔧 Prestations ({fiche.prestations.length})</div>
           {(fiche.prestations||[]).map(p=>{
             const meta=PRESTATIONS.find(x=>x.id===p.id);
-            const hasContent=(p.localisations?.length||0)+(p.problemes?.length||0)+(p.causes?.length||0)+(p.constatCamera?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0)>0||p.note?.trim();
+            const hasContent=(p.localisations?.length||0)+(p.problemes?.length||0)+(p.causes?.length||0)+(p.constatCamera?.length||0)+(p.methodes?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0)>0||p.note?.trim();
             if(!hasContent)return null;
             return(
               <div key={p.id} style={{background:T.surface2,borderRadius:10,padding:"12px 16px",borderLeft:`4px solid ${meta?.color}`,marginBottom:8}}>
@@ -4277,6 +4368,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 {p.problemes?.length>0&&<div style={{marginBottom:6}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>⚠️ Problème</div><Chips items={p.problemes} color="#F59E0B"/></div>}
                 {p.causes?.length>0&&<div style={{marginBottom:6}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>🔍 Cause</div><Chips items={p.causes} color="#F97316"/></div>}
                 {p.constatCamera?.length>0&&<div style={{marginBottom:6}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>📹 Constat caméra</div><Chips items={p.constatCamera} color="#06B6D4"/></div>}
+                {p.methodes?.length>0&&<div style={{marginBottom:6}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>🔬 Méthode de détection</div><Chips items={p.methodes} color="#0EA5E9"/></div>}
                 {p.actions?.length>0&&<div style={{marginBottom:6}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>🔨 Action</div><Chips items={p.actions} color="#0EA5E9"/></div>}
                 {p.resultats?.length>0&&<div style={{marginBottom:p.note?6:0}}><div style={{fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>✅ Résultat</div><Chips items={p.resultats} color="#10B981"/></div>}
                 {p.note&&<div style={{background:T.surface,borderRadius:6,padding:"7px 11px",fontSize:12,color:T.text,marginTop:4,fontStyle:"italic"}}>{p.note}</div>}
@@ -4455,8 +4547,7 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
         </div>
       </div>
 
-      <div style={{...sec,border:"1px solid rgba(168,139,250,0.35)"}}>
-        <div style={{fontSize:13,fontWeight:800,color:"#A78BFA",marginBottom:4}}>📐 Relevé sur place</div>
+      <Repliable T={T} icone="📐" titre="Relevé sur place" badge="optionnel">
         <div style={{fontSize:11.5,color:T.textMuted,marginBottom:14}}>Comptez au fur et à mesure : saisissez une quantité, ajoutez une note d'accès si besoin, puis « Ajouter ». Le total se calcule automatiquement.</div>
 
         {[{type:"colonnes",label:"Colonnes",icon:"🏛️",unite:"col.",ph:"Ex : 3"},{type:"metres",label:"Mètres linéaires (horizontal)",icon:"📏",unite:"ml",ph:"Ex : 12"}].map(blk=>(
@@ -4499,24 +4590,34 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
             💡 Les notes d'accès sont conservées dans le relevé. Pensez à les reporter dans les notes du devis si besoin.
           </div>
         )}
-      </div>
+      </Repliable>
 
       <div style={sec}>
-        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:8}}>Lignes du devis</div>
+        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Comment chiffrer ce devis ?</div>
+        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:12}}>Choisissez une seule des deux options — l'autre disparaît, pour ne pas avoir à deviner ce qu'il faut remplir.</div>
 
-        {/* Mode forfait */}
-        <div style={{marginBottom:14,padding:"12px 14px",background:d.modeForfait?"rgba(167,139,250,0.08)":T.surface2,border:`1.5px solid ${d.modeForfait?"#A78BFA":T.border}`,borderRadius:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:d.modeForfait?12:0}}>
-            <button onClick={()=>setD(p=>({...p,modeForfait:!p.modeForfait}))}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",
-                border:`1.5px solid ${d.modeForfait?"#A78BFA":T.border}`,
-                background:d.modeForfait?"rgba(167,139,250,0.14)":T.surface,
-                color:d.modeForfait?"#A78BFA":T.textMuted}}>
-              <span style={{width:16,height:16,borderRadius:4,background:d.modeForfait?"#A78BFA":"transparent",border:`2px solid ${d.modeForfait?"#A78BFA":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}}>{d.modeForfait?"✓":""}</span>
-              💼 Devis forfaitaire (prix global, sans détail par ligne)
-            </button>
-          </div>
-          {d.modeForfait&&(
+        {/* Choix du mode : deux grandes cases, un seul actif à la fois */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+          <button onClick={()=>setD(p=>({...p,modeForfait:true}))}
+            style={{padding:"14px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",textAlign:"left",
+              border:`2px solid ${d.modeForfait?"#A78BFA":T.border}`,
+              background:d.modeForfait?"rgba(167,139,250,0.12)":T.surface2}}>
+            <div style={{fontSize:20,marginBottom:4}}>💼</div>
+            <div style={{fontWeight:800,fontSize:13,color:d.modeForfait?"#A78BFA":T.text}}>Forfait</div>
+            <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>Un prix global, sans détail ligne par ligne</div>
+          </button>
+          <button onClick={()=>setD(p=>({...p,modeForfait:false}))}
+            style={{padding:"14px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",textAlign:"left",
+              border:`2px solid ${!d.modeForfait?"#0EA5E9":T.border}`,
+              background:!d.modeForfait?"rgba(14,165,233,0.12)":T.surface2}}>
+            <div style={{fontSize:20,marginBottom:4}}>📋</div>
+            <div style={{fontWeight:800,fontSize:13,color:!d.modeForfait?"#0EA5E9":T.text}}>Détail par ligne</div>
+            <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>Plusieurs lignes chiffrées séparément</div>
+          </button>
+        </div>
+
+        {d.modeForfait ? (
+          <div style={{padding:"14px",background:"rgba(167,139,250,0.06)",border:"1.5px solid rgba(167,139,250,0.3)",borderRadius:10}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
               <div>
                 <div style={{...lbl,color:"#A78BFA"}}>Intitulé du forfait</div>
@@ -4536,38 +4637,42 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
                 </div>
               )}
             </div>
-          )}
-        </div>
-        <div style={{marginBottom:14,padding:"12px 14px",background:"rgba(124,58,237,0.06)",border:"1.5px solid rgba(124,58,237,0.3)",borderRadius:10}}>
-          <div style={{fontSize:12.5,fontWeight:800,color:"#A78BFA",marginBottom:8}}>✨ Générer les lignes par IA</div>
-          <div style={{fontSize:11.5,color:T.textMuted,marginBottom:8}}>Décrivez les travaux en texte libre (ou collez la transcription de l'appel client) : l'IA propose des lignes chiffrées, entièrement modifiables ensuite.</div>
-          <textarea value={descriptionLibre} onChange={e=>setDescriptionLibre(e.target.value)} rows={3}
-            placeholder="Ex : Débouchage cuisine par furet, environ 8 ml de canalisation, plus inspection caméra pour vérifier l'état du réseau…"
-            style={{...inp,resize:"vertical",marginBottom:8}}/>
-          <button onClick={genererLignesIA} disabled={genLignesIA}
-            style={{padding:"9px 16px",background:genLignesIA?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:genLignesIA?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:genLignesIA?"default":"pointer",fontFamily:"inherit"}}>
-            {genLignesIA?"⏳ Génération…":"✨ Générer les lignes"}
-          </button>
-        </div>
-        <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-          {catalogue.map(item=>(
-            <button key={item.label} onClick={()=>setD(p=>({...p,lignes:[...p.lignes.filter(l=>l.label||l.pu),{label:`${item.label} (${item.unite})`,qte:1,pu:""}]}))}
-              style={{fontSize:11.5,fontWeight:600,padding:"6px 11px",borderRadius:16,cursor:"pointer",fontFamily:"inherit",background:"rgba(14,165,233,0.08)",border:"1px solid rgba(14,165,233,0.3)",color:"#38BDF8"}}>
-              + {item.label}
-            </button>
-          ))}
-        </div>
-        {d.lignes.map((l,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 64px 90px 90px 32px",gap:6,marginBottom:6,alignItems:"center"}}>
-            <input value={l.label} onChange={e=>setLigne(i,"label",e.target.value)} placeholder="Désignation" style={inp}/>
-            <input type="number" value={l.qte} onChange={e=>setLigne(i,"qte",e.target.value)} placeholder="Qté" style={{...inp,textAlign:"center"}}/>
-            <input type="number" value={l.pu} onChange={e=>setLigne(i,"pu",e.target.value)} placeholder="P.U. HT" style={{...inp,textAlign:"right"}}/>
-            <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right"}}>{euro((parseFloat(l.qte)||0)*(parseFloat(l.pu)||0))}</div>
-            <button onClick={()=>setD(p=>({...p,lignes:p.lignes.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>✕</button>
           </div>
-        ))}
-        <button onClick={()=>setD(p=>({...p,lignes:[...p.lignes,{label:"",qte:1,pu:""}]}))} style={{marginTop:6,padding:"8px 14px",background:"none",border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>➕ Ajouter une ligne</button>
+        ) : (
+          <>
+            <div style={{marginBottom:14,padding:"12px 14px",background:"rgba(124,58,237,0.06)",border:"1.5px solid rgba(124,58,237,0.3)",borderRadius:10}}>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#A78BFA",marginBottom:8}}>✨ Générer les lignes par IA</div>
+              <div style={{fontSize:11.5,color:T.textMuted,marginBottom:8}}>Décrivez les travaux en texte libre (ou collez la transcription de l'appel client) : l'IA propose des lignes chiffrées, entièrement modifiables ensuite.</div>
+              <textarea value={descriptionLibre} onChange={e=>setDescriptionLibre(e.target.value)} rows={3}
+                placeholder="Ex : Débouchage cuisine par furet, environ 8 ml de canalisation, plus inspection caméra pour vérifier l'état du réseau…"
+                style={{...inp,resize:"vertical",marginBottom:8}}/>
+              <button onClick={genererLignesIA} disabled={genLignesIA}
+                style={{padding:"9px 16px",background:genLignesIA?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:genLignesIA?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:genLignesIA?"default":"pointer",fontFamily:"inherit"}}>
+                {genLignesIA?"⏳ Génération…":"✨ Générer les lignes"}
+              </button>
+            </div>
+            <div style={{fontSize:10.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:7}}>⚡ Prestations types — touchez pour ajouter</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {catalogue.map(item=>(
+                <button key={item.label} onClick={()=>setD(p=>({...p,lignes:[...p.lignes.filter(l=>l.label||l.pu),{label:`${item.label} (${item.unite})`,qte:1,pu:""}]}))}
+                  style={{fontSize:11.5,fontWeight:600,padding:"6px 11px",borderRadius:16,cursor:"pointer",fontFamily:"inherit",background:"rgba(14,165,233,0.08)",border:"1px solid rgba(14,165,233,0.3)",color:"#38BDF8"}}>
+                  + {item.label}
+                </button>
+              ))}
+            </div>
+            {d.lignes.map((l,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 64px 90px 90px 32px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <input value={l.label} onChange={e=>setLigne(i,"label",e.target.value)} placeholder="Désignation" style={inp}/>
+                <input type="number" value={l.qte} onChange={e=>setLigne(i,"qte",e.target.value)} placeholder="Qté" style={{...inp,textAlign:"center"}}/>
+                <input type="number" value={l.pu} onChange={e=>setLigne(i,"pu",e.target.value)} placeholder="P.U. HT" style={{...inp,textAlign:"right"}}/>
+                <div style={{fontSize:12.5,fontWeight:700,color:T.text,textAlign:"right"}}>{euro((parseFloat(l.qte)||0)*(parseFloat(l.pu)||0))}</div>
+                <button onClick={()=>setD(p=>({...p,lignes:p.lignes.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>✕</button>
+              </div>
+            ))}
+            <button onClick={()=>setD(p=>({...p,lignes:[...p.lignes,{label:"",qte:1,pu:""}]}))} style={{marginTop:6,padding:"8px 14px",background:"none",border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>➕ Ajouter une ligne</button>
+          </>
+        )}
+
         <div style={{marginTop:14,marginLeft:"auto",width:240,fontSize:13}}>
           <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",color:T.textMuted}}><span>Total HT</span><b style={{color:T.text}}>{euro(ht)}</b></div>
           <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",color:T.textMuted}}><span>TVA {d.tva}%</span><b style={{color:T.text}}>{euro(tva)}</b></div>
