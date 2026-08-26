@@ -1740,6 +1740,13 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const [signingSuppNom, setSigningSuppNom] = useState(null);
   const [showTemps, setShowTemps] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [groupeOuvert, setGroupeOuvert] = useState(()=>{
+    // Si la fiche a déjà des prestations cochées (édition), on ouvre directement le bon
+    // groupe au lieu de forcer un clic pour le retrouver.
+    const dejaActif = (initial?.prestations||[]).map(p=>p.id);
+    const presta = PRESTATIONS.find(p=>dejaActif.includes(p.id));
+    return presta?.groupe || null;
+  });
   const [precoOpen, setPrecoOpen] = useState(false);
   const [interneOpen, setInterneOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
@@ -2117,15 +2124,26 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {(()=>{
             const ordreGroupes = ["Assainissement","Plomberie"];
-            const trie = [...PRESTATIONS].sort((a,b)=>{
-              const ia=ordreGroupes.indexOf(a.groupe), ib=ordreGroupes.indexOf(b.groupe);
-              return (ia===-1?99:ia)-(ib===-1?99:ib);
-            });
-            let dernierGroupe = null;
-            return trie.map((presta,idx)=>{
-            const changementGroupe = presta.groupe && presta.groupe!==dernierGroupe;
-            const premierGroupe = idx===0;
-            dernierGroupe = presta.groupe;
+            const iconesGroupes = {Assainissement:"🚛",Plomberie:"🪛"};
+            const parGroupe = {};
+            PRESTATIONS.forEach(p=>{ (parGroupe[p.groupe||"Autre"] = parGroupe[p.groupe||"Autre"]||[]).push(p); });
+            const groupesAffiches = [...ordreGroupes, ...Object.keys(parGroupe).filter(g=>!ordreGroupes.includes(g))];
+            return groupesAffiches.filter(g=>parGroupe[g]?.length).map(groupe=>{
+              const items = parGroupe[groupe];
+              const nbActifs = items.filter(p=>hasPresta(p.id)).length;
+              const ouvert = groupeOuvert===groupe;
+              return (
+                <div key={groupe}>
+                  <div onClick={()=>setGroupeOuvert(ouvert?null:groupe)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"13px 16px",borderRadius:10,cursor:"pointer",background:ouvert?T.surface2:T.surface,border:`1.5px solid ${nbActifs>0?"#0EA5E9":T.border}`,marginBottom:ouvert?8:0}}>
+                    <span style={{fontSize:20}}>{iconesGroupes[groupe]||"🔧"}</span>
+                    <span style={{flex:1,fontWeight:800,fontSize:14,color:T.text}}>{groupe}</span>
+                    {nbActifs>0&&<span style={{fontSize:11,fontWeight:800,color:"#0EA5E9",background:"rgba(14,165,233,0.14)",padding:"2px 9px",borderRadius:12}}>{nbActifs} sélectionnée{nbActifs>1?"s":""}</span>}
+                    <span style={{color:T.textMuted,fontSize:13,transition:"transform .15s",transform:ouvert?"rotate(90deg)":"none"}}>▶</span>
+                  </div>
+                  {ouvert && (
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:8,paddingLeft:8,borderLeft:`2px solid ${T.border}`}}>
+                      {items.map(presta=>{
             const active = hasPresta(presta.id);
             const data = f.prestations.find(p=>p.id===presta.id);
             const isOpen = expanded===presta.id;
@@ -2133,11 +2151,6 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 
             return (
               <React.Fragment key={presta.id}>
-              {changementGroupe && (
-                <div style={{fontSize:10.5,fontWeight:800,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginTop:premierGroupe?0:12,marginBottom:1,paddingTop:premierGroupe?0:10,borderTop:premierGroupe?"none":`1px solid ${T.border}`}}>
-                  {presta.groupe==="Assainissement"?"🚛":"🪛"} {presta.groupe}
-                </div>
-              )}
               <div style={{border:`1.5px solid ${active?presta.color:T.border}`,borderRadius:10,overflow:"hidden",background:active?presta.color+"0D":T.surface2,transition:"all .2s",cursor:"pointer"}}
                 onClick={()=>{if(!active){togglePresta(presta.id);setExpanded(presta.id);}else setExpanded(isOpen?null:presta.id);}}>
 
@@ -2210,7 +2223,12 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
               </div>
               </React.Fragment>
             );
-          });
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            });
           })()}
         </div>
       </div>
@@ -4468,14 +4486,26 @@ Règles : 2 à 6 lignes maximum, prix HT réalistes et arrondis, quantité enti�
   };
   const genererDescriptifIA = async () => {
     const lignesValides = d.lignes.filter(l=>l.label?.trim());
-    if(!lignesValides.length){alert("Ajoutez d'abord des lignes au devis.");return;}
+    const texteBrut = d.notes?.trim();
+    const forfaitInfo = d.modeForfait && d.forfaitLabel?.trim();
+    // En mode forfait il n'y a jamais de lignes détaillées — ce n'est pas une raison de
+    // bloquer la génération IA : on rédige à partir de l'intitulé du forfait, ou du texte
+    // déjà tapé dans les notes (l'IA le reformule en paragraphe professionnel).
+    if(!lignesValides.length && !forfaitInfo && !texteBrut){
+      alert("Décrivez d'abord les travaux — soit avec des lignes détaillées, soit en mode forfait avec un intitulé, soit directement dans les notes ci-dessous.");
+      return;
+    }
     setGenIA(true);
     try {
+      const source = lignesValides.length
+        ? `Travaux prévus :\n${lignesValides.map(l=>`- ${l.label}${l.qte>1?` (quantité : ${l.qte})`:""}`).join("\n")}`
+        : forfaitInfo
+          ? `Intitulé du forfait : ${d.forfaitLabel}`
+          : `Description donnée par l'utilisateur, à reformuler proprement en paragraphe professionnel :\n${texteBrut}`;
       const prompt = `Tu rédiges le descriptif d'un devis pour une entreprise d'assainissement/plomberie. Rédige un court paragraphe professionnel (3 à 5 phrases, français soigné, ton commercial sobre) décrivant les travaux proposés ci-dessous. Utilise "nous proposons" / "notre intervention comprendra". Ne donne AUCUN prix, AUCUN montant. Ne liste pas ligne par ligne : fais des phrases fluides qui regroupent les travaux. Termine par une phrase sur le résultat attendu (rétablissement du bon écoulement, prévention des obstructions...).
 ${d.client?`Client : ${d.client}`:""}
 ${d.adresse?`Adresse : ${d.adresse}`:""}
-Travaux prévus :
-${lignesValides.map(l=>`- ${l.label}${l.qte>1?` (quantité : ${l.qte})`:""}`).join("\n")}
+${source}
 Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
       const r = await fetch("/api/claude", {
         method:"POST", headers:{"Content-Type":"application/json"},
