@@ -2176,9 +2176,9 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
                     {[
                       {key:"localisations",icon:"📍",label:"Localisation",opts:co(presta,"localisations")},
                       {key:"problemes",icon:"⚠️",label:"Problème constaté",opts:co(presta,"problemes")},
-                      ...(presta.causes?[{key:"causes",icon:"🔍",label:"Cause du bouchon",opts:co(presta,"causes"),badge:"Débouchage"}]:[]),
-                      ...(presta.constatCamera?[{key:"constatCamera",icon:"📹",label:"Constat caméra",opts:co(presta,"constatCamera"),badge:"Inspection"}]:[]),
-                      ...(presta.methodes?[{key:"methodes",icon:"🔬",label:"Méthode de détection",opts:co(presta,"methodes"),badge:"Recherche de fuite"}]:[]),
+                      ...(presta.causes?[{key:"causes",icon:"🔍",label:presta.groupe==="Assainissement"?"Cause du bouchon":"Cause identifiée",opts:co(presta,"causes")}]:[]),
+                      ...(presta.constatCamera?[{key:"constatCamera",icon:"📹",label:"Constat caméra",opts:co(presta,"constatCamera")}]:[]),
+                      ...(presta.methodes?[{key:"methodes",icon:"🔬",label:"Méthode de détection",opts:co(presta,"methodes")}]:[]),
                       {key:"actions",icon:"🔨",label:"Action réalisée",opts:co(presta,"actions")},
                       {key:"resultats",icon:"✅",label:"Résultat",opts:co(presta,"resultats")},
                     ].map(sec=>(
