@@ -370,6 +370,8 @@ const savePrestationLabel = (id, label) => set(ref(db, `prestationLabels/${id}`)
 // modules d'origine, sans rien modifier ailleurs.
 const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","methodes","actions","resultats"];
 const watchPrestationsCustom = (cb) => onValue(ref(db, "prestationsCustom"), snap => cb(snap.val()||{}));
+const watchParametresIA = (cb) => onValue(ref(db, "parametresIA"), snap => cb(snap.val()||{analysePhotos:true,maxPhotos:0}));
+const saveParametresIA = (params) => set(ref(db, "parametresIA"), sanitize(params));
 const savePrestationCustom = (item) => set(ref(db, `prestationsCustom/${item.id}`), sanitize(item));
 const deletePrestationCustom = (id) => remove(ref(db, `prestationsCustom/${id}`));
 function applyPrestationsCustom(data={}) {
@@ -602,7 +604,7 @@ function suggestPreconisations(prestations) {
 /* ═══════════════════════════════════════════
    GÉNÉRATION CONCLUSION IA
 ═══════════════════════════════════════════ */
-async function generateConclusionIA(prestations, locStr, responsabilite, preconisations = []) {
+async function generateConclusionIA(prestations, locStr, responsabilite, preconisations = [], photos = []) {
   const details = prestations.map(p => {
     const meta = PRESTATIONS.find(x => x.id === p.id);
     return {
@@ -651,7 +653,23 @@ Règles :
 - Si aucune inspection caméra ne figure dans les Actions, n'affirme pas qu'un passage caméra a eu lieu
 - Termine par une formule de politesse courte et simple
 - Maximum 4 phrases. Si peu d'informations sont fournies, fais encore plus court.
-- NE PAS lister les prestations séparément, faire un texte coulant`;
+- NE PAS lister les prestations séparément, faire un texte coulant${photos.length ? `
+- Des photos de l'intervention sont jointes ci-dessous. Appuie-toi sur ce que tu observes concrètement dessus (état visible, matériel, avant/après si distinguable) pour enrichir FACTUELLEMENT la conclusion — uniquement ce qui est visible, sans jamais inventer un détail non confirmé par le texte ou l'image` : ""}`;
+
+  // Construction des blocs de contenu : photos d'abord (URL Storage ou base64 selon leur
+  // origine), puis le texte du prompt — pour que l'IA s'appuie vraiment sur ce qu'elle voit,
+  // pas seulement sur les cases cochées.
+  const contentBlocks = [];
+  for (const p of photos) {
+    if (!p?.data) continue;
+    if (p.data.startsWith("http")) {
+      contentBlocks.push({ type: "image", source: { type: "url", url: p.data } });
+    } else if (p.data.startsWith("data:")) {
+      const mediaType = p.data.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
+      contentBlocks.push({ type: "image", source: { type: "base64", media_type: mediaType, data: p.data.split(",")[1] } });
+    }
+  }
+  contentBlocks.push({ type: "text", text: prompt });
 
   const response = await fetch("/api/claude", {
     method: "POST",
@@ -659,7 +677,7 @@ Règles :
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: contentBlocks }],
     }),
   });
   const data = await response.json();
@@ -1696,7 +1714,7 @@ function PhotoViewer({ photos, index, onClose, onIndexChange }) {
 /* ═══════════════════════════════════════════
    FORMULAIRE FICHE — SCROLL UNIQUE
 ═══════════════════════════════════════════ */
-function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {} }) {
+function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {}, parametresIA = {analysePhotos:true,maxPhotos:0} }) {
   const co = (meta, cat) => (champsCustom?.[meta.id]?.[cat]?.length ? champsCustom[meta.id][cat] : meta[cat]);
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
@@ -1824,10 +1842,65 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     setGeneratingConclusion(true);
     try {
       const locStr = formatLoc(f.loc);
-      const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite, f.preconisations);
+      const photosPourIA = parametresIA.analysePhotos
+        ? (parametresIA.maxPhotos>0 ? (f.photos||[]).slice(0,parametresIA.maxPhotos) : (f.photos||[]))
+        : [];
+      const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite, f.preconisations, photosPourIA);
       set("conclusion", text);
     } catch(e) { alert("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingConclusion(false); }
+  };
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const ouvrirChatIA = async () => {
+    setChatOpen(true);
+    if(chatMessages.length) return; // déjà initialisé, on continue la conversation en cours
+    const locStr = formatLoc(f.loc);
+    const contexte = f.prestations.map(p=>{
+      const meta = PRESTATIONS.find(x=>x.id===p.id);
+      const bouts = [p.problemes?.join(", "),p.causes?.join(", "),p.actions?.join(", "),p.resultats?.join(", ")].filter(Boolean).join(" / ");
+      return `${meta?.label}${bouts?` : ${bouts}`:""}`;
+    }).join("\n");
+    const premierMessage = `Voici le contexte de cette intervention de plomberie/assainissement, pour m'aider à rédiger ou améliorer la conclusion de son rapport :
+${locStr?`Lieu : ${locStr}\n`:""}${contexte}
+Conclusion actuelle du rapport : "${f.conclusion||"(vide, à rédiger)"}"
+
+Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer le ton, ajouter un détail…). À chaque fois que je te demande une modification du texte, réponds UNIQUEMENT avec le nouveau texte de la conclusion, sans commentaire ni guillemets autour — sauf si je te pose une question directe, auquel cas réponds normalement en une phrase ou deux. Confirme d'abord que tu as bien comrpis en une courte phrase, sans répéter tout le contexte.`;
+    setChatLoading(true);
+    try {
+      const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:800,messages:[{role:"user",content:premierMessage}]})});
+      const d = await r.json();
+      if(!r.ok) throw new Error(d?.error?.message||d?.error||"Erreur API");
+      const reponse = d.content?.[0]?.text || "Prêt, dis-moi ce que tu veux ajuster.";
+      setChatMessages([{role:"user",content:premierMessage,hidden:true},{role:"assistant",content:reponse}]);
+    } catch(e) {
+      setChatMessages([{role:"assistant",content:"❌ Erreur de connexion : "+(e?.message||e)}]);
+    }
+    setChatLoading(false);
+  };
+
+  const envoyerMessageChat = async () => {
+    if(!chatInput.trim()||chatLoading) return;
+    const nouveaux = [...chatMessages, {role:"user",content:chatInput.trim()}];
+    setChatMessages(nouveaux);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:800,messages:nouveaux.map(m=>({role:m.role,content:m.content}))})});
+      const d = await r.json();
+      if(!r.ok) throw new Error(d?.error?.message||d?.error||"Erreur API");
+      const reponse = d.content?.[0]?.text || "…";
+      setChatMessages([...nouveaux, {role:"assistant",content:reponse}]);
+    } catch(e) {
+      setChatMessages([...nouveaux, {role:"assistant",content:"❌ Erreur de connexion : "+(e?.message||e)}]);
+    }
+    setChatLoading(false);
   };
 
   const handleGenererNote = async (prestaId) => {
@@ -2294,7 +2367,11 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
       {/* ── CONCLUSION ── */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>📝 Conclusion <span style={{fontSize:11,fontWeight:400,color:T.textMuted}}>(visible client)</span></div>
-        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:8}}>
+          <button onClick={ouvrirChatIA} disabled={f.prestations.length===0}
+            style={{fontSize:12,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.3)",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
+            💬 Discuter avec l'IA
+          </button>
           <button onClick={handleGenererConclusion} disabled={generatingConclusion||f.prestations.length===0}
             style={{fontSize:12,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.1)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
             {generatingConclusion?"⏳ Génération en cours…":"✨ Générer conclusion en bon français"}
@@ -2305,6 +2382,43 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
           style={{width:"100%",padding:"12px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,resize:"vertical",lineHeight:1.7,outline:"none",fontFamily:"inherit"}}/>
         {f.conclusion&&<div style={{fontSize:11,color:T.textMuted,marginTop:4}}>💡 Vous pouvez modifier le texte librement.</div>}
       </div>
+
+      {chatOpen && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setChatOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:"16px 16px 0 0",width:"100%",maxWidth:560,height:"78vh",display:"flex",flexDirection:"column"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{fontWeight:800,fontSize:15,color:T.text}}>💬 Discuter du rapport avec l'IA</div>
+              <button onClick={()=>setChatOpen(false)} style={{background:"none",border:"none",color:T.textMuted,fontSize:20,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+              {chatMessages.filter(m=>!m.hidden).map((m,i)=>(
+                <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%"}}>
+                  <div style={{padding:"10px 14px",borderRadius:12,fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",
+                    background:m.role==="user"?"linear-gradient(135deg,#0EA5E9,#6366F1)":T.surface2,
+                    color:m.role==="user"?"#fff":T.text}}>
+                    {m.content}
+                  </div>
+                  {m.role==="assistant"&&(
+                    <button onClick={()=>{set("conclusion",m.content);setChatOpen(false);}}
+                      style={{marginTop:4,fontSize:11,fontWeight:700,color:"#10B981",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+                      ✅ Utiliser comme conclusion
+                    </button>
+                  )}
+                </div>
+              ))}
+              {chatLoading&&<div style={{alignSelf:"flex-start",fontSize:12,color:T.textMuted}}>⏳ L'IA réfléchit…</div>}
+            </div>
+            <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:`1px solid ${T.border}`}}>
+              <input value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"&&!chatLoading)envoyerMessageChat();}}
+                placeholder="Ex : raccourcis-le, ajoute que le syndic était présent…"
+                style={{flex:1,padding:"11px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:20,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+              <button onClick={envoyerMessageChat} disabled={chatLoading||!chatInput.trim()}
+                style={{width:42,height:42,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",fontSize:16,cursor:chatLoading?"default":"pointer",fontFamily:"inherit",opacity:chatLoading||!chatInput.trim()?0.5:1,flexShrink:0}}>➤</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── PHOTOS ── */}
       <div style={sectionStyle}>
@@ -2479,7 +2593,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[] }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -2527,6 +2641,29 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       </div>
 
       {/* Journal d'activité — connexions, ajouts de photo... */}
+      <Repliable T={T} icone="🤖" titre="Intelligence artificielle" defaultOpen={false}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${T.border}`,marginBottom:12}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:T.text}}>📷 Analyser les photos dans la conclusion</div>
+            <div style={{fontSize:11.5,color:T.textMuted,marginTop:2,maxWidth:400}}>Quand activé, l'IA regarde les photos jointes à la fiche pour enrichir la conclusion rédigée. Plus lent si beaucoup de photos.</div>
+          </div>
+          <button onClick={()=>onSaveParametresIA({...parametresIA,analysePhotos:!parametresIA.analysePhotos})}
+            style={{width:44,height:26,borderRadius:13,border:"none",cursor:"pointer",flexShrink:0,background:parametresIA.analysePhotos?"#0EA5E9":T.surface2,position:"relative",transition:"background .15s"}}>
+            <span style={{position:"absolute",top:3,left:parametresIA.analysePhotos?21:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .15s"}}/>
+          </button>
+        </div>
+        {parametresIA.analysePhotos && (
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:13,color:T.text}}>Nombre maximum de photos analysées</div>
+              <div style={{fontSize:11.5,color:T.textMuted,marginTop:2}}>Laisser à 0 pour envoyer toutes les photos, peu importe leur nombre.</div>
+            </div>
+            <input type="number" min="0" value={parametresIA.maxPhotos||0} onChange={e=>onSaveParametresIA({...parametresIA,maxPhotos:parseInt(e.target.value)||0})}
+              style={{width:70,padding:"8px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:14,textAlign:"center",outline:"none",fontFamily:"inherit"}}/>
+          </div>
+        )}
+      </Repliable>
+
       <Repliable T={T} icone="🕵️" titre="Journal d'activité">
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
           Qui a ouvert l'application, quand, et quelques actions clés (ajout de photo…). Sert aussi de "vu" implicite pour les alertes : si la dernière connexion d'une personne est après l'heure d'une alerte, elle a au moins rouvert l'app depuis.
@@ -2758,6 +2895,59 @@ const CHAMPS_CATS = [
 function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateModule, onDeleteModule }) {
   const T = THEMES[theme] || THEMES.dark;
   const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
+  const [iaTexte, setIaTexte] = useState("");
+  const [iaPropositions, setIaPropositions] = useState(null); // [{prestationId,categorie,item,selected}]
+  const [iaLoading, setIaLoading] = useState(false);
+
+  const analyserAvecIA = async () => {
+    if(!iaTexte.trim()) return;
+    setIaLoading(true);
+    try {
+      const structureTexte = PRESTATIONS.map(p=>{
+        const catsDispo = CHAMPS_CATS.filter(c=>Array.isArray(p[c.key]));
+        return `- ${p.id} ("${p.label}") — catégories disponibles : ${catsDispo.map(c=>c.key).join(", ")}`;
+      }).join("\n");
+      const prompt = `Tu configures les cases à cocher d'une application terrain pour une entreprise de plomberie/assainissement.
+Voici les types de prestations disponibles et leurs catégories de cases actives :
+${structureTexte}
+
+Voici ce que l'utilisateur veut ajouter, en langage naturel — la demande peut concerner plusieurs cases, plusieurs catégories et plusieurs prestations à la fois :
+"${iaTexte.trim()}"
+
+Réponds UNIQUEMENT avec un tableau JSON valide, sans texte autour, sans backticks, de cette forme exacte :
+[{"prestationId":"id_exact_de_la_liste_ci-dessus","categorie":"cle_exacte_parmi_celles_listees_pour_cette_prestation","item":"Libellé de la nouvelle case"}]
+Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, choisis la catégorie la plus logique (problemes pour un souci constaté, actions pour un geste technique réalisé, resultats pour un aboutissement, localisations pour un lieu, causes pour une origine identifiée). N'invente jamais un prestationId ou une categorie qui n'existe pas dans la liste fournie.`;
+      const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
+      const d = await r.json();
+      if(!r.ok) throw new Error(d?.error?.message||d?.error||"Erreur API");
+      const raw = (d.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+      const props = JSON.parse(raw);
+      if(!Array.isArray(props)||!props.length){ alert("L'IA n'a proposé aucune case à ajouter — reformulez peut-être plus précisément."); setIaLoading(false); return; }
+      setIaPropositions(props.map(p=>({...p,selected:true})));
+    } catch(e) { alert("Erreur lors de l'analyse : "+(e?.message||e)); }
+    setIaLoading(false);
+  };
+
+  const appliquerPropositionsIA = () => {
+    const retenues = iaPropositions.filter(p=>p.selected);
+    const groupes = {};
+    retenues.forEach(p=>{
+      const cle = `${p.prestationId}|${p.categorie}`;
+      if(!groupes[cle]) groupes[cle] = {prestationId:p.prestationId, categorie:p.categorie, items:[]};
+      groupes[cle].items.push(p.item);
+    });
+    Object.values(groupes).forEach(g=>{
+      const meta = PRESTATIONS.find(p=>p.id===g.prestationId);
+      if(!meta) return;
+      const listeActuelle = champs?.[g.prestationId]?.[g.categorie]?.length ? champs[g.prestationId][g.categorie] : (meta[g.categorie]||[]);
+      const nouvelleListe = [...listeActuelle, ...g.items.filter(it=>!listeActuelle.includes(it))];
+      onSave(g.prestationId, g.categorie, nouvelleListe);
+    });
+    setIaPropositions(null);
+    setIaTexte("");
+  };
+
   const isPreco = prestaId==="_global";
   const meta = isPreco ? null : PRESTATIONS.find(p=>p.id===prestaId);
   const cats = isPreco
@@ -2801,6 +2991,49 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
       <div style={{background:"rgba(14,165,233,0.07)",border:"1px solid rgba(14,165,233,0.25)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:T.text,lineHeight:1.6}}>
         ⚙️ Ici vous gérez vous-même les cases proposées dans les fiches : <b>ajoutez</b> ➕, <b>renommez</b> ✏️, <b>supprimez</b> ✕ ou <b>déplacez</b> ↑↓ les cases. Les modifications s'appliquent immédiatement pour toute l'équipe. Les fiches déjà enregistrées ne sont pas touchées.
       </div>
+
+      <div style={{background:"rgba(139,92,246,0.07)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+        <div style={{fontWeight:800,fontSize:13,color:"#A78BFA",marginBottom:6}}>🤖 Ajouter des cases en langage naturel</div>
+        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Décrivez ce que vous voulez ajouter, même sur plusieurs prestations à la fois. Ex : "Ajoute 'Vanne cassée' dans Problème pour Robinetterie, et 'Test de pression réussi' dans Résultat pour Alimentation générale."</div>
+        <textarea value={iaTexte} onChange={e=>setIaTexte(e.target.value)} rows={3}
+          placeholder="Décrivez les cases à ajouter…"
+          style={{width:"100%",padding:"10px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,resize:"vertical",outline:"none",fontFamily:"inherit",marginBottom:8}}/>
+        <button onClick={analyserAvecIA} disabled={iaLoading||!iaTexte.trim()}
+          style={{padding:"9px 16px",background:iaLoading?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:iaLoading?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:iaLoading?"default":"pointer",fontFamily:"inherit",opacity:!iaTexte.trim()?0.5:1}}>
+          {iaLoading?"⏳ Analyse…":"✨ Analyser"}
+        </button>
+      </div>
+
+      {iaPropositions && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setIaPropositions(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🤖 Cases proposées</div>
+            <div style={{fontSize:11.5,color:T.textMuted,marginBottom:16}}>Décochez ce que vous ne voulez pas ajouter, puis confirmez.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
+              {iaPropositions.map((p,i)=>{
+                const meta = PRESTATIONS.find(x=>x.id===p.prestationId);
+                const catInfo = CHAMPS_CATS.find(c=>c.key===p.categorie);
+                return (
+                  <div key={i} onClick={()=>setIaPropositions(props=>props.map((x,j)=>j===i?{...x,selected:!x.selected}:x))}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:9,cursor:"pointer",background:p.selected?"rgba(139,92,246,0.08)":T.surface2,border:`1.5px solid ${p.selected?"#A78BFA":T.border}`}}>
+                    <span style={{width:18,height:18,borderRadius:5,flexShrink:0,background:p.selected?"#A78BFA":"transparent",border:`2px solid ${p.selected?"#A78BFA":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{p.selected?"✓":""}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text}}>{p.item}</div>
+                      <div style={{fontSize:11,color:T.textMuted}}>{meta?.icon} {meta?.label||p.prestationId} — {catInfo?.icon} {catInfo?.label||p.categorie}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setIaPropositions(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+              <button onClick={appliquerPropositionsIA} disabled={!iaPropositions.some(p=>p.selected)} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",opacity:iaPropositions.some(p=>p.selected)?1:0.5}}>
+                ✅ Ajouter {iaPropositions.filter(p=>p.selected).length} case{iaPropositions.filter(p=>p.selected).length>1?"s":""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{background:showCreate?"rgba(139,92,246,0.08)":T.surface,border:`1.5px solid ${showCreate?"#8B5CF6":T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:14}}>
         {!showCreate ? (
@@ -5132,6 +5365,7 @@ function AppInterne() {
   const [prestaLabelsVersion, setPrestaLabelsVersion] = useState(0);
   const [champsCustom, setChampsCustom] = useState({});
   const [prestationsCustomVersion, setPrestationsCustomVersion] = useState(0);
+  const [parametresIA, setParametresIA] = useState({analysePhotos:true,maxPhotos:0}); // maxPhotos:0 = toutes
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
   // Après 5 secondes sans confirmation des droits d'accès, on démarre quand même l'app
@@ -5258,6 +5492,7 @@ function AppInterne() {
     const unsubPL = watchPrestationLabels(data => { applyPrestationLabels(data); setPrestaLabelsVersion(v=>v+1); });
     const unsubCh = watchChamps(data => setChampsCustom(data));
     const unsubPC = watchPrestationsCustom(data => { applyPrestationsCustom(data); setPrestationsCustomVersion(v=>v+1); });
+    const unsubIA = watchParametresIA(data => setParametresIA(data));
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
@@ -5265,7 +5500,7 @@ function AppInterne() {
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
     const unsubAct = watchActiviteLog(data => setActiviteLog(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubM(); unsubR(); unsubAct(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubIA(); unsubM(); unsubR(); unsubAct(); };
   },[currentUser]);
 
   const creerModuleService = (item) => { savePrestationCustom(item); };
@@ -5696,7 +5931,7 @@ function AppInterne() {
         )}
 
         {view==="form"&&(
-          <FicheForm champsCustom={champsCustom} initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients}/>
+          <FicheForm champsCustom={champsCustom} initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients} parametresIA={parametresIA}/>
         )}
 
         {view==="rdv"&&editing&&(
@@ -5941,6 +6176,7 @@ function AppInterne() {
               onSaveTechniciens={arr=>{setTechniciens(arr);saveTechniciens(arr);}}
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
+              parametresIA={parametresIA} onSaveParametresIA={p=>{setParametresIA(p);saveParametresIA(p);}}
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
