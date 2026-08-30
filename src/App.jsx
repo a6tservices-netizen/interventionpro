@@ -851,6 +851,10 @@ function buildReportHTML(fiche, hideInternal = false) {
 <title>Rapport ${fiche.id}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+/* Marges de page à zéro : sans espace de marge, le navigateur n'imprime plus ses
+   propres en-têtes/pieds de page (URL du site, date, "Page X sur Y").
+   Les marges visuelles sont restituées en padding interne dans le bloc @media print. */
+@page{size:A4;margin:0}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12px;line-height:1.7;-webkit-font-smoothing:antialiased}
 .header{position:relative;background:linear-gradient(135deg,#0c1e3d 0%,#132d54 100%);padding:32px 36px;border-radius:0 0 20px 20px;overflow:hidden}
@@ -947,6 +951,11 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
   .photo-item{max-height:190px}
   .photo-item img{max-height:190px}
   .sig-zone{margin-top:14px;gap:14px}
+  /* Compensation des marges de page mises à zéro (@page) : le contenu ne doit pas
+     coller aux bords de la feuille. */
+  .header{padding:24px 30px 20px}
+  .body{padding:13mm 12mm 16mm}
+  .photo-grid{padding-top:2mm}
 }
 </style></head><body>
 <div class="header">
@@ -1395,6 +1404,9 @@ function buildDevisHTML(devis) {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Devis ${devis.id}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+/* Idem rapport : marges de page à zéro pour supprimer l'en-tête/pied automatique
+   du navigateur (URL, date, pagination). */
+@page{size:A4;margin:0}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;color:#0f172a;background:#fff;font-size:12px;line-height:1.7}
 .header{background:#0a1628;display:grid;grid-template-columns:1fr auto}
@@ -1426,6 +1438,10 @@ td{padding:9px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
 @media print{
   tr,.pitem,.notes,.totaux{break-inside:avoid;page-break-inside:avoid}
   thead{display:table-header-group}
+  /* Compensation des marges de page mises à zéro (@page) */
+  .hl{padding:24px 32px}
+  .hr{padding:24px 32px}
+  .body{padding:13mm 12mm 16mm}
 }
 </style></head><body>
 <div class="header">
@@ -2941,8 +2957,7 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
   useEffect(()=>{
     if(!prefill) return;
     if(prefill.texte) setIaTexte(prefill.texte);
-    if(prefill.photos?.length) setIaPhotos(p=>[...p, ...prefill.photos]);
-    else if(prefill.photo) setIaPhotos(p=>[...p, prefill.photo]); // compat si un ancien appel passe encore une seule photo
+    if(prefill.photo) setIaPhotos(p=>[...p, prefill.photo]);
     onPrefillConsumed && onPrefillConsumed();
   }, [prefill]);
 
@@ -2969,12 +2984,8 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
 IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d'autre — aucune phrase d'introduction, aucune explication, aucune question, même si tu n'es pas sûr à 100% de ce que montre la photo. Réponds toujours en français dans les libellés. Si tu ne peux vraiment rien proposer, réponds avec un tableau vide : []`;
       const contentBlocks = [];
       iaPhotos.forEach(photo=>{
-        if(photo.startsWith("http")){
-          contentBlocks.push({type:"image", source:{type:"url", url:photo}});
-        } else if(photo.startsWith("data:")){
-          const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
-          contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:photo.split(",")[1]}});
-        }
+        const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
+        contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:photo.split(",")[1]}});
       });
       contentBlocks.push({type:"text", text:prompt});
       const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
@@ -6179,7 +6190,7 @@ function AppInterne() {
                 const meta = PRESTATIONS.find(x=>x.id===p.id);
                 return `${meta?.label} : ${[p.problemes?.join(", "),p.causes?.join(", "),p.actions?.join(", "),p.resultats?.join(", "),p.note].filter(Boolean).join(" / ")}`;
               }).join("\n");
-              setChampsPrefill({ texte, photos: (f.photos||[]).map(p=>p.data).filter(Boolean) });
+              setChampsPrefill({ texte, photo: f.photos?.[0]?.data || null });
               setView("accueil"); setNav("champs");
             }}
             onBack={()=>setView("accueil")}
