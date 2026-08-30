@@ -2964,7 +2964,8 @@ ${iaTexte.trim() ? `\nCe que l'utilisateur a précisé en plus, en langage natur
 
 Réponds UNIQUEMENT avec un tableau JSON valide, sans texte autour, sans backticks, de cette forme exacte :
 [{"prestationId":"id_exact_de_la_liste_ci-dessus","categorie":"cle_exacte_parmi_celles_listees_pour_cette_prestation","item":"Libellé de la nouvelle case, avec le bon vocabulaire technique du métier"}]
-Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, choisis la catégorie la plus logique (problemes pour un souci constaté, actions pour un geste technique réalisé, resultats pour un aboutissement, localisations pour un lieu, causes pour une origine identifiée). N'invente jamais un prestationId ou une categorie qui n'existe pas dans la liste fournie.`;
+Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, choisis la catégorie la plus logique (problemes pour un souci constaté, actions pour un geste technique réalisé, resultats pour un aboutissement, localisations pour un lieu, causes pour une origine identifiée). N'invente jamais un prestationId ou une categorie qui n'existe pas dans la liste fournie.
+IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d'autre — aucune phrase d'introduction, aucune explication, aucune question, même si tu n'es pas sûr à 100% de ce que montre la photo. Réponds toujours en français dans les libellés. Si tu ne peux vraiment rien proposer, réponds avec un tableau vide : []`;
       const contentBlocks = [];
       iaPhotos.forEach(photo=>{
         const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
@@ -2976,10 +2977,23 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
       const d = await r.json();
       if(!r.ok) throw new Error(d?.error?.message||d?.error||"Erreur API");
       const raw = (d.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
-      const props = JSON.parse(raw);
-      if(!Array.isArray(props)||!props.length){ alert("L'IA n'a proposé aucune case à ajouter — reformulez peut-être plus précisément."); setIaLoading(false); return; }
+      let props;
+      try {
+        props = JSON.parse(raw);
+      } catch {
+        // L'IA a peut-être ajouté une phrase avant/après le tableau malgré la consigne —
+        // on tente de récupérer juste la partie entre le premier [ et le dernier ].
+        const m = raw.match(/\[[\s\S]*\]/);
+        if(m){ props = JSON.parse(m[0]); }
+        else throw new Error(`Réponse inattendue de l'IA : "${raw.slice(0,200)}"`);
+      }
+      if(!Array.isArray(props)||!props.length){ alert("L'IA n'a proposé aucune case à ajouter — reformulez peut-être plus précisément, ou la photo n'est pas assez claire pour elle."); setIaLoading(false); return; }
       setIaPropositions(props.map(p=>({...p,selected:true})));
-    } catch(e) { alert("Erreur lors de l'analyse : "+(e?.message||e)); }
+    } catch(e) {
+      const msg = e?.message||String(e);
+      const hint = iaPhotos.length>3 ? "\n\n💡 Essayez avec moins de photos à la fois (2-3)." : "";
+      alert("Erreur lors de l'analyse : "+msg+hint);
+    }
     setIaLoading(false);
   };
 
@@ -3072,10 +3086,14 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
               reader.onload = ev => {
                 const img = new Image();
                 img.onload = () => {
-                  const max = 1000; const sc = Math.min(1, max/Math.max(img.width,img.height));
+                  // Compression volontairement plus forte ici que pour les photos de fiche :
+                  // avec plusieurs photos envoyées d'un coup, le total doit rester bien en
+                  // dessous de la limite de taille de requête de Vercel (~4,5 Mo) — l'IA n'a de
+                  // toute façon pas besoin d'une résolution très élevée pour identifier un objet.
+                  const max = 700; const sc = Math.min(1, max/Math.max(img.width,img.height));
                   const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
                   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-                  setIaPhotos(ps=>[...ps, c.toDataURL("image/jpeg",0.8)]);
+                  setIaPhotos(ps=>[...ps, c.toDataURL("image/jpeg",0.6)]);
                 };
                 img.src = ev.target.result;
               };
