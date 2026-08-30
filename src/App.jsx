@@ -3061,7 +3061,7 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
         ) : (
           <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:T.surface2,border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>
             📷 Joindre une photo
-            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
               const file = e.target.files?.[0]; if(!file) return;
               const reader = new FileReader();
               reader.onload = ev => {
