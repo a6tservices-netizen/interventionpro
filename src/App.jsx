@@ -2936,12 +2936,12 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
   const T = THEMES[theme] || THEMES.dark;
   const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
   const [iaTexte, setIaTexte] = useState("");
-  const [iaPhoto, setIaPhoto] = useState(null); // dataURL de la photo jointe, optionnelle
+  const [iaPhotos, setIaPhotos] = useState([]); // dataURLs des photos jointes, optionnelles, plusieurs possibles
 
   useEffect(()=>{
     if(!prefill) return;
     if(prefill.texte) setIaTexte(prefill.texte);
-    if(prefill.photo) setIaPhoto(prefill.photo);
+    if(prefill.photo) setIaPhotos(p=>[...p, prefill.photo]);
     onPrefillConsumed && onPrefillConsumed();
   }, [prefill]);
 
@@ -2949,7 +2949,7 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
   const [iaLoading, setIaLoading] = useState(false);
 
   const analyserAvecIA = async () => {
-    if(!iaTexte.trim() && !iaPhoto) return;
+    if(!iaTexte.trim() && !iaPhotos.length) return;
     setIaLoading(true);
     try {
       const structureTexte = PRESTATIONS.map(p=>{
@@ -2959,17 +2959,17 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
       const prompt = `Tu configures les cases à cocher d'une application terrain pour une entreprise de plomberie/assainissement.
 Voici les types de prestations disponibles et leurs catégories de cases actives :
 ${structureTexte}
-${iaPhoto ? `\nUne photo est jointe ci-dessous. Identifie d'abord précisément ce qu'elle montre (élément, matériau, état constaté...), même si le vocabulaire technique exact n'est pas donné par l'utilisateur — c'est justement à toi de le trouver. Ensuite, propose la ou les cases à ajouter en te basant sur ce que tu vois.` : ""}
+${iaPhotos.length ? `\n${iaPhotos.length>1?`${iaPhotos.length} photos sont jointes`:"Une photo est jointe"} ci-dessous. Identifie d'abord précisément ce qu'elle${iaPhotos.length>1?"s":""} montre${iaPhotos.length>1?"nt":""} (élément, matériau, état constaté...), même si le vocabulaire technique exact n'est pas donné par l'utilisateur — c'est justement à toi de le trouver. Ensuite, propose la ou les cases à ajouter en te basant sur ce que tu vois.` : ""}
 ${iaTexte.trim() ? `\nCe que l'utilisateur a précisé en plus, en langage naturel — la demande peut concerner plusieurs cases, plusieurs catégories et plusieurs prestations à la fois :\n"${iaTexte.trim()}"` : ""}
 
 Réponds UNIQUEMENT avec un tableau JSON valide, sans texte autour, sans backticks, de cette forme exacte :
 [{"prestationId":"id_exact_de_la_liste_ci-dessus","categorie":"cle_exacte_parmi_celles_listees_pour_cette_prestation","item":"Libellé de la nouvelle case, avec le bon vocabulaire technique du métier"}]
 Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, choisis la catégorie la plus logique (problemes pour un souci constaté, actions pour un geste technique réalisé, resultats pour un aboutissement, localisations pour un lieu, causes pour une origine identifiée). N'invente jamais un prestationId ou une categorie qui n'existe pas dans la liste fournie.`;
       const contentBlocks = [];
-      if(iaPhoto){
-        const mediaType = iaPhoto.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
-        contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:iaPhoto.split(",")[1]}});
-      }
+      iaPhotos.forEach(photo=>{
+        const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
+        contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:photo.split(",")[1]}});
+      });
       contentBlocks.push({type:"text", text:prompt});
       const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:contentBlocks}]})});
@@ -3000,7 +3000,7 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
     });
     setIaPropositions(null);
     setIaTexte("");
-    setIaPhoto(null);
+    setIaPhotos([]);
   };
 
   const isPreco = prestaId==="_global";
@@ -3053,16 +3053,21 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
         <textarea value={iaTexte} onChange={e=>setIaTexte(e.target.value)} rows={3}
           placeholder="Décrivez les cases à ajouter, ou laissez vide et joignez juste une photo…"
           style={{width:"100%",padding:"10px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,resize:"vertical",outline:"none",fontFamily:"inherit",marginBottom:8}}/>
-        {iaPhoto ? (
-          <div style={{position:"relative",display:"inline-block",marginBottom:10}}>
-            <img src={iaPhoto} alt="" style={{maxHeight:110,borderRadius:8,display:"block"}}/>
-            <button onClick={()=>setIaPhoto(null)} style={{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.8)",color:"#fff",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕</button>
+        {iaPhotos.length>0 && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
+            {iaPhotos.map((photo,i)=>(
+              <div key={i} style={{position:"relative",display:"inline-block"}}>
+                <img src={photo} alt="" style={{height:90,borderRadius:8,display:"block"}}/>
+                <button onClick={()=>setIaPhotos(ps=>ps.filter((_,j)=>j!==i))} style={{position:"absolute",top:-6,right:-6,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.8)",color:"#fff",border:"none",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
+              </div>
+            ))}
           </div>
-        ) : (
-          <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:T.surface2,border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>
-            📷 Joindre une photo
-            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
-              const file = e.target.files?.[0]; if(!file) return;
+        )}
+        <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:T.surface2,border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>
+          📷 {iaPhotos.length?"Ajouter une/des photo(s) de plus":"Joindre une ou plusieurs photos"}
+          <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{
+            const files = Array.from(e.target.files||[]); if(!files.length) return;
+            files.forEach(file=>{
               const reader = new FileReader();
               reader.onload = ev => {
                 const img = new Image();
@@ -3070,18 +3075,18 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
                   const max = 1000; const sc = Math.min(1, max/Math.max(img.width,img.height));
                   const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
                   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-                  setIaPhoto(c.toDataURL("image/jpeg",0.8));
+                  setIaPhotos(ps=>[...ps, c.toDataURL("image/jpeg",0.8)]);
                 };
                 img.src = ev.target.result;
               };
               reader.readAsDataURL(file);
-              e.target.value = "";
-            }}/>
-          </label>
-        )}
+            });
+            e.target.value = "";
+          }}/>
+        </label>
         <div>
-          <button onClick={analyserAvecIA} disabled={iaLoading||(!iaTexte.trim()&&!iaPhoto)}
-            style={{padding:"9px 16px",background:iaLoading?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:iaLoading?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:iaLoading?"default":"pointer",fontFamily:"inherit",opacity:(!iaTexte.trim()&&!iaPhoto)?0.5:1}}>
+          <button onClick={analyserAvecIA} disabled={iaLoading||(!iaTexte.trim()&&!iaPhotos.length)}
+            style={{padding:"9px 16px",background:iaLoading?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:iaLoading?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:iaLoading?"default":"pointer",fontFamily:"inherit",opacity:(!iaTexte.trim()&&!iaPhotos.length)?0.5:1}}>
             {iaLoading?"⏳ Analyse…":"✨ Analyser"}
           </button>
         </div>
