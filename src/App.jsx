@@ -2941,7 +2941,8 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
   useEffect(()=>{
     if(!prefill) return;
     if(prefill.texte) setIaTexte(prefill.texte);
-    if(prefill.photo) setIaPhotos(p=>[...p, prefill.photo]);
+    if(prefill.photos?.length) setIaPhotos(p=>[...p, ...prefill.photos]);
+    else if(prefill.photo) setIaPhotos(p=>[...p, prefill.photo]); // compat si un ancien appel passe encore une seule photo
     onPrefillConsumed && onPrefillConsumed();
   }, [prefill]);
 
@@ -2968,8 +2969,12 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
 IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d'autre — aucune phrase d'introduction, aucune explication, aucune question, même si tu n'es pas sûr à 100% de ce que montre la photo. Réponds toujours en français dans les libellés. Si tu ne peux vraiment rien proposer, réponds avec un tableau vide : []`;
       const contentBlocks = [];
       iaPhotos.forEach(photo=>{
-        const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
-        contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:photo.split(",")[1]}});
+        if(photo.startsWith("http")){
+          contentBlocks.push({type:"image", source:{type:"url", url:photo}});
+        } else if(photo.startsWith("data:")){
+          const mediaType = photo.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
+          contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:photo.split(",")[1]}});
+        }
       });
       contentBlocks.push({type:"text", text:prompt});
       const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
@@ -6174,7 +6179,7 @@ function AppInterne() {
                 const meta = PRESTATIONS.find(x=>x.id===p.id);
                 return `${meta?.label} : ${[p.problemes?.join(", "),p.causes?.join(", "),p.actions?.join(", "),p.resultats?.join(", "),p.note].filter(Boolean).join(" / ")}`;
               }).join("\n");
-              setChampsPrefill({ texte, photo: f.photos?.[0]?.data || null });
+              setChampsPrefill({ texte, photos: (f.photos||[]).map(p=>p.data).filter(Boolean) });
               setView("accueil"); setNav("champs");
             }}
             onBack={()=>setView("accueil")}
