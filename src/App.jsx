@@ -372,6 +372,30 @@ const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","
 const watchPrestationsCustom = (cb) => onValue(ref(db, "prestationsCustom"), snap => cb(snap.val()||{}));
 const watchParametresIA = (cb) => onValue(ref(db, "parametresIA"), snap => cb(snap.val()||{analysePhotos:true,maxPhotos:0}));
 const saveParametresIA = (params) => set(ref(db, "parametresIA"), sanitize(params));
+const MODELES_MESSAGE_DEFAUT = [
+  {nom:"Complet", texte:"📋 Rapport d'intervention — {id}\nClient : {client}\nAdresse : {adresse}\nDate : {date} à {heure}\n\nPrestations :\n{prestations}\n\nConclusion :\n{conclusion}\n\nTechnicien : {technicien}"},
+  {nom:"Court", texte:"Bonjour {client}, notre intervention du {date} est terminée. Rapport complet transmis séparément. Merci de votre confiance. — {technicien}, A6T Assainissement"},
+  {nom:"Suivi", texte:"Bonjour {client}, pour faire suite à notre passage du {date} : {conclusion}\nN'hésitez pas si besoin. — {technicien}"},
+];
+const watchParametresMessages = (cb) => onValue(ref(db, "parametresMessages"), snap => cb(snap.val()?.modeles?.length ? snap.val() : {modeles:MODELES_MESSAGE_DEFAUT}));
+const saveParametresMessages = (params) => set(ref(db, "parametresMessages"), sanitize(params));
+function appliquerModeleMessage(texte, fiche) {
+  const locStr = formatLoc(fiche.loc);
+  const prestationsTxt = (fiche.prestations||[]).map(p=>{
+    const meta = PRESTATIONS.find(x=>x.id===p.id);
+    return `• ${meta?.label}${p.resultats?.length?" — "+p.resultats.join(", "):""}`;
+  }).join("\n");
+  return (texte||"")
+    .replaceAll("{client}", fiche.client||"—")
+    .replaceAll("{adresse}", fiche.adresse||"—")
+    .replaceAll("{localisation}", locStr||"")
+    .replaceAll("{date}", dateFr(fiche.dateRdv))
+    .replaceAll("{heure}", fiche.heureRdv||"")
+    .replaceAll("{technicien}", fiche.technicien||"—")
+    .replaceAll("{id}", fiche.id||"")
+    .replaceAll("{conclusion}", fiche.conclusion||"")
+    .replaceAll("{prestations}", prestationsTxt);
+}
 const savePrestationCustom = (item) => set(ref(db, `prestationsCustom/${item.id}`), sanitize(item));
 const deletePrestationCustom = (id) => remove(ref(db, `prestationsCustom/${id}`));
 function applyPrestationsCustom(data={}) {
@@ -2593,7 +2617,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA, parametresMessages={modeles:MODELES_MESSAGE_DEFAUT}, onSaveParametresMessages }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -2662,6 +2686,22 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
               style={{width:70,padding:"8px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:14,textAlign:"center",outline:"none",fontFamily:"inherit"}}/>
           </div>
         )}
+      </Repliable>
+
+      <Repliable T={T} icone="✉️" titre="Modèles de message (WhatsApp/SMS)" defaultOpen={false}>
+        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:14,lineHeight:1.5}}>Ces 3 modèles sont proposés au choix quand vous envoyez un rapport au client. Utilisez ces variables, remplacées automatiquement : <code>{"{client} {adresse} {localisation} {date} {heure} {technicien} {id} {conclusion} {prestations}"}</code></div>
+        {parametresMessages.modeles.map((m,i)=>(
+          <div key={i} style={{marginBottom:14,paddingBottom:14,borderBottom:i<parametresMessages.modeles.length-1?`1px solid ${T.border}`:"none"}}>
+            <input value={m.nom} onChange={e=>{
+              const modeles=[...parametresMessages.modeles]; modeles[i]={...modeles[i],nom:e.target.value};
+              onSaveParametresMessages({...parametresMessages,modeles});
+            }} placeholder="Nom du modèle" style={{width:"100%",padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12.5,fontWeight:700,outline:"none",fontFamily:"inherit",marginBottom:6}}/>
+            <textarea value={m.texte} onChange={e=>{
+              const modeles=[...parametresMessages.modeles]; modeles[i]={...modeles[i],texte:e.target.value};
+              onSaveParametresMessages({...parametresMessages,modeles});
+            }} rows={4} style={{width:"100%",padding:"9px 11px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12.5,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.5}}/>
+          </div>
+        ))}
       </Repliable>
 
       <Repliable T={T} icone="🕵️" titre="Journal d'activité">
@@ -2892,15 +2932,24 @@ const CHAMPS_CATS = [
   {key:"actions",icon:"🔨",label:"Action réalisée"},
   {key:"resultats",icon:"✅",label:"Résultat"},
 ];
-function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateModule, onDeleteModule }) {
+function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateModule, onDeleteModule, prefill=null, onPrefillConsumed }) {
   const T = THEMES[theme] || THEMES.dark;
   const [prestaId, setPrestaId] = useState(PRESTATIONS[0].id);
   const [iaTexte, setIaTexte] = useState("");
+  const [iaPhoto, setIaPhoto] = useState(null); // dataURL de la photo jointe, optionnelle
+
+  useEffect(()=>{
+    if(!prefill) return;
+    if(prefill.texte) setIaTexte(prefill.texte);
+    if(prefill.photo) setIaPhoto(prefill.photo);
+    onPrefillConsumed && onPrefillConsumed();
+  }, [prefill]);
+
   const [iaPropositions, setIaPropositions] = useState(null); // [{prestationId,categorie,item,selected}]
   const [iaLoading, setIaLoading] = useState(false);
 
   const analyserAvecIA = async () => {
-    if(!iaTexte.trim()) return;
+    if(!iaTexte.trim() && !iaPhoto) return;
     setIaLoading(true);
     try {
       const structureTexte = PRESTATIONS.map(p=>{
@@ -2910,15 +2959,20 @@ function ChampsEditor({ champs, onSave, onSavePrestationLabel, theme, onCreateMo
       const prompt = `Tu configures les cases à cocher d'une application terrain pour une entreprise de plomberie/assainissement.
 Voici les types de prestations disponibles et leurs catégories de cases actives :
 ${structureTexte}
-
-Voici ce que l'utilisateur veut ajouter, en langage naturel — la demande peut concerner plusieurs cases, plusieurs catégories et plusieurs prestations à la fois :
-"${iaTexte.trim()}"
+${iaPhoto ? `\nUne photo est jointe ci-dessous. Identifie d'abord précisément ce qu'elle montre (élément, matériau, état constaté...), même si le vocabulaire technique exact n'est pas donné par l'utilisateur — c'est justement à toi de le trouver. Ensuite, propose la ou les cases à ajouter en te basant sur ce que tu vois.` : ""}
+${iaTexte.trim() ? `\nCe que l'utilisateur a précisé en plus, en langage naturel — la demande peut concerner plusieurs cases, plusieurs catégories et plusieurs prestations à la fois :\n"${iaTexte.trim()}"` : ""}
 
 Réponds UNIQUEMENT avec un tableau JSON valide, sans texte autour, sans backticks, de cette forme exacte :
-[{"prestationId":"id_exact_de_la_liste_ci-dessus","categorie":"cle_exacte_parmi_celles_listees_pour_cette_prestation","item":"Libellé de la nouvelle case"}]
+[{"prestationId":"id_exact_de_la_liste_ci-dessus","categorie":"cle_exacte_parmi_celles_listees_pour_cette_prestation","item":"Libellé de la nouvelle case, avec le bon vocabulaire technique du métier"}]
 Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, choisis la catégorie la plus logique (problemes pour un souci constaté, actions pour un geste technique réalisé, resultats pour un aboutissement, localisations pour un lieu, causes pour une origine identifiée). N'invente jamais un prestationId ou une categorie qui n'existe pas dans la liste fournie.`;
+      const contentBlocks = [];
+      if(iaPhoto){
+        const mediaType = iaPhoto.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
+        contentBlocks.push({type:"image", source:{type:"base64", media_type:mediaType, data:iaPhoto.split(",")[1]}});
+      }
+      contentBlocks.push({type:"text", text:prompt});
       const r = await fetch("/api/claude", {method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,messages:[{role:"user",content:contentBlocks}]})});
       const d = await r.json();
       if(!r.ok) throw new Error(d?.error?.message||d?.error||"Erreur API");
       const raw = (d.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
@@ -2946,6 +3000,7 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
     });
     setIaPropositions(null);
     setIaTexte("");
+    setIaPhoto(null);
   };
 
   const isPreco = prestaId==="_global";
@@ -2993,15 +3048,43 @@ Une entrée par case à ajouter. Si l'endroit n'est pas clairement précisé, ch
       </div>
 
       <div style={{background:"rgba(139,92,246,0.07)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-        <div style={{fontWeight:800,fontSize:13,color:"#A78BFA",marginBottom:6}}>🤖 Ajouter des cases en langage naturel</div>
-        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Décrivez ce que vous voulez ajouter, même sur plusieurs prestations à la fois. Ex : "Ajoute 'Vanne cassée' dans Problème pour Robinetterie, et 'Test de pression réussi' dans Résultat pour Alimentation générale."</div>
+        <div style={{fontWeight:800,fontSize:13,color:"#A78BFA",marginBottom:6}}>🤖 Ajouter des cases en langage naturel ou par photo</div>
+        <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>Décrivez ce que vous voulez ajouter (même sur plusieurs prestations à la fois), ou joignez simplement une photo — l'IA identifie ce qu'elle voit et propose la bonne case, même si vous ne connaissez pas le terme technique exact.</div>
         <textarea value={iaTexte} onChange={e=>setIaTexte(e.target.value)} rows={3}
-          placeholder="Décrivez les cases à ajouter…"
+          placeholder="Décrivez les cases à ajouter, ou laissez vide et joignez juste une photo…"
           style={{width:"100%",padding:"10px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,resize:"vertical",outline:"none",fontFamily:"inherit",marginBottom:8}}/>
-        <button onClick={analyserAvecIA} disabled={iaLoading||!iaTexte.trim()}
-          style={{padding:"9px 16px",background:iaLoading?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:iaLoading?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:iaLoading?"default":"pointer",fontFamily:"inherit",opacity:!iaTexte.trim()?0.5:1}}>
-          {iaLoading?"⏳ Analyse…":"✨ Analyser"}
-        </button>
+        {iaPhoto ? (
+          <div style={{position:"relative",display:"inline-block",marginBottom:10}}>
+            <img src={iaPhoto} alt="" style={{maxHeight:110,borderRadius:8,display:"block"}}/>
+            <button onClick={()=>setIaPhoto(null)} style={{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.8)",color:"#fff",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕</button>
+          </div>
+        ) : (
+          <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:T.surface2,border:`1.5px dashed ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>
+            📷 Joindre une photo
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
+              const file = e.target.files?.[0]; if(!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                  const max = 1000; const sc = Math.min(1, max/Math.max(img.width,img.height));
+                  const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+                  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+                  setIaPhoto(c.toDataURL("image/jpeg",0.8));
+                };
+                img.src = ev.target.result;
+              };
+              reader.readAsDataURL(file);
+              e.target.value = "";
+            }}/>
+          </label>
+        )}
+        <div>
+          <button onClick={analyserAvecIA} disabled={iaLoading||(!iaTexte.trim()&&!iaPhoto)}
+            style={{padding:"9px 16px",background:iaLoading?T.surface2:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:iaLoading?T.textMuted:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:13,cursor:iaLoading?"default":"pointer",fontFamily:"inherit",opacity:(!iaTexte.trim()&&!iaPhoto)?0.5:1}}>
+            {iaLoading?"⏳ Analyse…":"✨ Analyser"}
+          </button>
+        </div>
       </div>
 
       {iaPropositions && (
@@ -3746,8 +3829,8 @@ function ReportPreview({ fiche, onClose }) {
       </div>
       {showSendOptions&&(
         <div style={{background:"#0A1525",borderBottom:"1px solid #1a3050",padding:"12px 16px",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={()=>setApercuEnvoi({type:"whatsapp",texte:composerRapportWhatsApp(fiche)})} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
-          <button onClick={()=>setApercuEnvoi({type:"sms",texte:composerRapportSMS(fiche)})} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
+          <button onClick={()=>setApercuEnvoi({type:"whatsapp",modeleIdx:0,texte:appliquerModeleMessage(parametresMessages.modeles[0]?.texte,fiche)})} style={{padding:"8px 16px",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🟢 WhatsApp</button>
+          <button onClick={()=>setApercuEnvoi({type:"sms",modeleIdx:0,texte:appliquerModeleMessage(parametresMessages.modeles[0]?.texte,fiche)})} style={{padding:"8px 16px",background:"#334155",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💬 SMS</button>
           <button onClick={()=>{download();envoyerRapportArchivageInterne(fiche,true);}} style={{padding:"8px 16px",background:"#1E293B",border:"1px solid #F97316",color:"#F97316",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📧 Archiver (interne A6T)</button>
         </div>
       )}
@@ -4293,7 +4376,7 @@ function MemosVocauxView({ memos = [], theme, onReprendre }) {
 }
 
 
-function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null, onPreparerFacturePennylane = null, onEnvoyerFacturePennylane = null }) {
+function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevis, onToggleFacturation, onDuplicate, theme, techTels = {}, onSaveTechTel = null, sousTraitants = [], onSaveSousTraitants = null, monTechnicien = null, onClaim = null, onConfirmerPriseEnCharge = null, onMarquerEnvoye = null, onLoguerAppel = null, onAjouterCommentaire = null, onModifierCommentaire = null, onSupprimerAppel = null, onPreparerFacturePennylane = null, onEnvoyerFacturePennylane = null, onVerifierCases = null, parametresMessages = {modeles:MODELES_MESSAGE_DEFAUT} }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showPreview, setShowPreview] = useState(false);
   const [showFacturation, setShowFacturation] = useState(false);
@@ -4358,6 +4441,9 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           )}
           {!isRdv&&onCreateDevis&&(
             <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
+          )}
+          {!isRdv&&onVerifierCases&&(
+            <button onClick={()=>onVerifierCases(fiche)} style={{background:"none",border:"1.5px solid rgba(139,92,246,0.4)",color:"#A78BFA",borderRadius:8,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔍 Vérifier les cases (IA)</button>
           )}
           {!isRdv&&(
             <button onClick={()=>setShowFacturation(true)} style={{background:"linear-gradient(135deg,#10B981,#0D9488)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💶 Proposition de facturation</button>
@@ -4573,7 +4659,18 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setApercuEnvoi(null)}>
             <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
               <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>{apercuEnvoi.type==="whatsapp"?"🟢 Aperçu — message WhatsApp":"💬 Aperçu — message SMS"}</div>
-              <div style={{fontSize:11.5,color:T.textMuted,marginBottom:14}}>Vérifie et corrige si besoin — rien n'est envoyé tant que tu n'as pas confirmé.</div>
+              <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10}}>Vérifie et corrige si besoin — rien n'est envoyé tant que tu n'as pas confirmé.</div>
+              {parametresMessages.modeles.length>1&&(
+                <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+                  {parametresMessages.modeles.map((m,i)=>(
+                    <button key={i} onClick={()=>setApercuEnvoi(a=>({...a,modeleIdx:i,texte:appliquerModeleMessage(m.texte,fiche)}))}
+                      style={{fontSize:11.5,fontWeight:700,padding:"5px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",
+                        background:apercuEnvoi.modeleIdx===i?"#0EA5E9":T.surface2,color:apercuEnvoi.modeleIdx===i?"#fff":T.textMuted,border:`1px solid ${apercuEnvoi.modeleIdx===i?"#0EA5E9":T.border}`}}>
+                      {m.nom||`Modèle ${i+1}`}
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea value={apercuEnvoi.texte} onChange={e=>setApercuEnvoi(a=>({...a,texte:e.target.value}))} rows={10} style={{width:"100%",padding:"10px 12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical"}}/>
               <div style={{display:"flex",gap:10,marginTop:16}}>
                 <button onClick={()=>setApercuEnvoi(null)} style={{flex:1,padding:"11px",borderRadius:9,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
@@ -5366,6 +5463,8 @@ function AppInterne() {
   const [champsCustom, setChampsCustom] = useState({});
   const [prestationsCustomVersion, setPrestationsCustomVersion] = useState(0);
   const [parametresIA, setParametresIA] = useState({analysePhotos:true,maxPhotos:0}); // maxPhotos:0 = toutes
+  const [champsPrefill, setChampsPrefill] = useState(null); // {texte, photo} envoyé depuis une fiche vers l'outil "Ajouter des cases"
+  const [parametresMessages, setParametresMessages] = useState({modeles:MODELES_MESSAGE_DEFAUT});
   const [online, setOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
   const [currentUser, setCurrentUser] = useState(null);
   // Après 5 secondes sans confirmation des droits d'accès, on démarre quand même l'app
@@ -5493,6 +5592,7 @@ function AppInterne() {
     const unsubCh = watchChamps(data => setChampsCustom(data));
     const unsubPC = watchPrestationsCustom(data => { applyPrestationsCustom(data); setPrestationsCustomVersion(v=>v+1); });
     const unsubIA = watchParametresIA(data => setParametresIA(data));
+    const unsubMsg = watchParametresMessages(data => setParametresMessages(data));
     const unsub6 = watchClients(data => setClients(data));
     const unsub7 = watchDevis(data => setDevisList(data));
     const unsub8 = watchContrats(data => setContrats(data));
@@ -5500,7 +5600,7 @@ function AppInterne() {
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
     const unsubAct = watchActiviteLog(data => setActiviteLog(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubIA(); unsubM(); unsubR(); unsubAct(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubIA(); unsubMsg(); unsubM(); unsubR(); unsubAct(); };
   },[currentUser]);
 
   const creerModuleService = (item) => { savePrestationCustom(item); };
@@ -6046,6 +6146,14 @@ function AppInterne() {
                 alert("❌ Erreur réseau lors de la création de la facture : "+e.message);
               }
             }}
+            onVerifierCases={estRestreint ? null : (f)=>{
+              const texte = f.conclusion?.trim() || (f.prestations||[]).map(p=>{
+                const meta = PRESTATIONS.find(x=>x.id===p.id);
+                return `${meta?.label} : ${[p.problemes?.join(", "),p.causes?.join(", "),p.actions?.join(", "),p.resultats?.join(", "),p.note].filter(Boolean).join(" / ")}`;
+              }).join("\n");
+              setChampsPrefill({ texte, photo: f.photos?.[0]?.data || null });
+              setView("accueil"); setNav("champs");
+            }}
             onBack={()=>setView("accueil")}
             onEdit={()=>{setEditing(selected);setView(selected.type==="rdv"?"rdv":"form");}}
             onDelete={()=>{if(confirm("Supprimer définitivement cette fiche ?"))handleDelete(selected.id);}}
@@ -6169,7 +6277,7 @@ function AppInterne() {
             )}
 
             {nav==="dashboard"&&<TableauDeBord fiches={fichesVisibles} theme={theme} onNew={()=>{setEditing(null);setView("form");}} onNewRdv={()=>setShowRdvForm(true)} onDemarrer={demarrerIntervention} onSelect={f=>{setSelected(f);setView("detail");}} onFilterStatus={s=>{setFilterStatus(s);setNav("liste");}} taches={taches} onAjouterTache={ajouterTache} onToggleTache={toggleTache} onSupprimerTache={supprimerTache}/>}
-            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme} onCreateModule={creerModuleService} onDeleteModule={supprimerModuleService}/>}
+            {nav==="champs"&&<ChampsEditor champs={champsCustom} onSave={saveChamps} onSavePrestationLabel={savePrestationLabel} theme={theme} onCreateModule={creerModuleService} onDeleteModule={supprimerModuleService} prefill={champsPrefill} onPrefillConsumed={()=>setChampsPrefill(null)}/>}
             {nav==="admin"&&<AdminView societes={societes} techniciens={techniciens} techTels={techTels} techColors={techColors} logos={logos} champs={champsCustom}
               sousTraitants={sousTraitants} onSaveSousTraitants={arr=>{setSousTraitants(arr);saveSousTraitants(arr);}}
               onSaveSocietes={arr=>{setSocietes(arr);saveSocietes(arr);}}
@@ -6177,6 +6285,7 @@ function AppInterne() {
               onSaveTechTel={saveTechTel} onSaveTechColor={saveTechColor} onSaveLogo={saveLogo} onRemoveLogo={removeLogo}
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
               parametresIA={parametresIA} onSaveParametresIA={p=>{setParametresIA(p);saveParametresIA(p);}}
+              parametresMessages={parametresMessages} onSaveParametresMessages={p=>{setParametresMessages(p);saveParametresMessages(p);}}
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
