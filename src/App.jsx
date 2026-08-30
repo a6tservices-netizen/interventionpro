@@ -1344,8 +1344,23 @@ function composerRapportWhatsApp(fiche) {
   ].filter(Boolean).join("\n");
   return msg;
 }
+/* Normalise un numéro français saisi sous n'importe quelle forme
+   ("+33 (0) 6 98 10 14 42", "06.98.10.14.42", "0033698101442")
+   vers le format attendu par wa.me : 33698101442 (sans + ni espaces).
+   Renvoie "" si le numéro est vide ou inexploitable. */
+function normaliserTel(tel) {
+  let n = (tel||"").replace(/[^0-9]/g,"");
+  if(!n) return "";
+  if(n.startsWith("00")) n = n.slice(2);          // 0033... -> 33...
+  if(n.startsWith("330")) n = "33" + n.slice(3);  // +33 (0)6... -> 336...
+  if(n.startsWith("0")) n = "33" + n.slice(1);    // 06...      -> 336...
+  if(!n.startsWith("33") && n.length === 9) n = "33" + n; // 698101442 -> 336...
+  return n;
+}
+
 function envoyerRapportWhatsApp(fiche, texteModifie) {
-  const num = (fiche.tel||"").replace(/[^0-9+]/g,"");
+  const num = normaliserTel(fiche.tel);
+  if(!num){ alert("Aucun numéro de téléphone sur cette fiche — renseigne-le avant d'envoyer."); return; }
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(texteModifie ?? composerRapportWhatsApp(fiche))}`,"_blank");
 }
 
@@ -1353,7 +1368,7 @@ function composerRapportSMS(fiche) {
   return `Rapport ${fiche.id} — ${fiche.client||"Client"}. Intervention du ${dateFr(fiche.dateRdv)}. Rapport PDF transmis séparément.`;
 }
 function envoyerRapportSMS(fiche, texteModifie) {
-  const num = (fiche.tel||"").replace(/[^0-9+]/g,"");
+  const num = "+" + normaliserTel(fiche.tel);
   window.location.href = `sms:${num}?&body=${encodeURIComponent(texteModifie ?? composerRapportSMS(fiche))}`;
 }
 
@@ -3694,9 +3709,9 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
       ``,
       `Bonne intervention ! 💪`,
     ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
-    const num = (f.tel||"").replace(/[^0-9+]/g,"");
+    const num = normaliserTel(f.tel);
     if(canal==="whatsapp") window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
-    if(canal==="sms") window.location.href=`sms:${num}?&body=${encodeURIComponent(msg)}`;
+    if(canal==="sms") window.location.href=`sms:+${num}?&body=${encodeURIComponent(msg)}`;
   };
 
   return (
@@ -3825,10 +3840,12 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
 /* ═══════════════════════════════════════════
    APERÇU RAPPORT
 ═══════════════════════════════════════════ */
-function ReportPreview({ fiche, onClose }) {
+function ReportPreview({ fiche, onClose, parametresMessages = {modeles:MODELES_MESSAGE_DEFAUT}, onMarquerEnvoye = null }) {
   const [versionInterne, setVersionInterne] = useState(false);
   const [dl, setDl] = useState(false);
   const [showSendOptions, setShowSendOptions] = useState(false);
+  // Aperçu WhatsApp/SMS : l'état vit ici, dans le composant qui contient les boutons.
+  const [apercuEnvoi, setApercuEnvoi] = useState(null);
 
   const currentHtml = buildReportHTML(fiche, !versionInterne);
   const tryPrint = () => { const f=document.getElementById("rif"); try{f?.contentWindow?.focus();f?.contentWindow?.print();}catch(e){} };
@@ -3888,6 +3905,37 @@ function ReportPreview({ fiche, onClose }) {
       <div style={{padding:"10px 16px",background:"#0A1525",borderTop:"1px solid #1a3050",fontSize:12,color:"#475569",flexShrink:0}}>
         📱 Sur mobile : <b style={{color:"#94A3B8"}}>🖨 Imprimer / PDF</b> → « Enregistrer en PDF »
       </div>
+      {apercuEnvoi && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setApercuEnvoi(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0A1525",border:"1px solid #1a3050",borderRadius:16,padding:22,width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{fontWeight:800,fontSize:16,color:"#E2E8F0",marginBottom:4}}>{apercuEnvoi.type==="whatsapp"?"🟢 Aperçu — message WhatsApp":"💬 Aperçu — message SMS"}</div>
+            <div style={{fontSize:11.5,color:"#64748B",marginBottom:10}}>Vérifie et corrige si besoin — rien n'est envoyé tant que tu n'as pas confirmé.</div>
+            {parametresMessages.modeles.length>1&&(
+              <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+                {parametresMessages.modeles.map((m,i)=>(
+                  <button key={i} onClick={()=>setApercuEnvoi(a=>({...a,modeleIdx:i,texte:appliquerModeleMessage(m.texte,fiche)}))}
+                    style={{fontSize:11.5,fontWeight:700,padding:"5px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",
+                      background:apercuEnvoi.modeleIdx===i?"#0EA5E9":"#0B1829",color:apercuEnvoi.modeleIdx===i?"#fff":"#64748B",border:`1px solid ${apercuEnvoi.modeleIdx===i?"#0EA5E9":"#1a3050"}`}}>
+                    {m.nom||`Modèle ${i+1}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea value={apercuEnvoi.texte} onChange={e=>setApercuEnvoi(a=>({...a,texte:e.target.value}))} rows={10} style={{width:"100%",padding:"10px 12px",background:"#0B1829",border:"1px solid #1a3050",borderRadius:8,color:"#E2E8F0",fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical"}}/>
+            <div style={{display:"flex",gap:10,marginTop:16}}>
+              <button onClick={()=>setApercuEnvoi(null)} style={{flex:1,padding:"11px",borderRadius:9,border:"1px solid #1a3050",background:"none",color:"#64748B",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+              <button onClick={()=>{
+                if(apercuEnvoi.type==="whatsapp") envoyerRapportWhatsApp(fiche, apercuEnvoi.texte);
+                else envoyerRapportSMS(fiche, apercuEnvoi.texte);
+                onMarquerEnvoye&&onMarquerEnvoye(fiche);
+                setApercuEnvoi(null);
+              }} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:apercuEnvoi.type==="whatsapp"?"linear-gradient(135deg,#25D366,#128C7E)":"#334155",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                ✅ Confirmer et envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4440,7 +4488,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
 
   return (
     <div>
-      {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)}/>}
+      {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)} parametresMessages={parametresMessages} onMarquerEnvoye={onMarquerEnvoye}/>}
       {showFacturation&&<FacturationModal fiche={fiche} theme={theme} onClose={()=>setShowFacturation(false)}/>}
       {showSousTraitant&&<SousTraitantModal fiche={fiche} sousTraitants={sousTraitants} onSaveSousTraitants={onSaveSousTraitants||(()=>{})} theme={theme} onClose={()=>setShowSousTraitant(false)}/>}
       {!fiche.technicien && onClaim && (
