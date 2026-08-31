@@ -4021,7 +4021,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
           <div key={k.label} onClick={k.action} style={{...card,border:`1px solid ${k.color}22`,position:"relative",overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor=k.color;e.currentTarget.style.transform="translateY(-2px)";}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor=k.color+"22";e.currentTarget.style.transform="none";}}>
-            <div style={{position:"absolute",top:-10,right:-10,fontSize:40,opacity:.06}}>{k.icon}</div>
+            <div style={{position:"absolute",top:-8,right:-8,fontSize:42,opacity:.14}}>{k.icon}</div>
             <div style={{fontSize:12,fontWeight:600,color:T.textMuted,marginBottom:6}}>{k.label}</div>
             <div style={{fontSize:30,fontWeight:800,color:k.color,lineHeight:1}}>{k.val}</div>
           </div>
