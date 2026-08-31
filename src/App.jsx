@@ -6373,13 +6373,8 @@ function AppInterne() {
         <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"0 4px 14px rgba(14,165,233,0.3)",flexShrink:0}}>🔧</div>
 
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <button onClick={()=>setShowProfil(true)} title="Cet appareil / Notifications" style={{position:"relative",padding:"7px 10px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>
-            🔔
-            {!techNom&&<span style={{position:"absolute",top:-3,right:-3,width:9,height:9,borderRadius:"50%",background:"#EF4444",border:`1.5px solid ${T.surface}`}}/>}
-          </button>
-          <button onClick={()=>setShowRdvForm(true)} style={{padding:"7px 10px",background:"none",border:`1px solid #3B82F6`,borderRadius:8,color:"#3B82F6",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📅</button>
           <button onClick={()=>{setEditing(null);setView("form");}} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(14,165,233,0.25)"}}>
-            + Nouvelle
+            Nouvelle fiche
           </button>
         </div>
       </header>
@@ -6550,6 +6545,7 @@ function AppInterne() {
                   background:NAV_MENU.some(n=>n.id===nav)?"linear-gradient(135deg,#0EA5E9,#6366F1)":"transparent",
                   color:NAV_MENU.some(n=>n.id===nav)?"#fff":T.textMuted}}>
                   ☰ {NAV_MENU.find(n=>n.id===nav)?.label.split(" ")[0]||"Menu"} {menuOpen?"▲":"▼"}
+                  {!techNom&&<span style={{display:"inline-block",marginLeft:5,width:7,height:7,borderRadius:"50%",background:"#EF4444",verticalAlign:"middle"}}/>}
                 </button>
                 {menuOpen&&(
                   <>
@@ -6563,6 +6559,11 @@ function AppInterne() {
                           {n.label}
                         </button>
                       ))}
+                      <button onClick={()=>{setShowProfil(true);setMenuOpen(false);}}
+                        style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"transparent",color:T.text}}>
+                        Cet appareil et notifications
+                        {!techNom&&<span style={{width:8,height:8,borderRadius:"50%",background:"#EF4444"}}/>}
+                      </button>
                       {!estRestreint&&<button onClick={()=>{exporterExcel();setMenuOpen(false);}}
                         style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"transparent",color:"#10B981"}}>
                         Exporter en Excel
