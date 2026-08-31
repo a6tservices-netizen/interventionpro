@@ -774,7 +774,7 @@ function telechargerPDF(html, filename) {
   // Le bouton déclenche l'impression native du navigateur -> "Enregistrer au format PDF".
   // Fonctionne sur PC et mobile, sans dépendance externe (donc rien qui puisse casser).
   const w = window.open("", "_blank");
-  if (!w) { alert("Veuillez autoriser les fenêtres pop-up pour ce site, puis réessayez."); return; }
+  if (!w) { dlgInfo("Veuillez autoriser les fenêtres pop-up pour ce site, puis réessayez."); return; }
   const titre = (filename || "rapport").replace(/\.pdf$/i, "");
   const barre = `
 <div data-print-hide="1" style="position:sticky;top:0;z-index:99999;background:#0B1829;padding:12px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;font-family:Arial,sans-serif;">
@@ -1180,7 +1180,7 @@ function FacturationModal({ fiche, onClose, theme }) {
   const texte = buildFacturationTexte(fiche);
   const copier = async () => {
     try { await navigator.clipboard.writeText(texte); setCopied(true); setTimeout(()=>setCopied(false),2000); }
-    catch(e) { alert("Impossible de copier automatiquement — sélectionnez le texte manuellement."); }
+    catch(e) { dlgInfo("Impossible de copier automatiquement — sélectionnez le texte manuellement."); }
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -1262,7 +1262,7 @@ function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme })
   const [nom, setNom] = useState(techNom||"");
   const [statut, setStatut] = useState(null); // null | "loading" | "ok" | "denied" | "unsupported" | "error"
   const activer = async () => {
-    if(!nom.trim()){ alert("Choisissez d'abord votre nom."); return; }
+    if(!nom.trim()){ dlgInfo("Choisissez d'abord votre nom."); return; }
     onSaveTechNom(nom.trim());
     setStatut("loading");
     const res = await initNotifications(nom.trim());
@@ -1305,7 +1305,7 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
   const msg = buildSousTraitantTexte(fiche);
   const envoyer = (num) => { envoyerAuNumero(num, msg); onClose(); };
   const ajouterEtEnvoyer = () => {
-    if(!tel.trim()){ alert("Entrez au moins un numéro."); return; }
+    if(!tel.trim()){ dlgInfo("Entrez au moins un numéro."); return; }
     const next = [...sousTraitants, { nom: nom.trim()||tel.trim(), tel: tel.trim() }];
     onSaveSousTraitants(next);
     envoyer(tel.trim());
@@ -1399,7 +1399,7 @@ function normaliserTel(tel) {
 
 function envoyerRapportWhatsApp(fiche, texteModifie) {
   const num = normaliserTel(fiche.tel);
-  if(!num){ alert("Aucun numéro de téléphone sur cette fiche — renseigne-le avant d'envoyer."); return; }
+  if(!num){ dlgInfo("Aucun numéro de téléphone sur cette fiche — renseigne-le avant d'envoyer."); return; }
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(texteModifie ?? composerRapportWhatsApp(fiche))}`,"_blank");
 }
 
@@ -1925,7 +1925,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const addPhotos = async files => {
     const all = [...files];
     const videos = all.filter(x=>x.type.startsWith("video/"));
-    if(videos.length) alert("Les vidéos ne sont pas encore prises en charge (limite de stockage). Seules les photos ont été ajoutées.");
+    if(videos.length) dlgInfo("Les vidéos ne sont pas encore prises en charge (limite de stockage). Seules les photos ont été ajoutées.");
     const imgs = await Promise.all(all.filter(x=>x.type.startsWith("image/")).map(resizePhoto));
     setF(p=>({...p,photos:[...p.photos,...imgs]}));
     if(imgs.length) logActivite("photo_ajoutee", f.technicien||null, `${imgs.length} photo(s) — ${f.client||f.id||"fiche"}`);
@@ -1941,7 +1941,7 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
         : [];
       const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite, f.preconisations, photosPourIA);
       set("conclusion", text);
-    } catch(e) { alert("Erreur lors de la génération : " + (e?.message || e)); }
+    } catch(e) { dlgInfo("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingConclusion(false); }
   };
 
@@ -2005,7 +2005,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
       const locStr = formatLoc(f.loc);
       const text = await generateNotePrestation(presta, locStr);
       updatePresta(prestaId, "note", text);
-    } catch(e) { alert("Erreur lors de la génération : " + (e?.message || e)); }
+    } catch(e) { dlgInfo("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingNote(null); }
   };
 
@@ -2016,7 +2016,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
     if(!f.adresse?.trim()) errs.adresse = true;
     if(Object.keys(errs).length){
       setErrors(errs);
-      alert("⚠️ Le nom du client et l'adresse sont obligatoires pour enregistrer la fiche.");
+      dlgInfo("⚠️ Le nom du client et l'adresse sont obligatoires pour enregistrer la fiche.");
       window.scrollTo({top:0,behavior:"smooth"});
       return;
     }
@@ -2035,7 +2035,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
       brouillonIgnoreRef.current = true;
       try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
     } catch(e) {
-      alert("Erreur lors de l'enregistrement : " + (e?.message||e));
+      dlgInfo("Erreur lors de l'enregistrement : " + (e?.message||e));
     }
     setSaving(false);
   };
@@ -2709,15 +2709,15 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
     return (
       <Repliable T={T} icone={icon} titre={title}>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button onClick={()=>{const v=window.prompt(addLabel||"Nouvel élément :");if(v&&v.trim())writeList(k,[...liste,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
+          <button onClick={async ()=>{const v=await dlgPrompt(addLabel||"Nouvel élément",""  ,{titre:title,valider:"Ajouter"});if(v&&v.trim())writeList(k,[...liste,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {liste.map((item,i)=>(
           <div key={i} style={row(i===liste.length-1)}>
             <span style={{flex:1,fontSize:13,color:T.text}}>{item}</span>
             <button onClick={()=>{if(i>0){const l=[...liste];[l[i-1],l[i]]=[l[i],l[i-1]];writeList(k,l);}}} disabled={i===0} style={{...btn,opacity:i===0?.3:1}}>↑</button>
             <button onClick={()=>{if(i<liste.length-1){const l=[...liste];[l[i+1],l[i]]=[l[i],l[i+1]];writeList(k,l);}}} disabled={i===liste.length-1} style={{...btn,opacity:i===liste.length-1?.3:1}}>↓</button>
-            <button onClick={()=>{const v=window.prompt("Nouveau libellé :",item);if(v&&v.trim()){const l=[...liste];l[i]=v.trim();writeList(k,l);}}} style={btn}>✏️</button>
-            <button onClick={()=>{if(window.confirm(`Supprimer "${item}" ?`)){const l=[...liste];l.splice(i,1);writeList(k,l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+            <button onClick={async ()=>{const v=await dlgPrompt("Nouveau libellé",item,{titre:"Renommer",valider:"Enregistrer"});if(v&&v.trim()){const l=[...liste];l[i]=v.trim();writeList(k,l);}}} style={btn}>✏️</button>
+            <button onClick={async ()=>{if(await dlgConfirm(`« ${item} » sera retiré de la liste.`,{titre:"Supprimer",danger:true})){const l=[...liste];l.splice(i,1);writeList(k,l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
       </Repliable>
@@ -2830,11 +2830,11 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           try{
             const r = await fetch("/api/weekly-digest",{method:"POST"});
             const d = await r.json();
-            if(d.ok && d.sent) alert(`✅ Bilan envoyé (${d.envoyes} appareil(s)).\n${d.counts.nonCloturees} non clôturées · ${d.counts.devisEnAttente} devis en attente · ${d.counts.rapportsNonEnvoyes} rapports non envoyés`);
-            else if(d.ok && !d.sent && d.reason==="rien-a-signaler") alert("✅ Rien à signaler cette semaine — aucune notification envoyée.");
-            else if(d.ok && !d.sent && d.reason==="no-token") alert("⚠️ Rien n'a pu être envoyé : aucun appareil avec les notifications activées.");
-            else alert("❌ Erreur : "+(d.error||"inconnue"));
-          } catch(e){ alert("❌ Erreur réseau : "+e.message); }
+            if(d.ok && d.sent) dlgInfo(`✅ Bilan envoyé (${d.envoyes} appareil(s)).\n${d.counts.nonCloturees} non clôturées · ${d.counts.devisEnAttente} devis en attente · ${d.counts.rapportsNonEnvoyes} rapports non envoyés`);
+            else if(d.ok && !d.sent && d.reason==="rien-a-signaler") dlgInfo("✅ Rien à signaler cette semaine — aucune notification envoyée.");
+            else if(d.ok && !d.sent && d.reason==="no-token") dlgInfo("⚠️ Rien n'a pu être envoyé : aucun appareil avec les notifications activées.");
+            else dlgInfo("❌ Erreur : "+(d.error||"inconnue"));
+          } catch(e){ dlgInfo("❌ Erreur réseau : "+e.message); }
         }} style={{padding:"9px 16px",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📋 Tester le bilan maintenant</button>
       </Repliable>
 
@@ -2879,7 +2879,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       {/* Sociétés + logos */}
       <Repliable T={T} icone="🏢" titre="Sociétés intervenantes">
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button onClick={()=>{const v=window.prompt("Nom de la société :");if(v&&v.trim()&&!societes.includes(v.trim()))onSaveSocietes([...societes,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
+          <button onClick={async ()=>{const v=await dlgPrompt("Nom de la société","",{titre:"Nouvelle société",valider:"Ajouter"});if(v&&v.trim()&&!societes.includes(v.trim()))onSaveSocietes([...societes,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {societes.map((s,i)=>{
           const lk = logoKey(s); const hasLogo = !!logos[lk];
@@ -2890,8 +2890,8 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
                 : <span style={{fontSize:10,color:T.textMuted,border:`1px dashed ${T.border}`,borderRadius:4,padding:"4px 7px"}}>sans logo</span>}
               <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s}</span>
               <button onClick={()=>{setLogoTarget(s);logoRef.current?.click();}} style={{...btn,width:"auto",padding:"0 8px",fontSize:11}}>📷 {hasLogo?"Changer":"Logo"}</button>
-              {hasLogo&&<button onClick={()=>{if(window.confirm(`Retirer le logo de ${s} ?`))onRemoveLogo(s);}} style={btn}>🚫</button>}
-              <button onClick={()=>{if(window.confirm(`Supprimer la société "${s}" ?\n(Les fiches existantes la gardent.)`))onSaveSocietes(societes.filter(x=>x!==s));}} style={{...btn,color:"#EF4444"}}>✕</button>
+              {hasLogo&&<button onClick={async ()=>{if(await dlgConfirm(`Le logo de ${s} sera retiré des prochains rapports.`,{titre:"Retirer le logo",danger:true}))onRemoveLogo(s);}} style={btn}>🚫</button>}
+              <button onClick={async ()=>{if(await dlgConfirm(`« ${s} » sera retirée de la liste. Les fiches existantes la conservent.`,{titre:"Supprimer la société",danger:true}))onSaveSocietes(societes.filter(x=>x!==s));}} style={{...btn,color:"#EF4444"}}>✕</button>
             </div>
           );
         })}
@@ -2901,7 +2901,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       {/* Techniciens + numéros */}
       <Repliable T={T} icone="👤" titre="Techniciens, couleurs & numéros WhatsApp">
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button onClick={()=>{const v=window.prompt("Nom du technicien :");if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
+          <button onClick={async ()=>{const v=await dlgPrompt("Prénom ou nom du technicien","",{titre:"Nouveau technicien",valider:"Ajouter"});if(v&&v.trim()&&!techniciens.includes(v.trim()))onSaveTechniciens([...techniciens,v.trim()]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {techniciens.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun technicien — ils s'ajoutent aussi automatiquement à la 1ʳᵉ fiche.</div>}
         {techniciens.map((t,i)=>{
@@ -2923,7 +2923,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
                 style={{width:34,height:30,padding:0,border:`1px solid ${T.border}`,borderRadius:6,background:"none",cursor:"pointer"}}/>
               <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
                 style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-              <button onClick={()=>{if(window.confirm(`Supprimer le technicien "${t}" ?`)){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+              <button onClick={async ()=>{if(await dlgConfirm(`${t} sera retiré de la liste, avec son numéro et sa couleur d'agenda.`,{titre:"Supprimer le technicien",danger:true})){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
             </div>
             {statsOuvertes===t&&(
               <div style={{display:"flex",gap:8,padding:"10px 4px 14px",flexWrap:"wrap"}}>
@@ -2949,7 +2949,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       {/* Sous-traitants */}
       <Repliable T={T} icone="📤" titre="Sous-traitants">
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button onClick={()=>{const nom=window.prompt("Nom du sous-traitant :");if(!nom||!nom.trim())return;const tel=window.prompt("Numéro WhatsApp (33612345678) :");if(!tel||!tel.trim())return;onSaveSousTraitants([...sousTraitants,{nom:nom.trim(),tel:tel.trim()}]);}} style={addBtn}>➕ Ajouter</button>
+          <button onClick={async ()=>{const nom=await dlgPrompt("Nom du sous-traitant","",{titre:"Nouveau sous-traitant",valider:"Suivant"});if(!nom||!nom.trim())return;const tel=await dlgPrompt("Numéro WhatsApp, au format 33612345678","",{titre:`Numéro de ${nom.trim()}`,valider:"Ajouter"});if(!tel||!tel.trim())return;onSaveSousTraitants([...sousTraitants,{nom:nom.trim(),tel:tel.trim()}]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {sousTraitants.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun sous-traitant enregistré — ils s'ajoutent aussi automatiquement depuis le bouton "Envoyer au sous-traitant" sur une fiche.</div>}
         {sousTraitants.map((s,i)=>(
@@ -2957,7 +2957,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
             <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s.nom}</span>
             <input key={s.nom+s.tel} defaultValue={s.tel} onBlur={e=>{if(e.target.value!==s.tel){const next=[...sousTraitants];next[i]={...next[i],tel:e.target.value};onSaveSousTraitants(next);}}} placeholder="N° WhatsApp (33612345678)"
               style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-            <button onClick={()=>{if(window.confirm(`Supprimer "${s.nom}" ?`))onSaveSousTraitants(sousTraitants.filter((_,j)=>j!==i));}} style={{...btn,color:"#EF4444"}}>✕</button>
+            <button onClick={async ()=>{if(await dlgConfirm(`${s.nom} sera retiré de la liste des sous-traitants.`,{titre:"Supprimer le sous-traitant",danger:true}))onSaveSousTraitants(sousTraitants.filter((_,j)=>j!==i));}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
       </Repliable>
@@ -2965,15 +2965,15 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       {/* Catalogue devis */}
       <Repliable T={T} icone="⚡" titre="Prestations types des devis">
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-          <button onClick={()=>{const lab=window.prompt("Libellé de la prestation :");if(!lab||!lab.trim())return;const u=window.prompt("Unité (u, ml, colonne…) :","u")||"u";writeCat([...cat,{label:lab.trim(),unite:u.trim()||"u"}]);}} style={addBtn}>➕ Ajouter</button>
+          <button onClick={async ()=>{const lab=await dlgPrompt("Libellé de la prestation","",{titre:"Nouvelle prestation",valider:"Suivant"});if(!lab||!lab.trim())return;const u=await dlgPrompt("Unité de facturation : u, ml, colonne…","u",{titre:"Unité",valider:"Ajouter"})||"u";writeCat([...cat,{label:lab.trim(),unite:u.trim()||"u"}]);}} style={addBtn}>➕ Ajouter</button>
         </div>
         {cat.map((c2,i)=>(
           <div key={i} style={row(i===cat.length-1)}>
             <span style={{flex:1,fontSize:13,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{c2.label} <span style={{color:T.textMuted,fontSize:11}}>({c2.unite})</span></span>
             <button onClick={()=>{if(i>0){const l=[...cat];[l[i-1],l[i]]=[l[i],l[i-1]];writeCat(l);}}} disabled={i===0} style={{...btn,opacity:i===0?.3:1}}>↑</button>
             <button onClick={()=>{if(i<cat.length-1){const l=[...cat];[l[i+1],l[i]]=[l[i],l[i+1]];writeCat(l);}}} disabled={i===cat.length-1} style={{...btn,opacity:i===cat.length-1?.3:1}}>↓</button>
-            <button onClick={()=>{const lab=window.prompt("Libellé :",c2.label);if(!lab||!lab.trim())return;const u=window.prompt("Unité :",c2.unite)||c2.unite;const l=[...cat];l[i]={label:lab.trim(),unite:u.trim()||c2.unite};writeCat(l);}} style={btn}>✏️</button>
-            <button onClick={()=>{if(window.confirm(`Supprimer "${c2.label}" ?`)){const l=[...cat];l.splice(i,1);writeCat(l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
+            <button onClick={async ()=>{const lab=await dlgPrompt("Libellé de la prestation",c2.label,{titre:"Modifier",valider:"Suivant"});if(!lab||!lab.trim())return;const u=await dlgPrompt("Unité de facturation",c2.unite,{titre:"Unité",valider:"Enregistrer"})||c2.unite;const l=[...cat];l[i]={label:lab.trim(),unite:u.trim()||c2.unite};writeCat(l);}} style={btn}>✏️</button>
+            <button onClick={async ()=>{if(await dlgConfirm(`« ${c2.label} » sera retirée des prestations types.`,{titre:"Supprimer la prestation",danger:true})){const l=[...cat];l.splice(i,1);writeCat(l);}}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
       </Repliable>
@@ -3060,12 +3060,12 @@ IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d
         if(m){ props = JSON.parse(m[0]); }
         else throw new Error(`Réponse inattendue de l'IA : "${raw.slice(0,200)}"`);
       }
-      if(!Array.isArray(props)||!props.length){ alert("L'IA n'a proposé aucune case à ajouter — reformulez peut-être plus précisément, ou la photo n'est pas assez claire pour elle."); setIaLoading(false); return; }
+      if(!Array.isArray(props)||!props.length){ dlgInfo("L'IA n'a proposé aucune case à ajouter — reformulez peut-être plus précisément, ou la photo n'est pas assez claire pour elle."); setIaLoading(false); return; }
       setIaPropositions(props.map(p=>({...p,selected:true})));
     } catch(e) {
       const msg = e?.message||String(e);
       const hint = iaPhotos.length>3 ? "\n\n💡 Essayez avec moins de photos à la fois (2-3)." : "";
-      alert("Erreur lors de l'analyse : "+msg+hint);
+      dlgInfo("Erreur lors de l'analyse : "+msg+hint);
     }
     setIaLoading(false);
   };
@@ -3101,10 +3101,10 @@ IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d
   const write = (cat, liste) => onSave(prestaId, cat, liste);
 
   const move = (cat,i,d) => { const l=[...listOf(cat)]; const j=i+d; if(j<0||j>=l.length)return; [l[i],l[j]]=[l[j],l[i]]; write(cat,l); };
-  const renameIt = (cat,i) => { const l=[...listOf(cat)]; const v=window.prompt("Nouveau libellé :",l[i]); if(v&&v.trim()){l[i]=v.trim(); write(cat,l);} };
-  const removeIt = (cat,i) => { const l=[...listOf(cat)]; if(!window.confirm(`Supprimer la case "${l[i]}" ?`))return; l.splice(i,1); write(cat,l); };
-  const addIt = (cat) => { const v=window.prompt("Libellé de la nouvelle case :"); if(v&&v.trim()) write(cat,[...listOf(cat),v.trim()]); };
-  const resetIt = (cat) => { if(window.confirm("Revenir à la liste d'origine ? Vos personnalisations de cette rubrique seront effacées.")) write(cat,null); };
+  const renameIt = async (cat,i) => { const l=[...listOf(cat)]; const v=await dlgPrompt("Nouveau libellé",l[i],{titre:"Renommer la case",valider:"Enregistrer"}); if(v&&v.trim()){l[i]=v.trim(); write(cat,l);} };
+  const removeIt = async (cat,i) => { const l=[...listOf(cat)]; if(!(await dlgConfirm(`La case « ${l[i]} » sera retirée de cette rubrique.`,{titre:"Supprimer la case",danger:true})))return; l.splice(i,1); write(cat,l); };
+  const addIt = async (cat) => { const v=await dlgPrompt("Libellé de la nouvelle case","",{titre:"Ajouter une case",valider:"Ajouter"}); if(v&&v.trim()) write(cat,[...listOf(cat),v.trim()]); };
+  const resetIt = async (cat) => { if(await dlgConfirm("La rubrique reviendra à la liste d'origine. Vos personnalisations seront effacées.",{titre:"Revenir à l'origine",danger:true,valider:"Réinitialiser"})) write(cat,null); };
 
   const [showCreate, setShowCreate] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -3113,7 +3113,7 @@ IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d
   const slugify = (s) => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
   const creerModule = () => {
     const label = newLabel.trim();
-    if(!label){ alert("Donnez un nom à ce nouveau module (ex : Curage)."); return; }
+    if(!label){ dlgInfo("Donnez un nom à ce nouveau module (ex : Curage)."); return; }
     let id = slugify(label) || "module";
     if(PRESTATIONS.some(p=>p.id===id)) id = id + "_" + Date.now().toString(36).slice(-4);
     const item = { id, label, icon: newIcon.trim()||"🧩", color: newColor, localisations:[], problemes:[], causes:[], constatCamera:[], actions:[], resultats:[] };
@@ -3121,8 +3121,8 @@ IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d
     setNewLabel(""); setNewIcon("🧩"); setNewColor("#8B5CF6"); setShowCreate(false);
     setPrestaId(id);
   };
-  const supprimerModule = () => {
-    if(!window.confirm(`Supprimer définitivement le module "${meta.label}" ? Les cases et personnalisations associées seront perdues (les fiches déjà enregistrées ne sont pas touchées).`)) return;
+  const supprimerModule = async () => {
+    if(!(await dlgConfirm(`Le module « ${meta.label} » sera supprimé, avec ses cases et personnalisations. Les fiches déjà enregistrées ne sont pas touchées.`,{titre:"Supprimer le module",danger:true}))) return;
     onDeleteModule(meta.id);
     setPrestaId(PRESTATIONS[0].id);
   };
@@ -3247,8 +3247,8 @@ IMPÉRATIF : ta réponse complète doit être UNIQUEMENT le tableau JSON, rien d
           <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em"}}>Titre de cette catégorie</div>
           <div style={{fontWeight:800,fontSize:14,color:T.text,flex:1}}>{meta.icon} {meta.label}</div>
           {meta.label!==meta._origLabel&&<span style={{fontSize:10,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.14)",padding:"2px 8px",borderRadius:10}}>personnalisé</span>}
-          <button onClick={()=>{const v=window.prompt("Nouveau titre pour cette catégorie :",meta.label);if(v&&v.trim())onSavePrestationLabel(prestaId,v.trim());}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>✏️ Renommer</button>
-          {meta.label!==meta._origLabel&&<button onClick={()=>{if(window.confirm(`Revenir au titre d'origine "${meta._origLabel}" ?`))onSavePrestationLabel(prestaId,null);}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>↺ Origine</button>}
+          <button onClick={async ()=>{const v=await dlgPrompt("Nouveau titre de la catégorie",meta.label,{titre:"Renommer la catégorie",valider:"Enregistrer"});if(v&&v.trim())onSavePrestationLabel(prestaId,v.trim());}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>✏️ Renommer</button>
+          {meta.label!==meta._origLabel&&<button onClick={async ()=>{if(await dlgConfirm(`La catégorie reprendra son titre d'origine : « ${meta._origLabel} ».`,{titre:"Revenir au titre d'origine",valider:"Rétablir"}))onSavePrestationLabel(prestaId,null);}} style={{...btn,width:"auto",padding:"0 10px",fontSize:11}}>↺ Origine</button>}
           {meta._custom&&<button onClick={supprimerModule} style={{...btn,width:"auto",padding:"0 10px",fontSize:11,color:"#EF4444",borderColor:"rgba(239,68,68,0.4)"}}>🗑️ Supprimer ce module</button>}
         </div>
       )}
@@ -3668,7 +3668,7 @@ function MailImport({ onExtracted, onCancel, theme }) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef();
   const analyser = async () => {
-    if(!texte.trim() && !img){alert("Collez le texte du mail ou ajoutez une capture d'écran.");return;}
+    if(!texte.trim() && !img){dlgInfo("Collez le texte du mail ou ajoutez une capture d'écran.");return;}
     setBusy(true);
     try {
       const prompt = `Tu extrais les informations d'une demande d'intervention (plomberie/assainissement) reçue par mail ou message, pour créer un rendez-vous. Date du jour : ${today()}.
@@ -3687,7 +3687,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
       const j = JSON.parse(raw);
       onExtracted({ client:j.client||"", contact:j.contact||"", tel:j.tel||"", email:j.email||"", adresse:j.adresse||"", adresseFacturation:j.adresseFacturation||"",
         dateRdv:j.dateRdv||today(), heureRdv:j.heureRdv||"", noteRdv:j.note||"" });
-    } catch(e) { alert("Erreur lors de l'analyse : "+(e?.message||e)); }
+    } catch(e) { dlgInfo("Erreur lors de l'analyse : "+(e?.message||e)); }
     setBusy(false);
   };
   return (
@@ -4022,9 +4022,8 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
             onMouseEnter={e=>{e.currentTarget.style.borderColor=k.color;e.currentTarget.style.transform="translateY(-2px)";}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor=k.color+"22";e.currentTarget.style.transform="none";}}>
             <div style={{position:"absolute",top:-10,right:-10,fontSize:40,opacity:.06}}>{k.icon}</div>
-            <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}}>{k.label}</div>
-            <div style={{fontSize:28,fontWeight:800,color:k.color,lineHeight:1}}>{k.val}</div>
-            <div style={{fontSize:9,color:k.color,marginTop:4,opacity:.7}}>→ Voir la liste</div>
+            <div style={{fontSize:12,fontWeight:600,color:T.textMuted,marginBottom:6}}>{k.label}</div>
+            <div style={{fontSize:30,fontWeight:800,color:k.color,lineHeight:1}}>{k.val}</div>
           </div>
         ))}
       </div>
@@ -4476,9 +4475,9 @@ function ListeCartes({ fiches, onSelect, onDelete, theme, techniciens=[], techTe
   ].join("\n");
 
   const envoyerRelance = (canal) => {
-    if(!fichesCochees.length){alert("Sélectionnez au moins une fiche.");return;}
+    if(!fichesCochees.length){dlgInfo("Sélectionnez au moins une fiche.");return;}
     const num = normaliserTel(techTels[logoKey(destinataire)]||"");
-    if(!num){alert(`Aucun numéro enregistré pour ${destinataire||"ce technicien"}. Renseignez-le dans Administration → Techniciens.`);return;}
+    if(!num){dlgInfo(`Aucun numéro enregistré pour ${destinataire||"ce technicien"}. Renseignez-le dans Administration → Techniciens.`);return;}
     const msg = messageRelance();
     if(canal==="whatsapp") window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
     else window.location.href=`sms:+${num}?&body=${encodeURIComponent(msg)}`;
@@ -4994,7 +4993,7 @@ function DevisForm({ initial, onSave, onBack, theme, clients = [], champsCustom 
   const [descriptionLibre, setDescriptionLibre] = useState("");
   const genererLignesIA = async () => {
     const texte = descriptionLibre.trim();
-    if(!texte){alert("Décrivez d'abord les travaux à réaliser (ou collez la transcription de l'appel).");return;}
+    if(!texte){dlgInfo("Décrivez d'abord les travaux à réaliser (ou collez la transcription de l'appel).");return;}
     setGenLignesIA(true);
     try {
       const prompt = `Tu es un assistant qui prépare des lignes de devis au forfait pour une entreprise d'assainissement/plomberie en France. À partir de la description ci-dessous (texte libre ou transcription d'appel client), génère une liste de lignes de devis avec désignation, quantité et prix unitaire HT en euros (prix de marché raisonnables pour ce secteur en France).
@@ -5016,7 +5015,7 @@ Règles : 2 à 6 lignes maximum, prix HT réalistes et arrondis, quantité enti�
       if(!Array.isArray(lignesIA) || !lignesIA.length) throw new Error("Format de réponse inattendu");
       const nouvellesLignes = lignesIA.map(l=>({label:String(l.label||"").trim(),qte:l.qte||1,pu:l.pu||""}));
       setD(p=>({...p, lignes:[...p.lignes.filter(l=>l.label||l.pu), ...nouvellesLignes]}));
-    } catch(e) { alert("Erreur lors de la génération des lignes : "+(e?.message||e)); }
+    } catch(e) { dlgInfo("Erreur lors de la génération des lignes : "+(e?.message||e)); }
     setGenLignesIA(false);
   };
   const genererDescriptifIA = async () => {
@@ -5027,7 +5026,7 @@ Règles : 2 à 6 lignes maximum, prix HT réalistes et arrondis, quantité enti�
     // bloquer la génération IA : on rédige à partir de l'intitulé du forfait, ou du texte
     // déjà tapé dans les notes (l'IA le reformule en paragraphe professionnel).
     if(!lignesValides.length && !forfaitInfo && !texteBrut){
-      alert("Décrivez d'abord les travaux — soit avec des lignes détaillées, soit en mode forfait avec un intitulé, soit directement dans les notes ci-dessous.");
+      dlgInfo("Décrivez d'abord les travaux — soit avec des lignes détaillées, soit en mode forfait avec un intitulé, soit directement dans les notes ci-dessous.");
       return;
     }
     setGenIA(true);
@@ -5053,7 +5052,7 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
       const text = (data.content||[]).map(c=>c.text||"").join("").trim();
       if(!text) throw new Error(data.error?.message||"Réponse vide");
       set("notes", text);
-    } catch(e) { alert("Erreur lors de la génération : "+(e?.message||e)); }
+    } catch(e) { dlgInfo("Erreur lors de la génération : "+(e?.message||e)); }
     setGenIA(false);
   };
   const set = (k,v)=>setD(p=>({...p,[k]:v}));
@@ -5457,7 +5456,7 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
   const cli = clients.find(x=>x.id===c.clientId);
   const sites = Object.values(cli?.sites||{});
   const creer = ()=>{
-    if(!c.clientId){alert("Choisissez un client (créez-le dans l'onglet Clients si besoin).");return;}
+    if(!c.clientId){dlgInfo("Choisissez un client (créez-le dans l'onglet Clients si besoin).");return;}
     const site = sites.find(s=>s.id===c.siteId);
     const base = { clientId:c.clientId, client:cli?.nom||"", siteId:c.siteId||null, site:site?.nom||"",
       adresse:site?.adresse||"", tel:cli?.tel||"", type:c.type, frequence:c.frequence, technicien:c.technicien };
@@ -5534,7 +5533,7 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
 
 /* ═══════════════════════════════════════════
    BOÎTES DE DIALOGUE MAISON
-   Remplacent alert() / confirm() / prompt() du navigateur, qui sur mobile
+   Remplacent dlgInfo() / confirm() / prompt() du navigateur, qui sur mobile
    s'affichent avec l'habillage du navigateur et cassent l'identité de l'app.
    API promise : `if(await dlgConfirm("…"))`, `const v = await dlgPrompt("…")`.
    dlgInfo() ne bloque pas l'appelant.
@@ -5901,7 +5900,7 @@ function AppInterne() {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(()=>URL.revokeObjectURL(url),1500);
       showToast("📊 Export Excel téléchargé ("+fiches.length+" fiches)");
-    } catch(e){ alert("Erreur export : "+(e?.message||e)); }
+    } catch(e){ dlgInfo("Erreur export : "+(e?.message||e)); }
   };
 
   useEffect(()=>{
@@ -5970,7 +5969,7 @@ function AppInterne() {
     // Technicien absent le jour du RDV : on refuse l'assignation.
     const abs = absenceDe((fiche.technicien||"").trim(), fiche.dateRdv, absences);
     if(abs){
-      alert(`❌ ${abs.technicien} est absent du ${dateFr(abs.du)} au ${dateFr(abs.au)}${abs.motif?` (${abs.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
+      dlgInfo(`❌ ${abs.technicien} est absent du ${dateFr(abs.du)} au ${dateFr(abs.au)}${abs.motif?` (${abs.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
       return;
     }
     if(typeof navigator!=="undefined" && !navigator.onLine){
@@ -6006,7 +6005,7 @@ function AppInterne() {
   const handleSaveRdv = rdv => {
     const absR = absenceDe((rdv.technicien||"").trim(), rdv.dateRdv, absences);
     if(absR){
-      alert(`❌ ${absR.technicien} est absent du ${dateFr(absR.du)} au ${dateFr(absR.au)}${absR.motif?` (${absR.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
+      dlgInfo(`❌ ${absR.technicien} est absent du ${dateFr(absR.du)} au ${dateFr(absR.au)}${absR.motif?` (${absR.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
       return;
     }
     setRdvPrefill(null);
@@ -6511,10 +6510,10 @@ function AppInterne() {
                   saveFiche(nf); setSelected(nf);
                   showToast(`🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane`);
                 } else {
-                  alert("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
+                  dlgInfo("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
                 }
               } catch(e) {
-                alert("❌ Erreur réseau lors de la création de la facture : "+e.message);
+                dlgInfo("❌ Erreur réseau lors de la création de la facture : "+e.message);
               }
             }}
             onVerifierCases={estRestreint ? null : (f)=>{
@@ -6693,7 +6692,7 @@ function AppInterne() {
             {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
-            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
+            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={async dv=>{if(await dlgConfirm("Le devis "+dv.id+" sera supprimé définitivement.",{titre:"Supprimer le devis",danger:true}))deleteDevisFb(dv.id);}}/>}
             {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} techniciens={techniciens} techTels={techTels} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={async f=>{if(await dlgConfirm("L\u2019intervention "+f.id+" ("+(f.client||"sans client")+") sera supprim\u00e9e d\u00e9finitivement.",{titre:"Supprimer l\u2019intervention",danger:true})){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprim\u00e9e");}}}/>}
             {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
