@@ -186,6 +186,14 @@ const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}))
 const watchTechTels = (cb) => onValue(ref(db, "techTels"), snap => cb(snap.val()||{}));
 const watchTechColors = (cb) => onValue(ref(db, "techColors"), snap => cb(snap.val()||{}));
 const saveTechColor = (nom, couleur) => set(ref(db, `techColors/${logoKey(nom)}`), couleur||null);
+const watchAbsences = (cb) => onValue(ref(db, "absences"), snap => cb(Object.values(snap.val()||{})));
+const saveAbsenceFb = (a) => set(ref(db, `absences/${a.id}`), sanitize(a));
+const deleteAbsenceFb = (id) => remove(ref(db, `absences/${id}`));
+/* Un technicien est absent le jour d si une période le couvre (bornes incluses). */
+const estAbsent = (technicien, jour, absences=[]) =>
+  !!technicien && !!jour && absences.some(a => a.technicien===technicien && jour>=a.du && jour<=a.au);
+const absenceDe = (technicien, jour, absences=[]) =>
+  absences.find(a => a.technicien===technicien && jour>=a.du && jour<=a.au) || null;
 const watchChamps = (cb) => onValue(ref(db, "champs"), snap => cb(snap.val()||{}));
 const saveChamps = (prestaId, cat, liste) => set(ref(db, `champs/${prestaId}/${cat}`), liste ? JSON.parse(JSON.stringify(liste)) : null);
 const saveTechTel = (nom, tel) => set(ref(db, `techTels/${logoKey(nom)}`), (tel||"").trim()||null);
@@ -372,6 +380,16 @@ const CHAMPS_CATS_KEYS = ["localisations","problemes","causes","constatCamera","
 const watchPrestationsCustom = (cb) => onValue(ref(db, "prestationsCustom"), snap => cb(snap.val()||{}));
 const watchParametresIA = (cb) => onValue(ref(db, "parametresIA"), snap => cb(snap.val()||{analysePhotos:true,maxPhotos:0}));
 const saveParametresIA = (params) => set(ref(db, "parametresIA"), sanitize(params));
+/* Lexique métier plomberie / assainissement.
+   La dictée vocale déforme systématiquement le vocabulaire technique ("eaux refoulées"
+   transcrit "eaux OS", "hydrocureur" en "hydro cureur"...). Ce bloc est injecté dans les
+   prompts pour que le modèle rétablisse le terme métier au lieu de recopier le charabia. */
+const LEXIQUE_METIER = `VOCABULAIRE MÉTIER — plomberie et assainissement.
+Le texte vient d'une dictée vocale : la transcription déforme très souvent les termes techniques. Rétablis systématiquement le terme métier correct quand le son y correspond, au lieu de recopier une transcription absurde. N'invente jamais un fait qui n'a pas été dicté — tu corriges le mot, pas le contenu.
+Termes de référence : eaux refoulées, refoulement, eaux usées (EU), eaux vannes (EV), eaux pluviales (EP), engorgement, obstruction, hydrocurage, camion hydrocureur, furet, débouchage, curage, inspection caméra, passage caméra, canalisation, collecteur, colonne montante, chute, regard, tampon, siphon, avaloir, caniveau, grille, descente, gouttière, bac à graisse, séparateur à graisse, fosse septique, fosse toutes eaux, poste de relevage, pompe de relevage, clapet anti-retour, vanne d'arrêt, robinet d'arrêt, bâti-support, flotteur, robinet flotteur, mécanisme de chasse, réservoir, joint, mitigeur, ballon d'eau chaude, groupe de sécurité, résistance, détartrage, désembouage, purge, mise en pression, gaz traceur, humidimètre, écoute acoustique, colorant, PVC, PER, cuivre, fonte, multicouche, Ø 100, DN 100, partie privative, partie commune, syndic, copropriété, locataire, bailleur.
+Exemples de corrections attendues : "eaux OS"/"eau os" → "eaux usées" ou "eaux refoulées" selon le contexte ; "hydro cureur" → "hydrocureur" ; "bâti support" → "bâti-support" ; "bac a graisse" → "bac à graisse" ; "colonne montante" mal découpée doit être rétablie.
+Si un mot reste réellement incompréhensible, écris-le tel quel plutôt que d'inventer un terme technique.`;
+
 const MODELES_MESSAGE_DEFAUT = [
   {nom:"Complet", texte:"📋 Rapport d'intervention — {id}\nClient : {client}\nAdresse : {adresse}\nDate : {date} à {heure}\n\nPrestations :\n{prestations}\n\nConclusion :\n{conclusion}\n\nTechnicien : {technicien}"},
   {nom:"Court", texte:"Bonjour {client}, notre intervention du {date} est terminée. Rapport complet transmis séparément. Merci de votre confiance. — {technicien}, A6T Assainissement"},
@@ -528,7 +546,7 @@ const resizePhoto = (file) => new Promise(res => {
 });
 const CONTRAT_TYPES = ["Bac à graisse","Poste de relevage","Curage annuel","Entretien copropriété","Autre entretien"];
 const FREQUENCES = { mensuel:{label:"Mensuel",mois:1}, bimestriel:{label:"Tous les 2 mois",mois:2}, trimestriel:{label:"Trimestriel",mois:3}, semestriel:{label:"Semestriel",mois:6}, annuel:{label:"Annuel",mois:12} };
-const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, facture:{label:"Facturé",color:"#10B981"}, ne_pas_facturer:{label:"Ne pas facturer",color:"#64748B"} };
+const FACTURATION = { a_facturer:{label:"À facturer",color:"#F59E0B"}, brouillon:{label:"Brouillon",color:"#8B5CF6"}, facture:{label:"Facturé",color:"#10B981"}, ne_pas_facturer:{label:"Ne pas facturer",color:"#64748B"} };
 const addFreq = (dateISO, freq) => { const d = new Date(dateISO+"T12:00:00"); d.setMonth(d.getMonth() + (FREQUENCES[freq]?.mois||12)); return d.toISOString().split("T")[0]; };
 const euro = (n) => (isNaN(n)?0:n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " €";
 const uid2   = (p) => p + "-" + Math.random().toString(36).slice(2,8).toUpperCase();
@@ -645,6 +663,8 @@ async function generateConclusionIA(prestations, locStr, responsabilite, preconi
 
   const resp = RESPONSABILITES.find(r => r.id === responsabilite);
   const prompt = `Tu es un rédacteur de rapports d'intervention technique pour une entreprise de plomberie et assainissement française.
+
+${LEXIQUE_METIER}
   
 Rédige une conclusion professionnelle, naturelle et bien écrite en français pour un rapport d'intervention avec les informations suivantes :
 
@@ -668,15 +688,22 @@ Règles :
 - SOBRIÉTÉ ABSOLUE : décris UNIQUEMENT et FACTUELLEMENT ce qui a été fait. N'AJOUTE RIEN qui ne soit pas explicitement dans les informations fournies. N'invente aucun détail.
 - N'AJOUTE AUCUN commentaire sur l'hygiène, la salubrité, la santé, les risques sanitaires, le confort, la conformité, la sécurité ou la "tranquillité" du client. Pas de phrases de remplissage ni de considérations générales.
 - Reste neutre et professionnel : pas de superlatifs, pas de dramatisation, pas de formules commerciales exagérées ("intervention minutieuse", "travail soigné", "remise en état optimale"... à BANNIR).
-- Rédige UN seul paragraphe court et fluide
-- Commence par "Suite à notre intervention"
+- Rédige un texte coulant. UN seul paragraphe si l'intervention est simple. Si elle comporte des phases distinctes (visites successives, première action puis retour sur site, travaux annexes), sépare-les en paragraphes courts, et mets la formule de politesse finale sur sa propre ligne.
+- Commence par "Dans le cadre de notre intervention" (JAMAIS "Suite à notre intervention", tournure jugée trop familière pour un rapport adressé à un syndic)
+- REGISTRE : registre technique écrit, pas de langage parlé. Applique ces préférences :
+  * "afin d'accéder à" et NON "afin d'avoir accès à"
+  * "présentant un défaut d'étanchéité" et NON "semblant non étanche" ; bannis les tournures approximatives ("semblant", "apparemment", "visiblement")
+  * "provenant du réservoir DU WC encastré" — articles contractés corrects, pas "de WC"
+  * supprime les mots parasites qui n'apportent aucune information ("sur place", "bien entendu", "comme convenu")
+  * orthographe des termes métier : bâti-support, siphon, colonne montante, regard, caniveau, hydrocureur
+- PRUDENCE : n'affirme jamais plus que ce qui a été réellement constaté. Une cause non confirmée s'introduit par "il s'avère que" ou "après vérification", jamais comme un diagnostic définitif. N'attribue aucune responsabilité qui ne soit pas explicitement fournie.
 - Mentionne le lieu seulement s'il est fourni
 - Résume simplement les actions et leur résultat
 - Ne présente JAMAIS une préconisation comme une action réalisée. Seules les lignes "Actions" ont été effectuées. Les préconisations sont introduites par "nous préconisons" ou "nous recommandons", au futur ou au conditionnel, et seulement si elles sont fournies
 - Si des méthodes de détection sont fournies (recherche de fuite), mentionne-les factuellement — ce sont souvent des informations importantes pour un dossier d'assurance
 - Si aucune inspection caméra ne figure dans les Actions, n'affirme pas qu'un passage caméra a eu lieu
 - Termine par une formule de politesse courte et simple
-- Maximum 4 phrases. Si peu d'informations sont fournies, fais encore plus court.
+- Pas de longueur imposée : couvre tout ce qui a été fait, sans remplissage. Une intervention simple donne un texte court, une intervention en plusieurs visites donne un texte plus long. Ne tronque jamais un élément factuel pour rester court.
 - NE PAS lister les prestations séparément, faire un texte coulant${photos.length ? `
 - Des photos de l'intervention sont jointes ci-dessous. Appuie-toi sur ce que tu observes concrètement dessus (état visible, matériel, avant/après si distinguable) pour enrichir FACTUELLEMENT la conclusion — uniquement ce qui est visible, sans jamais inventer un détail non confirmé par le texte ou l'image` : ""}`;
 
@@ -712,6 +739,8 @@ Règles :
 async function generateNotePrestation(presta, locStr) {
   const meta = PRESTATIONS.find(x => x.id === presta.id);
   const prompt = `Rédige une courte note technique professionnelle en français (2-3 phrases maximum) pour cette prestation d'intervention :
+
+${LEXIQUE_METIER}
 
 Prestation : ${meta?.label}
 ${locStr ? `Lieu : ${locStr}` : ""}
@@ -787,12 +816,12 @@ function buildReportHTML(fiche, hideInternal = false) {
     if (!resultatPrincipal) resultatPrincipal = true; // afficher "Intervention terminée" seul
   }
 
-  const prestaHTML = presta
-    .filter(p => {
-      const total = (p.localisations?.length||0)+(p.problemes?.length||0)+(p.causes?.length||0)+
-        (p.constatCamera?.length||0)+(p.methodes?.length||0)+(p.actions?.length||0)+(p.resultats?.length||0);
-      return total > 0 || p.note?.trim();
-    })
+  /* On garde TOUTES les prestations de la fiche, même celles sans case cochée : elles sont
+     alors affichées avec leur seul intitulé. Avant, elles étaient filtrées, ce qui donnait
+     un rapport annonçant "1 prestation(s)" suivi de "Aucune prestation enregistrée." */
+  const prestaAffichees = presta;
+  const nbPrestaAffichees = prestaAffichees.length;
+  const prestaHTML = prestaAffichees
     .map(p => {
       const sentences = [];
       const pLocStr = locStr || (p.localisations?.length ? `${p.localisations.join(", ")}` : null);
@@ -829,8 +858,16 @@ function buildReportHTML(fiche, hideInternal = false) {
       </div>`;
     }).join("");
 
+  const photoItem = p => `<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`;
+  /* Le titre de section ("Après travaux") est collé à sa première rangée de photos dans un
+     bloc insécable : Chrome ignore break-after:avoid, d'où les titres restés seuls en bas
+     de page. Le reste des photos s'écoule librement, pour ne pas créer de page blanche. */
   const photoSection = (titre, liste) => liste.length
-    ? `<div class="photo-section"><div class="photo-subtitle">${titre} (${liste.length})</div><div class="photo-grid">${liste.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div></div>` : "";
+    ? `<div class="photo-section">`
+      + `<div class="photo-tete"><div class="photo-subtitle">${titre} (${liste.length})</div>`
+      + `<div class="photo-grid">${liste.slice(0,2).map(photoItem).join("")}</div></div>`
+      + (liste.length>2 ? `<div class="photo-grid photo-suite">${liste.slice(2).map(photoItem).join("")}</div>` : "")
+      + `</div>` : "";
   const photosOntTag = fiche.photos?.some(p=>p.tag);
   const photoGrid = fiche.photos?.length
     ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
@@ -905,6 +942,8 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .preco-list li::before{content:"▸ ";opacity:.55}
 .photo-subtitle{font-size:10.5px;font-weight:700;color:#5c6b80;text-transform:uppercase;letter-spacing:0.06em;margin:11px 0 7px;break-after:avoid;page-break-after:avoid}
 .photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
+.photo-suite{margin-top:11px}
+.photo-tete{break-inside:avoid;page-break-inside:avoid}
 .photo-item{border-radius:9px;overflow:hidden;aspect-ratio:4/3;border:1.5px solid #9aa5b1;max-height:240px;background:#f4f6f8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,0.06)}
 .photo-item img{width:100%;height:100%;object-fit:cover;display:block;max-height:240px}
 .sig-zone{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px}
@@ -981,14 +1020,14 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 <div class="body">
   <div class="client-grid">
     ${fiche.client?`<div class="info-card"><div class="info-label">Client / Société</div><div class="info-value">${fiche.client}</div></div>`:""}
-    <div class="info-card"><div class="info-label">Technicien${fiche.techniciensSupp?.length?"s":""}</div><div class="info-value">${[fiche.technicien, ...(fiche.techniciensSupp||[])].filter(Boolean).join(" + ")||"—"}</div></div>
+    ${[fiche.technicien, ...(fiche.techniciensSupp||[])].filter(Boolean).length?`<div class="info-card"><div class="info-label">Technicien${fiche.techniciensSupp?.length?"s":""}</div><div class="info-value">${[fiche.technicien, ...(fiche.techniciensSupp||[])].filter(Boolean).join(" + ")}</div></div>`:""}
     ${fiche.adresse?`<div class="info-card full"><div class="info-label">Adresse d'intervention</div><div class="info-value">${fiche.adresse}${fiche.diametreCanalisation?" — DN "+fiche.diametreCanalisation:""}</div></div>`:""}
     ${fiche.tel?`<div class="info-card"><div class="info-label">Téléphone</div><div class="info-value">${fiche.tel}</div></div>`:""}
     ${fiche.email?`<div class="info-card"><div class="info-label">Email</div><div class="info-value">${fiche.email}</div></div>`:""}
   </div>
   ${locStr?`<div class="loc-banner">📍 ${locStr}</div>`:""}
   <div class="section-block">
-    <div class="section-title">🔧 Compte-rendu d'intervention — ${presta.length} prestation(s)</div>
+    <div class="section-title">🔧 Compte-rendu d'intervention${nbPrestaAffichees?` — ${nbPrestaAffichees} prestation(s)`:""}</div>
     ${prestaHTML||'<p style="color:#94a3b8;font-style:italic">Aucune prestation enregistrée.</p>'}
   </div>
   ${fiche.responsabilite&&fiche.responsabilite!=="na"?`<div class="section-block"><div class="section-title">⚖️ Responsabilité</div><div class="resp-badge">● ${resp?.label} — ${resp?.desc}</div></div>`:""}
@@ -3312,11 +3351,13 @@ function VoiceImport({ onExtracted, onCancel, theme, techniciens, clients, onLog
     try {
       let prompt, content;
       const listeTechniciens = (techniciens||[]).join(", ");
+      const consigneLexique = LEXIQUE_METIER;
       const consigneTechnicien = listeTechniciens
         ? `Techniciens connus (fais correspondre le prénom dicté à l'un d'eux, même approximatif ou mal transcrit — ex. "Ramzi" ou "Ramzy" doivent correspondre au même nom si présent dans la liste ; utilise EXACTEMENT l'orthographe de la liste ; laisse vide si aucun nom de la liste ne correspond) : ${listeTechniciens}.`
         : "";
       if (mode === "rdv") {
         prompt = `Tu extrais les informations d'un message dicté à l'oral par un technicien de plomberie/assainissement, pour créer un rendez-vous. Date du jour : ${today()}.
+${consigneLexique}
 ${consigneTechnicien}
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide ou false si l'info est absente) :
 {"client":"nom du client ou de la société","tel":"téléphone","adresse":"adresse complète de l'intervention","dateRdv":"date au format YYYY-MM-DD (interprète 'demain', 'lundi prochain'... par rapport à la date du jour ; vide si aucune date)","heureRdv":"heure au format HH:MM (vide si absente)","technicien":"nom exact du technicien parmi la liste connue si mentionné, sinon vide","urgent":true ou false selon que le rendez-vous est présenté comme urgent/prioritaire,"note":"résumé en 1-2 phrases du problème ou de la demande (n'y répète pas le nom du technicien s'il a déjà été mis dans le champ technicien)"}`;
@@ -3326,6 +3367,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
         const listePreconisations = PRECONISATIONS.join(" / ");
         const listeResponsabilites = RESPONSABILITES.map(r=>`${r.id} = ${r.label} (${r.desc})`).join(" / ");
         prompt = `Tu extrais les informations d'un compte-rendu d'intervention dicté à l'oral par un technicien de plomberie/assainissement, juste après (ou pendant) une intervention chez un client, pour remplir une fiche d'intervention.
+${consigneLexique}
 Catégories de prestations disponibles (utilise uniquement leur "id" exact, une ou plusieurs si mentionnées) : ${listePrestations}
 Matériels disponibles (utilise UNIQUEMENT le texte exact de cette liste, un ou plusieurs si mentionnés) : ${listeMateriels}
 Préconisations disponibles (utilise UNIQUEMENT le texte exact de cette liste, une ou plusieurs si mentionnées) : ${listePreconisations}
@@ -4230,10 +4272,14 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[], techColors={} }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[], techColors={}, jour, onJour, absences=[], onSaveAbsence, onDeleteAbsence }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
-  const [selDay, setSelDay] = useState(todayStr);
+  /* Le jour affiché est mémorisé par le parent : l'agenda est démonté quand on ouvre une
+     fiche, donc un état local repartirait sur aujourd'hui à chaque retour. */
+  const [selDayLocal, setSelDayLocal] = useState(todayStr);
+  const selDay = jour || selDayLocal;
+  const setSelDay = (d) => { setSelDayLocal(d); if(onJour) onJour(d); };
 
   const parseD = (s) => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d, 12); };
   const toStr = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
@@ -4250,6 +4296,10 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
   fiches.forEach(f=>{ if(f.dateRdv) (byDay[f.dateRdv]=byDay[f.dateRdv]||[]).push(f); else sansDate.push(f); });
 
   const navSemaine = (delta) => { const dt=new Date(lundi); dt.setDate(lundi.getDate()+delta*7); setSelDay(toStr(dt)); };
+
+  const [showAbs, setShowAbs] = useState(false);
+  const [nouvelleAbs, setNouvelleAbs] = useState({technicien:"",du:selDay,au:selDay,motif:""});
+  const absentsDuJour = techniciens.filter(t=>estAbsent(t, selDay, absences));
 
   const dayFiches = (byDay[selDay]||[]).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
   // État : "rdv" (à faire), "complete" (fiche OK), "incomplete" (fiche commencée mais manques)
@@ -4277,7 +4327,54 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:15,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
         <button onClick={()=>navSemaine(1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
         <button onClick={()=>setSelDay(todayStr)} style={{padding:"9px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
+        {onSaveAbsence&&<button onClick={()=>{setNouvelleAbs(a=>({...a,du:selDay,au:selDay}));setShowAbs(v=>!v);}} style={{padding:"9px 14px",borderRadius:8,border:`1px solid ${showAbs?"#F59E0B":T.border}`,background:showAbs?"rgba(245,158,11,0.12)":"none",color:showAbs?"#F59E0B":T.textMuted,cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>🌴 Absences</button>}
       </div>
+
+      {showAbs&&onSaveAbsence&&(
+        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontWeight:800,fontSize:13,color:T.text,marginBottom:10}}>🌴 Absences des techniciens</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <select value={nouvelleAbs.technicien} onChange={e=>setNouvelleAbs(a=>({...a,technicien:e.target.value}))}
+              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer",boxSizing:"border-box",width:"100%"}}>
+              <option value="">— Technicien —</option>
+              {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <input value={nouvelleAbs.motif} onChange={e=>setNouvelleAbs(a=>({...a,motif:e.target.value}))} placeholder="Motif (congés, arrêt…)"
+              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+            <input type="date" value={nouvelleAbs.du} onChange={e=>setNouvelleAbs(a=>({...a,du:e.target.value,au:a.au<e.target.value?e.target.value:a.au}))}
+              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"}}/>
+            <input type="date" value={nouvelleAbs.au} min={nouvelleAbs.du} onChange={e=>setNouvelleAbs(a=>({...a,au:e.target.value}))}
+              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"}}/>
+          </div>
+          <button onClick={()=>{
+              if(!nouvelleAbs.technicien){alert("Choisissez un technicien.");return;}
+              if(nouvelleAbs.au<nouvelleAbs.du){alert("La date de fin est avant la date de début.");return;}
+              const occupees = fiches.filter(f=>f.technicien===nouvelleAbs.technicien&&f.dateRdv>=nouvelleAbs.du&&f.dateRdv<=nouvelleAbs.au&&f.status!=="annule");
+              if(occupees.length && !window.confirm(`${nouvelleAbs.technicien} a déjà ${occupees.length} intervention(s) sur cette période. Elles ne seront pas déplacées automatiquement. Continuer ?`)) return;
+              onSaveAbsence({...nouvelleAbs, id:uid2("ABS")});
+              setNouvelleAbs({technicien:"",du:selDay,au:selDay,motif:""});
+            }}
+            style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>➕ Ajouter l'absence</button>
+          {absences.length>0&&(
+            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+              {[...absences].sort((a,b)=>a.du.localeCompare(b.du)).map(a=>(
+                <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,background:T.surface2,borderRadius:8,padding:"7px 10px"}}>
+                  <span style={{fontWeight:700}}>{a.technicien}</span>
+                  <span style={{color:T.textMuted}}>{dateFr(a.du)} → {dateFr(a.au)}{a.motif?` · ${a.motif}`:""}</span>
+                  <button onClick={()=>{if(window.confirm(`Supprimer l'absence de ${a.technicien} ?`))onDeleteAbsence(a.id);}}
+                    style={{marginLeft:"auto",background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {absentsDuJour.length>0&&(
+        <div style={{background:"rgba(245,158,11,0.10)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#F59E0B",fontWeight:700}}>
+          🌴 Absent{absentsDuJour.length>1?"s":""} ce jour : {absentsDuJour.map(t=>{const a=absenceDe(t,selDay,absences);return `${t}${a?.motif?` (${a.motif})`:""}`;}).join(" · ")}
+        </div>
+      )}
 
       {/* Bande semaine : 7 jours */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:16}}>
@@ -4305,8 +4402,8 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14,justifyContent:"center"}}>
           {techniciens.filter(t=>fiches.some(f=>f.technicien===t)).map(t=>(
             <span key={t} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.text,fontWeight:600}}>
-              <span style={{width:10,height:10,borderRadius:"50%",background:techColor(t,techniciens,techColors),display:"inline-block"}}/>
-              {t}
+              <span style={{width:10,height:10,borderRadius:"50%",background:techColor(t,techniciens,techColors),display:"inline-block",opacity:estAbsent(t,selDay,absences)?.35:1}}/>
+              <span style={estAbsent(t,selDay,absences)?{textDecoration:"line-through",opacity:.55}:undefined}>{t}</span>
             </span>
           ))}
           <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,fontWeight:600}}><span style={{width:9,height:9,borderRadius:"50%",background:"#10B981"}}/>Terminée</span>
@@ -4679,13 +4776,13 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                     background:fiche.facturation===k?v.color+"22":"transparent",
                     border:`1.5px solid ${fiche.facturation===k?v.color:T.border}`,
                     color:fiche.facturation===k?v.color:T.textMuted}}>
-                  {k==="facture"?"✅ ":k==="ne_pas_facturer"?"🚫 ":"💶 "}{v.label}
+                  {k==="facture"?"✅ ":k==="ne_pas_facturer"?"🚫 ":k==="brouillon"?"🧾 ":"💶 "}{v.label}
                 </button>
               ))}
             </span>
           )}
         </div>
-        {(fiche.facturation==="a_facturer"||fiche.facturation==="facture")&&onPreparerFacturePennylane&&(
+        {(fiche.facturation==="a_facturer"||fiche.facturation==="brouillon"||fiche.facturation==="facture")&&onPreparerFacturePennylane&&(
           <div style={{marginTop:8}}>
             {fiche.pennylaneInvoiceId
               ? <span style={{fontSize:11.5,color:"#10B981",fontWeight:700}}>🧾 Facture Pennylane créée (n° {fiche.pennylaneInvoiceNumber||fiche.pennylaneInvoiceId}) — brouillon à valider dans Pennylane</span>
@@ -4919,7 +5016,9 @@ Règles : 2 à 6 lignes maximum, prix HT réalistes et arrondis, quantité enti�
         : forfaitInfo
           ? `Intitulé du forfait : ${d.forfaitLabel}`
           : `Description donnée par l'utilisateur, à reformuler proprement en paragraphe professionnel :\n${texteBrut}`;
-      const prompt = `Tu rédiges le descriptif d'un devis pour une entreprise d'assainissement/plomberie. Rédige un court paragraphe professionnel (3 à 5 phrases, français soigné, ton commercial sobre) décrivant les travaux proposés ci-dessous. Utilise "nous proposons" / "notre intervention comprendra". Ne donne AUCUN prix, AUCUN montant. Ne liste pas ligne par ligne : fais des phrases fluides qui regroupent les travaux. Termine par une phrase sur le résultat attendu (rétablissement du bon écoulement, prévention des obstructions...).
+      const prompt = `${LEXIQUE_METIER}
+
+Tu rédiges le descriptif d'un devis pour une entreprise d'assainissement/plomberie. Rédige un court paragraphe professionnel (3 à 5 phrases, français soigné, ton commercial sobre) décrivant les travaux proposés ci-dessous. Utilise "nous proposons" / "notre intervention comprendra". Ne donne AUCUN prix, AUCUN montant. Ne liste pas ligne par ligne : fais des phrases fluides qui regroupent les travaux. Termine par une phrase sur le résultat attendu (rétablissement du bon écoulement, prévention des obstructions...).
 ${d.client?`Client : ${d.client}`:""}
 ${d.adresse?`Adresse : ${d.adresse}`:""}
 ${source}
@@ -5281,7 +5380,7 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
               <code style={{fontSize:10.5,color:"#0EA5E9"}}>{f.id}</code>
               <span style={{fontSize:12,color:T.text,flex:1}}>{dateFr(f.dateRdv)}</span>
               <span style={{fontSize:11,fontWeight:700,color:STATUTS[f.status]?.color}}>● {STATUTS[f.status]?.label}</span>
-              {f.facturation&&<span style={{fontSize:10.5,fontWeight:700,color:FACTURATION[f.facturation]?.color}}>{FACTURATION[f.facturation]?.label}</span>}
+              {f.facturation&&<span style={{fontSize:10.5,fontWeight:700,color:FACTURATION[f.facturation]?.color}}>{FACTURATION[f.facturation]?.label}{f.facturation==="facture"&&f.numeroFacture?` n°${f.numeroFacture}`:""}</span>}
             </div>
           ))}
         </div>
@@ -5322,7 +5421,16 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
 function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteContrat, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [showForm, setShowForm] = useState(false);
-  const [c, setC] = useState({clientId:"",siteId:"",type:CONTRAT_TYPES[0],frequence:"annuel",dateDebut:today(),technicien:"",actif:true});
+  const [editId, setEditId] = useState(null); // contrat en cours de modification (null = création)
+  const vide = {clientId:"",siteId:"",type:CONTRAT_TYPES[0],frequence:"annuel",dateDebut:today(),prochaine:today(),technicien:"",actif:true};
+  const [c, setC] = useState(vide);
+  const ouvrirEdition = (ct) => {
+    setEditId(ct.id);
+    setC({clientId:ct.clientId||"",siteId:ct.siteId||"",type:ct.type,frequence:ct.frequence,
+          dateDebut:ct.dateDebut||ct.prochaine||today(),prochaine:ct.prochaine||ct.dateDebut||today(),
+          technicien:ct.technicien||"",actif:ct.actif!==false});
+    setShowForm(true);
+  };
   const inp = {width:"100%",padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"};
   const lbl = {display:"block",fontSize:9.5,fontWeight:700,color:T.textMuted,letterSpacing:".08em",textTransform:"uppercase",marginBottom:5};
   const cli = clients.find(x=>x.id===c.clientId);
@@ -5330,14 +5438,21 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
   const creer = ()=>{
     if(!c.clientId){alert("Choisissez un client (créez-le dans l'onglet Clients si besoin).");return;}
     const site = sites.find(s=>s.id===c.siteId);
-    onSaveContrat({ id:uid2("CTR"), clientId:c.clientId, client:cli?.nom||"", siteId:c.siteId||null, site:site?.nom||"", adresse:site?.adresse||"", tel:cli?.tel||"", type:c.type, frequence:c.frequence, dateDebut:c.dateDebut, prochaine:c.dateDebut, technicien:c.technicien, actif:true });
-    setShowForm(false);
-    setC({clientId:"",siteId:"",type:CONTRAT_TYPES[0],frequence:"annuel",dateDebut:today(),technicien:"",actif:true});
+    const base = { clientId:c.clientId, client:cli?.nom||"", siteId:c.siteId||null, site:site?.nom||"",
+      adresse:site?.adresse||"", tel:cli?.tel||"", type:c.type, frequence:c.frequence, technicien:c.technicien };
+    if(editId){
+      const ancien = contrats.find(x=>x.id===editId) || {};
+      // En modification, la date saisie est la PROCHAINE échéance : elle est reprise telle quelle.
+      onSaveContrat({ ...ancien, ...base, dateDebut:ancien.dateDebut||c.prochaine, prochaine:c.prochaine });
+    } else {
+      onSaveContrat({ ...base, id:uid2("CTR"), dateDebut:c.dateDebut, prochaine:c.dateDebut, actif:true });
+    }
+    setShowForm(false); setEditId(null); setC(vide);
   };
   return (
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
-        <button onClick={()=>setShowForm(!showForm)} style={{padding:"9px 16px",background:showForm?"none":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:showForm?`1px solid ${T.border}`:"none",borderRadius:8,color:showForm?T.textMuted:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"✕ Annuler":"➕ Nouveau contrat"}</button>
+        <button onClick={()=>{if(showForm){setShowForm(false);setEditId(null);setC(vide);}else{setEditId(null);setC(vide);setShowForm(true);}}} style={{padding:"9px 16px",background:showForm?"none":"linear-gradient(135deg,#0EA5E9,#6366F1)",border:showForm?`1px solid ${T.border}`:"none",borderRadius:8,color:showForm?T.textMuted:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"✕ Annuler":"➕ Nouveau contrat"}</button>
       </div>
       {showForm&&(
         <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
@@ -5364,7 +5479,9 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
                 {Object.entries(FREQUENCES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            <div><div style={lbl}>Première intervention</div><input type="date" value={c.dateDebut} onChange={e=>setC(p=>({...p,dateDebut:e.target.value}))} style={inp}/></div>
+            <div><div style={lbl}>{editId?"Prochaine intervention":"Première intervention"}</div>
+              <input type="date" value={editId?c.prochaine:c.dateDebut}
+                onChange={e=>setC(p=>editId?{...p,prochaine:e.target.value}:{...p,dateDebut:e.target.value,prochaine:e.target.value})} style={inp}/></div>
             <div><div style={lbl}>Technicien (optionnel)</div>
               <select value={c.technicien} onChange={e=>setC(p=>({...p,technicien:e.target.value}))} style={{...inp,cursor:"pointer"}}>
                 <option value="">—</option>
@@ -5372,7 +5489,7 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
               </select>
             </div>
           </div>
-          <button onClick={creer} style={{marginTop:14,width:"100%",padding:"11px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>✓ Créer le contrat</button>
+          <button onClick={creer} style={{marginTop:14,width:"100%",padding:"11px",background:"linear-gradient(135deg,#10B981,#059669)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>{editId?"✓ Enregistrer les modifications":"✓ Créer le contrat"}</button>
           <div style={{fontSize:11,color:T.textMuted,marginTop:8}}>💡 Les interventions seront créées automatiquement dans l'agenda à chaque échéance (30 jours à l'avance).</div>
         </div>
       )}
@@ -5385,6 +5502,7 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
             <div style={{fontSize:11.5,color:T.textMuted}}>{ct.site||ct.adresse||"—"} · {FREQUENCES[ct.frequence]?.label}{ct.technicien?` · 👤 ${ct.technicien}`:""}</div>
           </div>
           <div style={{fontSize:11.5,fontWeight:700,color:"#3B82F6"}}>📅 Prochaine : {dateFr(ct.prochaine)}</div>
+          <button onClick={()=>ouvrirEdition(ct)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#6366F1",padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
           <button onClick={()=>onSaveContrat({...ct,actif:ct.actif===false})} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:ct.actif!==false?"#F59E0B":"#10B981",padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{ct.actif!==false?"⏸ Suspendre":"▶ Réactiver"}</button>
           <button onClick={()=>{if(window.confirm(`Supprimer le contrat ${ct.type} de ${ct.client} ? Les interventions déjà créées sont conservées.`))onDeleteContrat(ct.id);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
         </div>
@@ -5517,6 +5635,7 @@ function AppInterne() {
   const [positions, setPositions] = useState({}); // { nomTech: { lat, lng, updatedAt, statut } }
   const [view, setView] = useState("accueil");
   const [nav, setNav] = useState("agenda");
+  const [agendaJour, setAgendaJour] = useState(today()); // jour affiché dans l'agenda, conservé au retour d'une fiche
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
@@ -5533,6 +5652,7 @@ function AppInterne() {
   const [showVoiceImport, setShowVoiceImport] = useState(false);
   const [techTels, setTechTels] = useState({});
   const [techColors, setTechColors] = useState({});
+  const [absences, setAbsences] = useState([]); // congés / arrêts des techniciens
   const [sousTraitants, setSousTraitants] = useState([]);
   const [techNom, setTechNom] = useState(()=>localStorage.getItem("techNom")||"");
   // Rafraîchissement silencieux du jeton de notification à chaque ouverture de l'app —
@@ -5638,14 +5758,14 @@ function AppInterne() {
 
   const exporterExcel = () => {
     try {
-      const entete = ["Reference","Date RDV","Heure","Statut","Client","Adresse","Telephone","Email","Technicien","Societe","Prestations","Temps passe","Majorations","Facturation","Motif non facture","Conclusion"];
+      const entete = ["Reference","Date RDV","Heure","Statut","Client","Adresse","Telephone","Email","Technicien","Societe","Prestations","Temps passe","Majorations","Facturation","N facture","Motif non facture","Conclusion"];
       const echap = (v)=>{ const s=(v==null?"":String(v)).replace(/"/g,'""').replace(/\r?\n/g," "); return '"'+s+'"'; };
       const majLib = {soir50:"Soir +50%",weekend100:"Nuit/WE +100%"};
       const lignes = fiches.map(f=>{
         const prest = (f.prestations||[]).map(p=>{const m=PRESTATIONS.find(x=>x.id===p.id);return m?m.label:p.id;}).join(" / ");
         const maj = (f.majorations||[]).map(m=>majLib[m]||m).join(" + ");
         const stat = STATUTS[f.status]?.label || f.status || "";
-        return [f.id,f.dateRdv||"",f.heureRdv||"",stat,f.client||"",f.adresse||"",f.tel||"",f.email||"",f.technicien||"",f.societe||"",prest,f.tempsInterne||"",maj,f.facturation||"",f.raisonNonFacture||"",f.conclusion||""].map(echap).join(";");
+        return [f.id,f.dateRdv||"",f.heureRdv||"",stat,f.client||"",f.adresse||"",f.tel||"",f.email||"",f.technicien||"",f.societe||"",prest,f.tempsInterne||"",maj,f.facturation||"",f.numeroFacture||"",f.raisonNonFacture||"",f.conclusion||""].map(echap).join(";");
       });
       const csv = "\uFEFF" + entete.map(echap).join(";") + "\r\n" + lignes.join("\r\n");
       const blob = new Blob([csv],{type:"text/csv;charset=utf-8;"});
@@ -5674,6 +5794,7 @@ function AppInterne() {
     const unsub5 = watchLogos(data => setLogos(data));
     const unsubT = watchTechTels(data => setTechTels(data));
     const unsubTC = watchTechColors(data => setTechColors(data));
+    const unsubAbs = watchAbsences(data => setAbsences(data));
     const unsubST = watchSousTraitants(data => setSousTraitants(data));
     const unsubPL = watchPrestationLabels(data => { applyPrestationLabels(data); setPrestaLabelsVersion(v=>v+1); });
     const unsubCh = watchChamps(data => setChampsCustom(data));
@@ -5687,7 +5808,7 @@ function AppInterne() {
     const unsubM = watchMemosVocaux(data => setMemosVocaux(data));
     const unsubR = watchUserRoles(data => { setUserRoles(data); setUserRolesLoaded(true); }, err => setRolesError(prev => prev || `Écoute temps réel : ${err?.message || err}`));
     const unsubAct = watchActiviteLog(data => setActiviteLog(data));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubIA(); unsubMsg(); unsubM(); unsubR(); unsubAct(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9(); unsubT(); unsubTC(); unsubAbs(); unsubST(); unsubPL(); unsubCh(); unsubPC(); unsubIA(); unsubMsg(); unsubM(); unsubR(); unsubAct(); };
   },[currentUser]);
 
   const creerModuleService = (item) => { savePrestationCustom(item); };
@@ -5721,6 +5842,12 @@ function AppInterne() {
     showToast(`📡 ${q.length} fiche(s) synchronisée(s)`);
   };
   const handleSave = fiche => {
+    // Technicien absent le jour du RDV : on refuse l'assignation.
+    const abs = absenceDe((fiche.technicien||"").trim(), fiche.dateRdv, absences);
+    if(abs){
+      alert(`❌ ${abs.technicien} est absent du ${dateFr(abs.du)} au ${dateFr(abs.au)}${abs.motif?` (${abs.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
+      return;
+    }
     if(typeof navigator!=="undefined" && !navigator.onLine){
       lsSet("pending_saves", [...(lsGet("pending_saves")||[]).filter(x=>x.id!==fiche.id), fiche]);
       setFiches(p=>[...p.filter(x=>x.id!==fiche.id), fiche]);
@@ -5752,6 +5879,11 @@ function AppInterne() {
   };
 
   const handleSaveRdv = rdv => {
+    const absR = absenceDe((rdv.technicien||"").trim(), rdv.dateRdv, absences);
+    if(absR){
+      alert(`❌ ${absR.technicien} est absent du ${dateFr(absR.du)} au ${dateFr(absR.au)}${absR.motif?` (${absR.motif})`:""}.\nChoisissez un autre technicien ou une autre date.`);
+      return;
+    }
     setRdvPrefill(null);
     if(typeof navigator!=="undefined" && !navigator.onLine){
       lsSet("pending_saves", [...(lsGet("pending_saves")||[]).filter(x=>x.id!==rdv.id), rdv]);
@@ -5861,7 +5993,18 @@ function AppInterne() {
     } else if (val !== fiche.facturation) {
       raison = ""; // on quitte "ne pas facturer" → motif remis à zéro
     }
-    const nf={...fiche, facturation: val, raisonNonFacture: raison};
+    // Passage en "Facturé" : le numéro de facture est obligatoire (celui de Pennylane
+    // une fois le brouillon validé). Sans numéro, on ne change pas le statut.
+    let numeroFacture = fiche.numeroFacture || "";
+    if (val === "facture") {
+      const saisie = window.prompt("Numéro de la facture (obligatoire) :", numeroFacture);
+      if (saisie === null) return;                       // annulé
+      if (!saisie.trim()) { alert("Numéro de facture obligatoire pour passer la fiche en « Facturé »."); return; }
+      numeroFacture = saisie.trim();
+    } else if (val !== fiche.facturation) {
+      numeroFacture = "";                                // on quitte "Facturé" → numéro effacé
+    }
+    const nf={...fiche, facturation: val, raisonNonFacture: raison, numeroFacture};
     saveFiche(nf); setSelected(nf);
   };
 
@@ -5896,6 +6039,7 @@ function AppInterne() {
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
     else if(filterStatus==="__facture") r=r.filter(f=>f.facturation==="facture");
+    else if(filterStatus==="__brouillon") r=r.filter(f=>f.facturation==="brouillon");
     else if(filterStatus==="planifie") r=r.filter(f=>f.status==="planifie"&&!estAProgrammer(f));
     else if(filterStatus) r=r.filter(f=>f.status===filterStatus);
     if(filterTech) r=r.filter(f=>f.technicien===filterTech);
@@ -6145,12 +6289,18 @@ function AppInterne() {
               // fiches non traitées (soir/matin) — pour éviter la lassitude côté technicien.
             }}
             onAjouterCommentaire={(f,texte)=>{
-              const auteur = (estRestreint?monRole.technicien:f.technicien) || "Admin";
+              const auteur = monRole.technicien || "Admin";
               const c = { ts: Date.now(), par: auteur, texte };
               const nf = {...f, commentaires:[...(f.commentaires||[]), c]};
               saveFiche(nf); setSelected(nf);
               showToast("💬 Note ajoutée");
-              // Idem : plus de diffusion à toute l'équipe, la note reste visible sur la fiche.
+              // Pas de diffusion à toute l'équipe (trop bavard), mais le technicien assigné
+              // à la fiche est prévenu — sauf s'il est lui-même l'auteur de la note.
+              const destinataire = (f.technicien||"").trim();
+              if(destinataire && destinataire !== auteur){
+                envoyerNotification(destinataire, "💬 Note sur votre intervention",
+                  `${auteur} — ${f.client||"Client"} : ${texte.length>90?texte.slice(0,90)+"…":texte}`, f.id);
+              }
             }}
             onModifierCommentaire={(f,ts,nouveauTexte)=>{
               const nf = {...f, commentaires:(f.commentaires||[])
@@ -6159,6 +6309,12 @@ function AppInterne() {
               };
               saveFiche(nf); setSelected(nf);
               showToast(nouveauTexte===null ? "🗑️ Note supprimée" : "✏️ Note modifiée");
+              const auteurModif = monRole.technicien || "Admin";
+              const destinataire = (f.technicien||"").trim();
+              if(nouveauTexte!==null && destinataire && destinataire !== auteurModif){
+                envoyerNotification(destinataire, "✏️ Note modifiée sur votre intervention",
+                  `${auteurModif} — ${f.client||"Client"} : ${nouveauTexte.length>90?nouveauTexte.slice(0,90)+"…":nouveauTexte}`, f.id);
+              }
             }}
             onSupprimerAppel={(f,ts)=>{
               const nf = {...f, journalAppels:(f.journalAppels||[]).filter(e=>e.ts!==ts)};
@@ -6318,6 +6474,7 @@ function AppInterne() {
                   {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   <option value="__signees">✍️ Signées</option>
                   <option value="__afacturer">💶 À facturer</option>
+                  <option value="__brouillon">🧾 Brouillon (à valider dans Pennylane)</option>
                   <option value="__facture">✅ Facturé</option>
                 </select>
                 {nav!=="liste"&&(
@@ -6357,7 +6514,7 @@ function AppInterne() {
             {nav==="liste"&&(filterStatus||filterTech)&&(
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:"#0EA5E9"}}>
-                  Filtre :{filterStatus?` ${filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
+                  Filtre :{filterStatus?` ${filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__brouillon" ? "🧾 Brouillon" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
                 </span>
                 <button onClick={()=>{setFilterStatus("");setFilterTech("");}} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
               </div>
@@ -6404,7 +6561,7 @@ function AppInterne() {
                     ))}
               </div>
             )}
-            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} onSaveAbsence={estRestreint?null:saveAbsenceFb} onDeleteAbsence={estRestreint?null:deleteAbsenceFb} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
