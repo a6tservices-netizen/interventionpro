@@ -1342,7 +1342,7 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
   );
 }
 
-function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
+async function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
   const manques = ficheManques(fiche);
   const msg = [
     `🔔 Rappel — Fiche ${fiche.id} à compléter`,
@@ -1358,7 +1358,7 @@ function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
   ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
   let num = fiche.technicien ? (techTels[logoKey(fiche.technicien)]||"") : "";
   if(!num && fiche.technicien && onSaveTel){
-    const saisie = window.prompt(`Numéro WhatsApp de ${fiche.technicien} ?\n(Format international conseillé : 33612345678)\nIl sera mémorisé pour les prochaines relances. Laissez vide pour choisir le contact à la main.`);
+    const saisie = await dlgPrompt(`Numéro WhatsApp de ${fiche.technicien}\nFormat conseillé : 33612345678. Il sera mémorisé pour les prochaines relances. Laissez vide pour choisir le contact à la main.`, "", {titre:"Numéro du technicien",valider:"Enregistrer"});
     if(saisie&&saisie.trim()){ num = saisie.replace(/[^0-9+]/g,""); onSaveTel(fiche.technicien, num); }
   }
   window.open(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
@@ -1684,12 +1684,12 @@ function PhotoAnnotator({ photo, onSave, onClose, theme }) {
     return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   };
 
-  const onDown = (e) => {
+  const onDown = async (e) => {
     if (!ready) return;
     e.preventDefault();
     const { x, y } = coordsFromEvent(e);
     if (tool === "texte") {
-      const v = window.prompt("Texte à ajouter sur la photo :");
+      const v = await dlgPrompt("Texte à ajouter sur la photo","",{titre:"Annoter la photo",valider:"Ajouter"});
       if (v && v.trim()) {
         const next = [...shapes, { type: "texte", x1: x, y1: y, texte: v.trim(), color }];
         setShapes(next); redraw(next);
@@ -4346,11 +4346,11 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
             <input type="date" value={nouvelleAbs.au} min={nouvelleAbs.du} onChange={e=>setNouvelleAbs(a=>({...a,au:e.target.value}))}
               style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"}}/>
           </div>
-          <button onClick={()=>{
-              if(!nouvelleAbs.technicien){alert("Choisissez un technicien.");return;}
-              if(nouvelleAbs.au<nouvelleAbs.du){alert("La date de fin est avant la date de début.");return;}
+          <button onClick={async ()=>{
+              if(!nouvelleAbs.technicien){dlgInfo("Choisissez d'abord un technicien.","Technicien manquant");return;}
+              if(nouvelleAbs.au<nouvelleAbs.du){dlgInfo("La date de fin est antérieure à la date de début.","Dates incohérentes");return;}
               const occupees = fiches.filter(f=>f.technicien===nouvelleAbs.technicien&&f.dateRdv>=nouvelleAbs.du&&f.dateRdv<=nouvelleAbs.au&&f.status!=="annule");
-              if(occupees.length && !window.confirm(`${nouvelleAbs.technicien} a déjà ${occupees.length} intervention(s) sur cette période. Elles ne seront pas déplacées automatiquement. Continuer ?`)) return;
+              if(occupees.length && !(await dlgConfirm(`${nouvelleAbs.technicien} a déjà ${occupees.length} intervention(s) sur cette période. Elles ne seront pas déplacées automatiquement.`,{titre:"Interventions déjà prévues",valider:"Ajouter quand même"}))) return;
               onSaveAbsence({...nouvelleAbs, id:uid2("ABS")});
               setNouvelleAbs({technicien:"",du:selDay,au:selDay,motif:""});
             }}
@@ -4361,7 +4361,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
                 <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,background:T.surface2,borderRadius:8,padding:"7px 10px"}}>
                   <span style={{fontWeight:700}}>{a.technicien}</span>
                   <span style={{color:T.textMuted}}>{dateFr(a.du)} → {dateFr(a.au)}{a.motif?` · ${a.motif}`:""}</span>
-                  <button onClick={()=>{if(window.confirm(`Supprimer l'absence de ${a.technicien} ?`))onDeleteAbsence(a.id);}}
+                  <button onClick={async ()=>{if(await dlgConfirm(`L'absence de ${a.technicien} sera retirée.`,{titre:"Supprimer l'absence",danger:true}))onDeleteAbsence(a.id);}}
                     style={{marginLeft:"auto",background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
                 </div>
               ))}
@@ -4761,8 +4761,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                       {c.label}
                     </button>
                   ))}
-                  <button onClick={()=>{
-                    const q = window.prompt("Autre — qu'a dit le client ? (la date sera à ajuster manuellement ensuite si besoin)","");
+                  <button onClick={async ()=>{
+                    const q = await dlgPrompt("Qu'a dit le client ? La date sera à ajuster manuellement ensuite si besoin.","",{titre:"Retour d'appel",multiline:true,valider:"Enregistrer"});
                     if(q===null) return;
                     onLoguerAppel(fiche, "reussi", q.trim());
                     setShowQuandChips(false);
@@ -4782,7 +4782,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                         <span style={{fontWeight:700,color:meta.color}}>{meta.label}</span>
                         <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
                           {new Date(e.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
-                          {onSupprimerAppel && <button onClick={()=>{ if(window.confirm("Supprimer cette entrée du journal d'appels ?")) onSupprimerAppel(fiche, e.ts); }} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontFamily:"inherit",fontSize:11,padding:0}}>🗑️</button>}
+                          {onSupprimerAppel && <button onClick={async ()=>{ if(await dlgConfirm("Cette entrée du journal d'appels sera retirée.",{titre:"Supprimer l'entrée",danger:true})) onSupprimerAppel(fiche, e.ts); }} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontFamily:"inherit",fontSize:11,padding:0}}>🗑️</button>}
                         </span>
                       </div>
                       <div style={{color:T.textMuted,fontSize:10.5,marginTop:1}}>{e.par||"—"}{e.note?` · ${e.note}`:""}</div>
@@ -4804,10 +4804,10 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                       <span style={{fontWeight:700,color:"#6366F1"}}>{c.par||"—"}</span>
                       <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
                         {new Date(c.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
-                        {onModifierCommentaire && <button onClick={()=>{
-                          const nv = window.prompt("Modifier la note :", c.texte);
+                        {onModifierCommentaire && <button onClick={async ()=>{
+                          const nv = await dlgPrompt("Modifier la note :", c.texte, {titre:"Modifier la note",multiline:true,valider:"Enregistrer"});
                           if(nv===null) return;
-                          if(!nv.trim()){ if(window.confirm("Supprimer cette note ?")) onModifierCommentaire(fiche, c.ts, null); return; }
+                          if(!nv.trim()){ if(await dlgConfirm("Vider le texte supprime cette note. Continuer ?",{titre:"Supprimer la note",danger:true})) onModifierCommentaire(fiche, c.ts, null); return; }
                           onModifierCommentaire(fiche, c.ts, nv.trim());
                         }} style={{background:"none",border:"none",color:"#6366F1",cursor:"pointer",fontFamily:"inherit",fontSize:11,padding:0}}>✏️</button>}
                       </span>
@@ -4817,8 +4817,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
                 ))}
               </div>
             )}
-            <button onClick={()=>{
-              const texte = window.prompt("Note visible par toute l'équipe sur cette fiche :","");
+            <button onClick={async ()=>{
+              const texte = await dlgPrompt("Note visible par toute l'équipe sur cette fiche :","",{titre:"Ajouter une note",multiline:true,valider:"Publier la note"});
               if(texte===null || !texte.trim()) return;
               onAjouterCommentaire(fiche, texte.trim());
             }} style={{width:"100%",padding:"8px",borderRadius:8,border:"1px dashed #6366F155",background:"#6366F114",color:"#6366F1",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
@@ -4936,8 +4936,8 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
         {fiche.facturation==="ne_pas_facturer"&&(
           <div style={{marginTop:6,fontSize:11.5,color:T.textMuted,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
             <span style={{fontStyle:fiche.raisonNonFacture?"normal":"italic"}}>🚫 Motif : {fiche.raisonNonFacture || "non précisé"}</span>
-            <button onClick={()=>{
-              const saisie=window.prompt("Motif — pourquoi cette intervention n'est pas facturée ?",fiche.raisonNonFacture||"");
+            <button onClick={async ()=>{
+              const saisie=await dlgPrompt("Pourquoi cette intervention n'est pas facturée ?",fiche.raisonNonFacture||"",{titre:"Motif de non-facturation",multiline:true,valider:"Enregistrer"});
               if(saisie===null) return;
               onToggleFacturation&&onToggleFacturation(fiche,"ne_pas_facturer",saisie.trim());
             }} style={{background:"none",border:"none",color:"#0EA5E9",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0}}>✏️ Modifier</button>
@@ -5405,7 +5405,7 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
           <button onClick={()=>{setSel(null);setSiteFilter("");}} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Clients</button>
           <div style={{fontWeight:800,fontSize:18,color:T.text}}>🏢 {client.nom}</div>
-          <button onClick={()=>{if(window.confirm(`Supprimer le client ${client.nom} ? (les fiches existantes sont conservées)`)){onDeleteClient(client.id);setSel(null);}}} style={{marginLeft:"auto",background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>🗑️ Supprimer</button>
+          <button onClick={async ()=>{if(await dlgConfirm(`${client.nom} sera retiré de la liste. Les fiches existantes sont conservées.`,{titre:"Supprimer le client",danger:true})){onDeleteClient(client.id);setSel(null);}}} style={{marginLeft:"auto",background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>🗑️ Supprimer</button>
         </div>
         <div style={sec}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -5423,7 +5423,7 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
                 <div style={{fontSize:11.5,color:T.textMuted}}>{s.adresse}</div>
               </div>
               <span style={{fontSize:10.5,color:T.textMuted}}>{fiches.filter(f=>f.siteId===s.id).length} fiche(s)</span>
-              <button onClick={e=>{e.stopPropagation();if(window.confirm(`Supprimer le site ${s.nom||s.adresse} ?`)){const ns={...client.sites};delete ns[s.id];onSaveClient({...client,sites:ns});if(siteFilter===s.id)setSiteFilter("");}}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
+              <button onClick={async e=>{e.stopPropagation();if(await dlgConfirm(`Le site ${s.nom||s.adresse} sera retiré de ce client.`,{titre:"Supprimer le site",danger:true})){const ns={...client.sites};delete ns[s.id];onSaveClient({...client,sites:ns});if(siteFilter===s.id)setSiteFilter("");}}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
             </div>
           ))}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1.6fr auto",gap:6,marginTop:10}}>
@@ -5456,7 +5456,7 @@ function ClientsView({ clients, fiches, onSaveClient, onDeleteClient, onSelectFi
     <div style={{maxWidth:720,margin:"0 auto"}}>
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         <input placeholder="🔍 Rechercher un client…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,flex:1,minWidth:160,width:"auto"}}/>
-        <button onClick={()=>{const nom=prompt("Nom du nouveau client :");if(nom?.trim()){const c={id:uid2("CLI"),nom:nom.trim(),tel:"",email:"",sites:{}};onSaveClient(c);setSel(c.id);}}}
+        <button onClick={async ()=>{const nom=await dlgPrompt("Nom du nouveau client","",{titre:"Nouveau client",valider:"Créer"});if(nom?.trim()){const c={id:uid2("CLI"),nom:nom.trim(),tel:"",email:"",sites:{}};onSaveClient(c);setSel(c.id);}}}
           style={{padding:"9px 16px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",border:"none",borderRadius:8,color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>➕ Nouveau client</button>
       </div>
       {list.length===0&&<Empty icon="👥" text="Aucun client enregistré" T={T}/>}
@@ -5567,9 +5567,73 @@ function ContratsView({ contrats, clients, techniciens, onSaveContrat, onDeleteC
           <div style={{fontSize:11.5,fontWeight:700,color:"#3B82F6"}}>📅 Prochaine : {dateFr(ct.prochaine)}</div>
           <button onClick={()=>ouvrirEdition(ct)} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:"#6366F1",padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
           <button onClick={()=>onSaveContrat({...ct,actif:ct.actif===false})} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:ct.actif!==false?"#F59E0B":"#10B981",padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{ct.actif!==false?"⏸ Suspendre":"▶ Réactiver"}</button>
-          <button onClick={()=>{if(window.confirm(`Supprimer le contrat ${ct.type} de ${ct.client} ? Les interventions déjà créées sont conservées.`))onDeleteContrat(ct.id);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
+          <button onClick={async ()=>{if(await dlgConfirm(`Le contrat ${ct.type} de ${ct.client} sera supprimé. Les interventions déjà créées sont conservées.`,{titre:"Supprimer le contrat",danger:true}))onDeleteContrat(ct.id);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   BOÎTES DE DIALOGUE MAISON
+   Remplacent alert() / confirm() / prompt() du navigateur, qui sur mobile
+   s'affichent avec l'habillage du navigateur et cassent l'identité de l'app.
+   API promise : `if(await dlgConfirm("…"))`, `const v = await dlgPrompt("…")`.
+   dlgInfo() ne bloque pas l'appelant.
+   Repli automatique sur les boîtes natives tant que l'hôte n'est pas monté.
+═══════════════════════════════════════════ */
+let _ouvrirDialogue = null;
+const dialogue = (opts) => new Promise(resoudre => {
+  if(!_ouvrirDialogue){
+    if(opts.type==="confirm") return resoudre(window.confirm(opts.message));
+    if(opts.type==="prompt")  return resoudre(window.prompt(opts.message, opts.valeur||""));
+    window.alert(opts.message); return resoudre(undefined);
+  }
+  _ouvrirDialogue({...opts, resoudre});
+});
+const dlgInfo    = (message, titre) => dialogue({type:"info", titre, message});
+const dlgConfirm = (message, o={})  => dialogue({type:"confirm", message, ...o});
+const dlgPrompt  = (message, valeur="", o={}) => dialogue({type:"prompt", message, valeur, ...o});
+
+function DialogueHost({ theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [d, setD] = useState(null);
+  const [val, setVal] = useState("");
+  const champRef = useRef(null);
+  useEffect(()=>{ _ouvrirDialogue = (opts)=>{ setVal(opts.valeur||""); setD(opts); }; return ()=>{ _ouvrirDialogue = null; }; },[]);
+  useEffect(()=>{ if(d?.type==="prompt") setTimeout(()=>champRef.current?.focus(),60); },[d]);
+  if(!d) return null;
+  const fermer = (resultat) => { d.resoudre(resultat); setD(null); };
+  const danger = d.danger || /supprim|effac|retir/i.test(d.message||"");
+  const accent = danger ? "#EF4444" : "#0EA5E9";
+  const multi = d.multiline || (d.message||"").length > 90;
+  return (
+    <div onClick={()=>fermer(d.type==="confirm"?false:d.type==="prompt"?null:undefined)}
+      style={{position:"fixed",inset:0,background:"rgba(2,8,20,0.72)",backdropFilter:"blur(3px)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:18}}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:18,padding:"22px 22px 18px",width:440,maxWidth:"100%",boxShadow:"0 24px 60px rgba(0,0,0,0.45)"}}>
+        <div style={{width:38,height:4,borderRadius:2,background:accent,marginBottom:14}}/>
+        {d.titre&&<div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:6}}>{d.titre}</div>}
+        <div style={{fontSize:13.5,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:d.type==="prompt"?12:18}}>{d.message}</div>
+        {d.type==="prompt"&&(
+          multi
+            ? <textarea ref={champRef} value={val} onChange={e=>setVal(e.target.value)} rows={4}
+                style={{width:"100%",padding:"11px 13px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:16}}/>
+            : <input ref={champRef} value={val} onChange={e=>setVal(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter")fermer(val);if(e.key==="Escape")fermer(null);}}
+                style={{width:"100%",padding:"11px 13px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:16}}/>
+        )}
+        <div style={{display:"flex",gap:10}}>
+          {d.type!=="info"&&(
+            <button onClick={()=>fermer(d.type==="confirm"?false:null)}
+              style={{flex:1,padding:"12px",borderRadius:10,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontWeight:700,fontSize:13.5,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+          )}
+          <button autoFocus={d.type!=="prompt"} onClick={()=>fermer(d.type==="confirm"?true:d.type==="prompt"?val:undefined)}
+            style={{flex:d.type==="info"?1:1.6,padding:"12px",borderRadius:10,border:"none",background:danger?"linear-gradient(135deg,#EF4444,#B91C1C)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",fontFamily:"inherit"}}>
+            {d.valider || (d.type==="confirm" ? (danger?"Supprimer":"Confirmer") : d.type==="prompt" ? "Valider" : "OK")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -6043,13 +6107,13 @@ function AppInterne() {
     setView("devisform");
   };
   const handleSaveDevis = (d) => { saveDevisFb(d); setEditingDevis(null); setView("accueil"); setNav("devis"); showToast("📄 Devis enregistré"); };
-  const handleToggleFacturation = (fiche, val, raisonPreDefinie) => {
+  const handleToggleFacturation = async (fiche, val, raisonPreDefinie) => {
     let raison = fiche.raisonNonFacture || "";
     if (val === "ne_pas_facturer") {
       if (raisonPreDefinie !== undefined) {
         raison = raisonPreDefinie;
       } else {
-        const saisie = window.prompt("Motif (optionnel) — pourquoi cette intervention n'est pas facturée ?\nEx : geste commercial, sous garantie, erreur précédente…", raison);
+        const saisie = await dlgPrompt("Pourquoi cette intervention n'est pas facturée ?\nPar exemple : geste commercial, sous garantie, erreur précédente.", raison, {titre:"Motif de non-facturation",multiline:true,valider:"Enregistrer"});
         if (saisie === null) return; // annulé : on ne change rien
         raison = saisie.trim();
       }
@@ -6060,9 +6124,9 @@ function AppInterne() {
     // une fois le brouillon validé). Sans numéro, on ne change pas le statut.
     let numeroFacture = fiche.numeroFacture || "";
     if (val === "facture") {
-      const saisie = window.prompt("Numéro de la facture (obligatoire) :", numeroFacture);
+      const saisie = await dlgPrompt("Numéro de la facture, tel qu'il apparaît dans Pennylane.", numeroFacture, {titre:"Passer en facturé",valider:"Enregistrer"});
       if (saisie === null) return;                       // annulé
-      if (!saisie.trim()) { alert("Numéro de facture obligatoire pour passer la fiche en « Facturé »."); return; }
+      if (!saisie.trim()) { dlgInfo("Le numéro de facture est obligatoire pour passer la fiche en facturé.","Numéro manquant"); return; }
       numeroFacture = saisie.trim();
     } else if (val !== fiche.facturation) {
       numeroFacture = "";                                // on quitte "Facturé" → numéro effacé
@@ -6169,6 +6233,7 @@ function AppInterne() {
   const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
   const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"memos",label:"🎙️ Historique mémos vocaux"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
 
+  const dialogueHost = <DialogueHost theme={theme}/>;
   const offlineBanner = !online && (
     <div style={{background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
       📴 Mode hors ligne — consultation possible, vos enregistrements et mémos vocaux seront synchronisés au retour du réseau
@@ -6273,6 +6338,7 @@ function AppInterne() {
   // Formulaire RDV plein écran
   if(showRdvForm) return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      {dialogueHost}
       {offlineBanner}
       {rolesErrorBanner}
       {derniereErreurBanner}
@@ -6289,6 +6355,7 @@ function AppInterne() {
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      {dialogueHost}
       {offlineBanner}
       {rolesErrorBanner}
       {derniereErreurBanner}
@@ -6628,7 +6695,7 @@ function AppInterne() {
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
-            {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} techniciens={techniciens} techTels={techTels} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
+            {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} techniciens={techniciens} techTels={techTels} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={async f=>{if(await dlgConfirm("L\u2019intervention "+f.id+" ("+(f.client||"sans client")+") sera supprim\u00e9e d\u00e9finitivement.",{titre:"Supprimer l\u2019intervention",danger:true})){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprim\u00e9e");}}}/>}
             {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
           </>
