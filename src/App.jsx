@@ -4325,7 +4325,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
       {/* En-tête semaine */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
         <button onClick={()=>navSemaine(-1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>◀</button>
-        <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:15,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
+        <div style={{flex:1,textAlign:"center",fontWeight:600,fontSize:16,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
         <button onClick={()=>navSemaine(1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
       </div>
       {/* Retour à la semaine en cours : proposé seulement quand on l'a quittée,
@@ -4348,8 +4348,8 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
                 border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":abs.length?"rgba(245,158,11,0.45)":T.border}`,
                 background:isSel?"rgba(14,165,233,0.14)":isToday?"rgba(16,185,129,0.07)":abs.length?"rgba(245,158,11,0.09)":T.surface}}
               title={abs.length?`Absent${abs.length>1?"s":""} : ${abs.join(", ")}`:undefined}>
-              <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase"}}>{jours[i]}</div>
-              <div style={{fontSize:16,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
+              <div style={{fontSize:11,fontWeight:600,color:T.textMuted}}>{jours[i]}</div>
+              <div style={{fontSize:18,fontWeight:isToday||isSel?700:500,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
               <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",minHeight:6}}>
                 {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:f.technicien?techColor(f.technicien,techniciens,techColors):colorOf(f),display:"inline-block"}}/>)}
               </div>
@@ -4381,7 +4381,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
 
       {/* Jour sélectionné */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-        <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"7px 15px",fontWeight:800,fontSize:13}}>
+        <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"7px 15px",fontWeight:600,fontSize:13}}>
           {selDay===todayStr?"Aujourd'hui":dateFr(selDay)}
         </div>
         <div style={{flex:1,height:1,background:T.border}}/>
