@@ -2687,7 +2687,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
-function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA, parametresMessages={modeles:MODELES_MESSAGE_DEFAUT}, onSaveParametresMessages }) {
+function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA, parametresMessages={modeles:MODELES_MESSAGE_DEFAUT}, onSaveParametresMessages, absences=[], onSaveAbsence, onDeleteAbsence }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
   const [logoTarget, setLogoTarget] = useState(null);
@@ -2735,6 +2735,9 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       </div>
 
       {/* Journal d'activité — connexions, ajouts de photo... */}
+      {onSaveAbsence&&<Repliable T={T} icone="🌴" titre="Absences des techniciens" badge={absences.length||null}>
+        <AbsencesAdmin T={T} theme={theme} techniciens={techniciens} fiches={fiches} absences={absences} onSaveAbsence={onSaveAbsence} onDeleteAbsence={onDeleteAbsence}/>
+      </Repliable>}
       <Repliable T={T} icone="🤖" titre="Intelligence artificielle" defaultOpen={false}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${T.border}`,marginBottom:12}}>
           <div>
@@ -4297,9 +4300,8 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
 
   const navSemaine = (delta) => { const dt=new Date(lundi); dt.setDate(lundi.getDate()+delta*7); setSelDay(toStr(dt)); };
 
-  const [showAbs, setShowAbs] = useState(false);
-  const [nouvelleAbs, setNouvelleAbs] = useState({technicien:"",du:selDay,au:selDay,motif:""});
-  const absentsDuJour = techniciens.filter(t=>estAbsent(t, selDay, absences));
+  // Absences : marquage discret sur les cases de la semaine ; la saisie se fait dans Administration.
+  const absentsLe = (d) => techniciens.filter(t=>estAbsent(t, d, absences));
 
   const dayFiches = (byDay[selDay]||[]).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
   // État : "rdv" (à faire), "complete" (fiche OK), "incomplete" (fiche commencée mais manques)
@@ -4327,71 +4329,27 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:15,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
         <button onClick={()=>navSemaine(1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
         <button onClick={()=>setSelDay(todayStr)} style={{padding:"9px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
-        {onSaveAbsence&&<button onClick={()=>{setNouvelleAbs(a=>({...a,du:selDay,au:selDay}));setShowAbs(v=>!v);}} style={{padding:"9px 14px",borderRadius:8,border:`1px solid ${showAbs?"#F59E0B":T.border}`,background:showAbs?"rgba(245,158,11,0.12)":"none",color:showAbs?"#F59E0B":T.textMuted,cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>🌴 Absences</button>}
       </div>
-
-      {showAbs&&onSaveAbsence&&(
-        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-          <div style={{fontWeight:800,fontSize:13,color:T.text,marginBottom:10}}>🌴 Absences des techniciens</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-            <select value={nouvelleAbs.technicien} onChange={e=>setNouvelleAbs(a=>({...a,technicien:e.target.value}))}
-              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer",boxSizing:"border-box",width:"100%"}}>
-              <option value="">— Technicien —</option>
-              {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
-            </select>
-            <input value={nouvelleAbs.motif} onChange={e=>setNouvelleAbs(a=>({...a,motif:e.target.value}))} placeholder="Motif (congés, arrêt…)"
-              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
-            <input type="date" value={nouvelleAbs.du} onChange={e=>setNouvelleAbs(a=>({...a,du:e.target.value,au:a.au<e.target.value?e.target.value:a.au}))}
-              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"}}/>
-            <input type="date" value={nouvelleAbs.au} min={nouvelleAbs.du} onChange={e=>setNouvelleAbs(a=>({...a,au:e.target.value}))}
-              style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"}}/>
-          </div>
-          <button onClick={async ()=>{
-              if(!nouvelleAbs.technicien){dlgInfo("Choisissez d'abord un technicien.","Technicien manquant");return;}
-              if(nouvelleAbs.au<nouvelleAbs.du){dlgInfo("La date de fin est antérieure à la date de début.","Dates incohérentes");return;}
-              const occupees = fiches.filter(f=>f.technicien===nouvelleAbs.technicien&&f.dateRdv>=nouvelleAbs.du&&f.dateRdv<=nouvelleAbs.au&&f.status!=="annule");
-              if(occupees.length && !(await dlgConfirm(`${nouvelleAbs.technicien} a déjà ${occupees.length} intervention(s) sur cette période. Elles ne seront pas déplacées automatiquement.`,{titre:"Interventions déjà prévues",valider:"Ajouter quand même"}))) return;
-              onSaveAbsence({...nouvelleAbs, id:uid2("ABS")});
-              setNouvelleAbs({technicien:"",du:selDay,au:selDay,motif:""});
-            }}
-            style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>➕ Ajouter l'absence</button>
-          {absences.length>0&&(
-            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
-              {[...absences].sort((a,b)=>a.du.localeCompare(b.du)).map(a=>(
-                <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,background:T.surface2,borderRadius:8,padding:"7px 10px"}}>
-                  <span style={{fontWeight:700}}>{a.technicien}</span>
-                  <span style={{color:T.textMuted}}>{dateFr(a.du)} → {dateFr(a.au)}{a.motif?` · ${a.motif}`:""}</span>
-                  <button onClick={async ()=>{if(await dlgConfirm(`L'absence de ${a.technicien} sera retirée.`,{titre:"Supprimer l'absence",danger:true}))onDeleteAbsence(a.id);}}
-                    style={{marginLeft:"auto",background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {absentsDuJour.length>0&&(
-        <div style={{background:"rgba(245,158,11,0.10)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#F59E0B",fontWeight:700}}>
-          🌴 Absent{absentsDuJour.length>1?"s":""} ce jour : {absentsDuJour.map(t=>{const a=absenceDe(t,selDay,absences);return `${t}${a?.motif?` (${a.motif})`:""}`;}).join(" · ")}
-        </div>
-      )}
 
       {/* Bande semaine : 7 jours */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:16}}>
         {semaine.map((d,i)=>{
           const evts = byDay[d]||[];
           const isToday = d===todayStr, isSel = d===selDay;
+          const abs = absentsLe(d);
           return (
             <div key={d} onClick={()=>{setSelDay(d);if(!evts.length&&onNewRdv)onNewRdv(d);}}
               style={{borderRadius:10,padding:"8px 2px 7px",cursor:"pointer",textAlign:"center",minHeight:62,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:3,
-                border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":T.border}`,
-                background:isSel?"rgba(14,165,233,0.14)":isToday?"rgba(16,185,129,0.07)":T.surface}}>
+                border:`1.5px solid ${isSel?"#0EA5E9":isToday?"rgba(16,185,129,0.5)":abs.length?"rgba(245,158,11,0.45)":T.border}`,
+                background:isSel?"rgba(14,165,233,0.14)":isToday?"rgba(16,185,129,0.07)":abs.length?"rgba(245,158,11,0.09)":T.surface}}
+              title={abs.length?`Absent${abs.length>1?"s":""} : ${abs.join(", ")}`:undefined}>
               <div style={{fontSize:9,fontWeight:700,color:T.textMuted,textTransform:"uppercase"}}>{jours[i]}</div>
               <div style={{fontSize:16,fontWeight:isToday||isSel?800:600,color:isToday?"#10B981":isSel?"#0EA5E9":T.text}}>{parseInt(d.slice(8))}</div>
               <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",minHeight:6}}>
                 {evts.slice(0,3).map((f,k)=><span key={k} style={{width:5,height:5,borderRadius:"50%",background:f.technicien?techColor(f.technicien,techniciens,techColors):colorOf(f),display:"inline-block"}}/>)}
               </div>
               {evts.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:isSel?"#0EA5E9":T.textMuted}}>{evts.length}</div>}
+              {abs.length>0&&<div style={{fontSize:8.5,fontWeight:800,color:"#F59E0B",lineHeight:1.1}}>🌴{abs.length>1?abs.length:""}</div>}
             </div>
           );
         })}
@@ -5638,6 +5596,46 @@ function DialogueHost({ theme }) {
   );
 }
 
+function AbsencesAdmin({ T, theme, techniciens=[], fiches=[], absences=[], onSaveAbsence, onDeleteAbsence }) {
+  const [a, setA] = useState({technicien:"",du:today(),au:today(),motif:""});
+  const inp = {padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"};
+  const ajouter = async () => {
+    if(!a.technicien){dlgInfo("Choisissez d'abord un technicien.","Technicien manquant");return;}
+    if(a.au<a.du){dlgInfo("La date de fin est antérieure à la date de début.","Dates incohérentes");return;}
+    const occupees = fiches.filter(f=>f.technicien===a.technicien&&f.dateRdv>=a.du&&f.dateRdv<=a.au&&f.status!=="annule");
+    if(occupees.length && !(await dlgConfirm(`${a.technicien} a déjà ${occupees.length} intervention(s) sur cette période. Elles ne seront pas déplacées automatiquement.`,{titre:"Interventions déjà prévues",valider:"Ajouter quand même"}))) return;
+    onSaveAbsence({...a, id:uid2("ABS")});
+    setA({technicien:"",du:today(),au:today(),motif:""});
+  };
+  return (
+    <div>
+      <div style={{fontSize:11.5,color:T.textMuted,marginBottom:10}}>Les jours concernés apparaissent en orange dans l'agenda, et l'assignation d'une intervention à un technicien absent est refusée.</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+        <select value={a.technicien} onChange={e=>setA(p=>({...p,technicien:e.target.value}))} style={{...inp,cursor:"pointer"}}>
+          <option value="">— Technicien —</option>
+          {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+        <input value={a.motif} onChange={e=>setA(p=>({...p,motif:e.target.value}))} placeholder="Motif (congés, arrêt…)" style={inp}/>
+        <input type="date" value={a.du} onChange={e=>setA(p=>({...p,du:e.target.value,au:p.au<e.target.value?e.target.value:p.au}))} style={inp}/>
+        <input type="date" value={a.au} min={a.du} onChange={e=>setA(p=>({...p,au:e.target.value}))} style={inp}/>
+      </div>
+      <button onClick={ajouter} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Ajouter l'absence</button>
+      {absences.length>0&&(
+        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+          {[...absences].sort((x,y)=>x.du.localeCompare(y.du)).map(x=>(
+            <div key={x.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.text,background:T.surface2,borderRadius:8,padding:"7px 10px"}}>
+              <span style={{fontWeight:700}}>{x.technicien}</span>
+              <span style={{color:T.textMuted}}>{dateFr(x.du)} → {dateFr(x.au)}{x.motif?` · ${x.motif}`:""}</span>
+              <button onClick={async ()=>{if(await dlgConfirm(`L'absence de ${x.technicien} sera retirée.`,{titre:"Supprimer l'absence",danger:true}))onDeleteAbsence(x.id);}}
+                style={{marginLeft:"auto",background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LoginPage({ theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [email, setEmail] = useState("");
@@ -6660,6 +6658,7 @@ function AppInterne() {
               onSaveChamps={saveChamps} onGoChamps={()=>setNav("champs")} onOpenExport={()=>setShowExportMensuel(true)}
               parametresIA={parametresIA} onSaveParametresIA={p=>{setParametresIA(p);saveParametresIA(p);}}
               parametresMessages={parametresMessages} onSaveParametresMessages={p=>{setParametresMessages(p);saveParametresMessages(p);}}
+              absences={absences} onSaveAbsence={estRestreint?null:saveAbsenceFb} onDeleteAbsence={estRestreint?null:deleteAbsenceFb}
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
@@ -6691,7 +6690,7 @@ function AppInterne() {
                     ))}
               </div>
             )}
-            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} onSaveAbsence={estRestreint?null:saveAbsenceFb} onDeleteAbsence={estRestreint?null:deleteAbsenceFb} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
