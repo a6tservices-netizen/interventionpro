@@ -849,7 +849,7 @@ function buildReportHTML(fiche, hideInternal = false) {
       return `
       <div class="presta-card" style="border-left-color:${p.meta?.color||'#0ea5e9'}">
         <div class="presta-header">
-          <span class="presta-icon">${p.meta?.icon||'🔧'}</span>
+          <span class="presta-puce" style="background:${p.meta?.color||'#0ea5e9'}"></span>
           <span class="presta-title" style="color:${p.meta?.color}">${p.meta?.label}${p.diametre?` — Ø ${p.diametre} mm`:""}</span>
         </div>
         <div class="presta-body">
@@ -870,7 +870,7 @@ function buildReportHTML(fiche, hideInternal = false) {
       + `</div>` : "";
   const photosOntTag = fiche.photos?.some(p=>p.tag);
   const photoGrid = fiche.photos?.length
-    ? `<div class="section-block"><div class="section-title">📷 Photos (${fiche.photos.length})</div>
+    ? `<div class="section-block"><div class="section-title">Photos (${fiche.photos.length})</div>
        ${photosOntTag
          ? photoSection("Avant travaux", fiche.photos.filter(p=>p.tag==="avant")) + photoSection("Pendant intervention", fiche.photos.filter(p=>p.tag==="pendant")) + photoSection("Après travaux", fiche.photos.filter(p=>p.tag==="apres")) + photoSection("Autres photos", fiche.photos.filter(p=>!p.tag))
          : `<div class="photo-grid">${fiche.photos.map(p=>`<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`).join("")}</div>`}
@@ -930,7 +930,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .section-title{font-size:8.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#111;padding-left:9px;padding-bottom:6px;border-bottom:2px solid #111;margin-bottom:13px;line-height:1.5}
 .presta-card{background:#fbfcfd;border-radius:9px;margin-bottom:11px;border:1.5px solid #b8c2cf;border-left:4px solid #0ea5e9;overflow:hidden}
 .presta-header{padding:11px 15px;background:linear-gradient(90deg,rgba(0,0,0,0.025),transparent);display:flex;align-items:center;gap:9px;border-bottom:1.5px solid #d5dae1}
-.presta-icon{font-size:15px}
+.presta-puce{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0}
 .presta-title{font-family:'Fraunces',serif;font-size:13px;font-weight:700;letter-spacing:.01em}
 .presta-body{padding:13px 17px}
 .phrase{font-size:12px;color:#3d4a5c;line-height:1.85;margin-bottom:4px}
@@ -1010,10 +1010,10 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
     <div class="ref-card">
       <div class="ref-label">Référence</div>
       <div class="ref-id">${fiche.id}</div>
-      <div class="ref-row"><span class="ic">📅</span><div><div class="rl">Date</div><div class="rv">${dateFr(fiche.dateRdv)}</div></div></div>
-      ${fiche.heureRdv?`<div class="ref-row"><span class="ic">🕐</span><div><div class="rl">Heure</div><div class="rv">${fiche.heureRdv}</div></div></div>`:""}
-      <div class="ref-status"><span class="sl">Statut</span><span class="status-badge">${fiche.status==="a_prevoir"?"⚠":fiche.status==="annule"?"✕":"✓"} ${status.label}</span></div>
-      ${isUrgent?'<span class="urgent-badge">🚨 URGENCE</span>':""}
+      <div class="ref-row"><div><div class="rl">Date</div><div class="rv">${dateFr(fiche.dateRdv)}</div></div></div>
+      ${fiche.heureRdv?`<div class="ref-row"><div><div class="rl">Heure</div><div class="rv">${fiche.heureRdv}</div></div></div>`:""}
+      <div class="ref-status"><span class="sl">Statut</span><span class="status-badge">${status.label}</span></div>
+      ${isUrgent?'<span class="urgent-badge">Intervention urgente</span>':""}
     </div>
   </div>
 </div>
@@ -1025,19 +1025,19 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
     ${fiche.tel?`<div class="info-card"><div class="info-label">Téléphone</div><div class="info-value">${fiche.tel}</div></div>`:""}
     ${fiche.email?`<div class="info-card"><div class="info-label">Email</div><div class="info-value">${fiche.email}</div></div>`:""}
   </div>
-  ${locStr?`<div class="loc-banner">📍 ${locStr}</div>`:""}
+  ${locStr?`<div class="loc-banner">${locStr}</div>`:""}
   <div class="section-block">
-    <div class="section-title">🔧 Compte-rendu d'intervention${nbPrestaAffichees?` — ${nbPrestaAffichees} prestation(s)`:""}</div>
+    <div class="section-title">Compte-rendu d'intervention${nbPrestaAffichees?` — ${nbPrestaAffichees} prestation(s)`:""}</div>
     ${prestaHTML||'<p style="color:#94a3b8;font-style:italic">Aucune prestation enregistrée.</p>'}
   </div>
-  ${fiche.responsabilite&&fiche.responsabilite!=="na"?`<div class="section-block"><div class="section-title">⚖️ Responsabilité</div><div class="resp-badge">● ${resp?.label} — ${resp?.desc}</div></div>`:""}
-  ${fiche.preconisations?.length?`<div class="section-block"><div class="section-title">💡 Préconisations</div><ul class="preco-list">${fiche.preconisations.map(p=>`<li>${p}</li>`).join("")}</ul></div>`:""}
-  <div class="section-block"><div class="section-title">📝 Conclusion</div><div class="conclusion-box">${fiche.conclusion||"—"}</div></div>
-  ${majorationsTexte(fiche).length?`<div class="section-block"><div class="section-title">⏰ Conditions d'intervention</div><ul class="preco-list">${majorationsTexte(fiche).map(t=>`<li>${t}</li>`).join("")}</ul></div>`:""}
+  ${fiche.responsabilite&&fiche.responsabilite!=="na"?`<div class="section-block"><div class="section-title">Responsabilité</div><div class="resp-badge">● ${resp?.label} — ${resp?.desc}</div></div>`:""}
+  ${fiche.preconisations?.length?`<div class="section-block"><div class="section-title">Préconisations</div><ul class="preco-list">${fiche.preconisations.map(p=>`<li>${p}</li>`).join("")}</ul></div>`:""}
+  <div class="section-block"><div class="section-title">Conclusion</div><div class="conclusion-box">${fiche.conclusion||"—"}</div></div>
+  ${majorationsTexte(fiche).length?`<div class="section-block"><div class="section-title">Conditions d'intervention</div><ul class="preco-list">${majorationsTexte(fiche).map(t=>`<li>${t}</li>`).join("")}</ul></div>`:""}
   ${photoGrid}
   ${sigZone}
   ${!hideInternal ? `<div class="internal">
-    <div class="internal-title">🔒 Usage interne — Non transmis au client</div>
+    <div class="internal-title">Usage interne — non transmis au client</div>
     <div class="internal-grid">
       <div class="int-card"><div class="info-label">Matériel</div><div class="info-value" style="font-size:11px">${fiche.materiels?.join(", ")||"—"}</div></div>
       <div class="int-card"><div class="info-label">Difficulté</div><div class="info-value" style="font-size:11px">${fiche.difficulte||"—"}</div></div>
@@ -1454,7 +1454,7 @@ function buildDevisHTML(devis) {
     return `<tr><td>${l.label}</td><td class="c">${l.qte}</td><td class="r">${euro(parseFloat(l.pu)||0)}</td><td class="r">${euro(tot)}</td></tr>`;
   }).join("");
   const photosHTML = devis.photos?.length
-    ? `<div class="section-title">📷 Photos</div><div class="pgrid">${devis.photos.map(p=>`<div class="pitem"><img src="${p.data||p}"/></div>`).join("")}</div>` : "";
+    ? `<div class="section-title">Photos</div><div class="pgrid">${devis.photos.map(p=>`<div class="pitem"><img src="${p.data||p}"/></div>`).join("")}</div>` : "";
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Devis ${devis.id}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -2248,7 +2248,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
           <div onClick={()=>setLocOpen(!locOpen)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontWeight:800,fontSize:13,color:T.text}}>
             📍 Localisation précise
             {formatLoc(f.loc)&&<span style={{fontSize:11,fontWeight:700,color:"#38BDF8",background:"rgba(14,165,233,0.13)",padding:"2px 9px",borderRadius:12,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{formatLoc(f.loc)}</span>}
-            <span style={{marginLeft:"auto",fontSize:12,color:"#38BDF8",fontWeight:700}}>{locOpen?"▲":"▼ Appuyer si besoin"}</span>
+            <span style={{marginLeft:"auto",fontSize:12,color:"#38BDF8",fontWeight:700}}>{locOpen?"Réduire ▲":"Ouvrir ▼"}</span>
           </div>
           {locOpen&&(<div style={{marginTop:12}}>
         {formatLoc(f.loc)&&(
@@ -2418,7 +2418,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
         <div style={{...sectionTitleStyle,cursor:"pointer",borderBottom:precoOpen?sectionTitleStyle.borderBottom:"none",paddingBottom:precoOpen?10:0,marginBottom:precoOpen?14:0}} onClick={e=>{e.stopPropagation();setPrecoOpen(!precoOpen);}}>
           💡 Préconisations
           {f.preconisations.length>0&&<span style={{fontSize:11,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.15)",padding:"2px 9px",borderRadius:12}}>{f.preconisations.length} cochée(s)</span>}
-          <span style={{marginLeft:"auto",fontSize:12,color:"#A78BFA",fontWeight:700}}>{precoOpen?"▲":"▼ Appuyer si besoin"}</span>
+          <span style={{marginLeft:"auto",fontSize:12,color:"#A78BFA",fontWeight:700}}>{precoOpen?"Réduire ▲":"Ouvrir ▼"}</span>
         </div>
         {precoOpen&&(<>
         {suggested.length>0&&(
@@ -2467,8 +2467,8 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
             💬 Discuter avec l'IA
           </button>
           <button onClick={handleGenererConclusion} disabled={generatingConclusion||f.prestations.length===0}
-            style={{fontSize:12,fontWeight:700,color:"#A78BFA",background:"rgba(167,139,250,0.1)",border:"1px solid rgba(167,139,250,0.3)",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
-            {generatingConclusion?"⏳ Génération en cours…":"✨ Générer conclusion en bon français"}
+            style={{fontSize:12,fontWeight:800,color:f.prestations.length===0?"#A78BFA":"#fff",background:f.prestations.length===0?"rgba(167,139,250,0.1)":"linear-gradient(135deg,#8B5CF6,#6366F1)",border:f.prestations.length===0?"1px solid rgba(167,139,250,0.3)":"none",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
+            {generatingConclusion?"⏳ Génération en cours…":"✨ Générer la conclusion"}
           </button>
         </div>
         <textarea value={f.conclusion} onChange={e=>set("conclusion",e.target.value)} rows={5}
@@ -2522,7 +2522,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
           onDrop={e=>{e.preventDefault();setDragOver(false);addPhotos(e.dataTransfer.files);}}
           style={{border:`2px dashed ${dragOver?"#0EA5E9":T.border}`,borderRadius:10,padding:18,textAlign:"center",cursor:"pointer",marginBottom:f.photos.length?10:0}}>
           <div style={{fontSize:26,marginBottom:4}}>📸</div>
-          <div style={{fontSize:13,fontWeight:600,color:T.textMuted}}>Glissez ou cliquez — JPG / PNG</div>
+          <div style={{fontSize:13,fontWeight:600,color:T.textMuted}}>Prendre une photo ou choisir dans la galerie</div>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addPhotos(e.target.files)}/>
         </div>
         {f.photos.length>0&&(
@@ -2615,8 +2615,8 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
       <div style={{...sectionStyle,background:isDark?"rgba(249,115,22,0.06)":theme==="light"?"#FFF7ED":"#FDF2E9",border:`1px dashed rgba(249,115,22,0.4)`,cursor:interneOpen?"default":"pointer"}} onClick={()=>!interneOpen&&setInterneOpen(true)}>
         <div style={{...sectionTitleStyle,color:"#F97316",cursor:"pointer",borderBottom:interneOpen?"1px solid rgba(249,115,22,0.2)":"none",paddingBottom:interneOpen?10:0,marginBottom:interneOpen?14:0}} onClick={e=>{e.stopPropagation();setInterneOpen(!interneOpen);}}>
           🔒 Usage interne
-          {(f.materiels.length>0||f.difficulte||f.tarifHoraire||f.notesInternes||f.tempsInterne||f.majorations?.length)&&<span style={{fontSize:11,fontWeight:700,color:"#F97316",background:"rgba(249,115,22,0.15)",padding:"2px 9px",borderRadius:12}}>renseigné</span>}
-          <span style={{marginLeft:"auto",fontSize:12,color:"#F97316",fontWeight:700}}>{interneOpen?"▲":"▼ Appuyer si besoin"}</span>
+          {Boolean(f.materiels.length>0||f.difficulte||f.tarifHoraire||f.notesInternes||f.tempsInterne||f.majorations?.length)&&<span style={{fontSize:11,fontWeight:700,color:"#F97316",background:"rgba(249,115,22,0.15)",padding:"2px 9px",borderRadius:12}}>renseigné</span>}
+          <span style={{marginLeft:"auto",fontSize:12,color:"#F97316",fontWeight:700}}>{interneOpen?"Réduire ▲":"Ouvrir ▼"}</span>
         </div>
         {interneOpen&&(<>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
@@ -3693,7 +3693,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>🪄 Créer un RDV depuis un mail</div>
+        <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>Créer un RDV depuis un mail</div>
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Collez le texte du mail ou ajoutez une capture d'écran — l'IA remplit le RDV pour vous.</div>
         <textarea value={texte} onChange={e=>setTexte(e.target.value)} rows={7} placeholder="Collez ici le texte du mail / SMS / WhatsApp…"
           style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:10,lineHeight:1.5}}/>
@@ -4376,7 +4376,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
       {/* Jour sélectionné */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
         <div style={{background:selDay===todayStr?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"7px 15px",fontWeight:800,fontSize:13}}>
-          {selDay===todayStr?"📅 Aujourd'hui":dateFr(selDay)}
+          {selDay===todayStr?"Aujourd'hui":dateFr(selDay)}
         </div>
         <div style={{flex:1,height:1,background:T.border}}/>
         <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} RDV</span>
@@ -4539,12 +4539,12 @@ function ListeCartes({ fiches, onSelect, onDelete, theme, techniciens=[], techTe
             style={{padding:"9px 16px",borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:destinataire?T.text:T.textMuted,fontWeight:800,fontSize:13,cursor:destinataire?"pointer":"not-allowed",fontFamily:"inherit"}}>💬 SMS</button>
         </div>
       )}
-      {bloc("🔴 En retard — non traitées", enRetard, ["#EF4444","#B91C1C"])}
-      {bloc("📍 Aujourd'hui", aujourdhui, ["#F59E0B","#D97706"])}
-      {bloc("🗓️ À venir", aVenir, ["#0EA5E9","#6366F1"])}
-      {bloc("📌 À planifier", aProgrammer, ["#64748B","#475569"])}
-      {bloc("🗂️ Sans date", sansDate, ["#64748B","#475569"])}
-      {bloc("✅ Terminées / annulées", terminees, ["#10B981","#059669"])}
+      {bloc("En retard — non traitées", enRetard, ["#EF4444","#B91C1C"])}
+      {bloc("Aujourd'hui", aujourdhui, ["#F59E0B","#D97706"])}
+      {bloc("À venir", aVenir, ["#0EA5E9","#6366F1"])}
+      {bloc("À planifier", aProgrammer, ["#64748B","#475569"])}
+      {bloc("Sans date", sansDate, ["#64748B","#475569"])}
+      {bloc("Terminées et annulées", terminees, ["#10B981","#059669"])}
     </div>
   );
 }
@@ -6227,8 +6227,8 @@ function AppInterne() {
     const interval = setInterval(sendPos, 120000);
     return () => clearInterval(interval);
   }, [techNom]);
-  const NAV=[{id:"dashboard",label:"📊 Tableau de bord"},{id:"agenda",label:"📅 Agenda"},{id:"devis",label:"📄 Devis"}];
-  const NAV_MENU=[{id:"liste",label:"🗂️ Liste des interventions"},{id:"clients",label:"👥 Clients & Sites"},{id:"contrats",label:"🔁 Contrats d'entretien"},{id:"carte",label:"🗺️ Carte techniciens"},{id:"memos",label:"🎙️ Historique mémos vocaux"},{id:"admin",label:"🛠️ Administration"},{id:"champs",label:"⚙️ Personnaliser les cases"}];
+  const NAV=[{id:"dashboard",label:"Tableau de bord"},{id:"agenda",label:"Agenda"},{id:"devis",label:"Devis"}];
+  const NAV_MENU=[{id:"liste",label:"Liste des interventions"},{id:"clients",label:"Clients et sites"},{id:"contrats",label:"Contrats d'entretien"},{id:"carte",label:"Carte des techniciens"},{id:"memos",label:"Historique des mémos vocaux"},{id:"admin",label:"Administration"},{id:"champs",label:"Personnaliser les cases"}];
 
   const dialogueHost = <DialogueHost theme={theme}/>;
   const offlineBanner = !online && (
@@ -6560,10 +6560,10 @@ function AppInterne() {
                       ))}
                       {!estRestreint&&<button onClick={()=>{exporterExcel();setMenuOpen(false);}}
                         style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"transparent",color:"#10B981"}}>
-                        📊 Exporter en Excel
+                        Exporter en Excel
                       </button>}
                       <div style={{borderTop:`1px solid ${T.border}`,margin:"8px 4px",paddingTop:10}}>
-                        <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>🎨 Couleur de l'écran</div>
+                        <div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7,paddingLeft:8}}>Couleur de l'écran</div>
                         <div style={{display:"flex",gap:6,paddingLeft:8,paddingBottom:4}}>
                           {Object.values(THEMES).map(t=>(
                             <button key={t.id} onClick={()=>{setTheme(t.id);lsSet("theme",t.id);}} title={t.label}
@@ -6580,7 +6580,7 @@ function AppInterne() {
                         <div style={{fontSize:11,color:T.textMuted,paddingLeft:8,marginBottom:7,wordBreak:"break-all"}}>👤 {currentUser?.email}</div>
                         <button onClick={()=>{ if(confirm("Se déconnecter ?")){ signOut(auth); setMenuOpen(false); } }}
                           style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:"rgba(239,68,68,0.1)",color:"#EF4444"}}>
-                          🚪 Se déconnecter
+                          Se déconnecter
                         </button>
                       </div>
                     </div>
@@ -6661,8 +6661,8 @@ function AppInterne() {
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-                <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>🪄 RDV depuis un mail</button>
-                <button onClick={()=>setShowVoiceImport(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>🎙️ Mémo vocal</button>
+                <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>RDV depuis un mail</button>
+                <button onClick={()=>setShowVoiceImport(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>Mémo vocal</button>
               </div>
             )}
             {nav==="agenda"&&search.trim()&&(
