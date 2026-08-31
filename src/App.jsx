@@ -4327,8 +4327,14 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         <button onClick={()=>navSemaine(-1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>◀</button>
         <div style={{flex:1,textAlign:"center",fontWeight:800,fontSize:15,color:T.text,textTransform:"capitalize"}}>{labelSemaine}</div>
         <button onClick={()=>navSemaine(1)} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,cursor:"pointer",fontSize:15,fontFamily:"inherit"}}>▶</button>
-        <button onClick={()=>setSelDay(todayStr)} style={{padding:"9px 14px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Aujourd'hui</button>
       </div>
+      {/* Retour à la semaine en cours : proposé seulement quand on l'a quittée,
+         pour laisser toute la largeur à la date le reste du temps. */}
+      {!semaine.includes(todayStr)&&(
+        <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
+          <button onClick={()=>setSelDay(todayStr)} style={{padding:"7px 16px",borderRadius:8,border:`1px solid #0EA5E9`,background:"rgba(14,165,233,0.1)",color:"#0EA5E9",cursor:"pointer",fontSize:12,fontWeight:800,fontFamily:"inherit"}}>Revenir à aujourd'hui</button>
+        </div>
+      )}
 
       {/* Bande semaine : 7 jours */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:16}}>
