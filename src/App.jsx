@@ -4455,19 +4455,22 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
   );
 }
 
-function CarteFiche({ fiche, onSelect, onDelete, T }) {
+function CarteFiche({ fiche, onSelect, onDelete, T, selectionMode=false, coche=false, onToggleCoche }) {
   const prestas=fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
   const main=prestas[0];
   const aProg = estAProgrammer(fiche);
   const statutLabel = aProg ? "À planifier" : STATUTS[fiche.status]?.label;
   const statutColor = aProg ? "#64748B" : STATUTS[fiche.status]?.color;
   return(
-    <div onClick={()=>onSelect(fiche)} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .2s",position:"relative",overflow:"hidden"}}
+    <div onClick={()=>selectionMode?onToggleCoche(fiche.id):onSelect(fiche)} style={{background:T.surface,border:`1px solid ${selectionMode&&coche?"#0EA5E9":T.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .2s",position:"relative",overflow:"hidden",boxShadow:selectionMode&&coche?"0 0 0 2px rgba(14,165,233,0.35) inset":"none"}}
       onMouseEnter={e=>{e.currentTarget.style.borderColor=main?.color||"#0EA5E9";e.currentTarget.style.transform="translateY(-2px)";}}
       onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform="none";}}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${aProg?"#64748B":(main?.color||"#0EA5E9")},transparent)`}}/>
       {fiche.urgent&&<div style={{position:"absolute",top:8,right:8,fontSize:10,fontWeight:700,color:"#EF4444",background:"rgba(239,68,68,0.1)",padding:"2px 8px",borderRadius:12}}>🚨 Urgence</div>}
-      <div style={{fontFamily:"monospace",fontSize:10,color:"#0EA5E9",fontWeight:700,marginBottom:3}}>{fiche.id}</div>
+      {selectionMode&&(
+        <div style={{position:"absolute",top:8,left:8,width:20,height:20,borderRadius:6,border:`2px solid ${coche?"#0EA5E9":T.border}`,background:coche?"#0EA5E9":"transparent",color:"#fff",fontSize:13,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{coche?"✓":""}</div>
+      )}
+      <div style={{fontFamily:"monospace",fontSize:10,color:"#0EA5E9",fontWeight:700,marginBottom:3,marginLeft:selectionMode?26:0}}>{fiche.id}</div>
       <div style={{fontWeight:800,fontSize:15,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fiche.client||"Client non renseigné"}</div>
       <div style={{fontSize:11,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {fiche.adresse||"—"}</div>
       {fiche.dateRdv&&<div style={{fontSize:11,color:"#60A5FA",fontWeight:600,marginTop:3}}>📅 {dateFr(fiche.dateRdv)}{fiche.heureRdv?" · "+fiche.heureRdv:""}</div>}
@@ -4495,36 +4498,96 @@ function CarteFiche({ fiche, onSelect, onDelete, T }) {
   );
 }
 
-function ListeCartes({ fiches, onSelect, onDelete, theme }) {
+function ListeCartes({ fiches, onSelect, onDelete, theme, techniciens=[], techTels={} }) {
   const T = THEMES[theme] || THEMES.dark;
+  /* Sélection multiple : sert à relancer un technicien sur plusieurs fiches non terminées
+     d'un seul message, plutôt que de les lui renvoyer une par une. */
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [coches, setCoches] = useState([]);
+  const [destinataire, setDestinataire] = useState("");
+  const toggleCoche = (id) => setCoches(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  const quitterSelection = () => { setSelectionMode(false); setCoches([]); setDestinataire(""); };
+  const fichesCochees = fiches.filter(f=>coches.includes(f.id));
+
+  const messageRelance = () => [
+    `📋 Fiches en attente — merci de les compléter`,
+    ``,
+    ...fichesCochees.map(f=>`• ${f.id} — ${f.client||"Client"}${f.adresse?` · ${f.adresse}`:""}${f.dateRdv?` · ${dateFr(f.dateRdv)}`:""}`),
+    ``,
+    `Merci de faire le nécessaire dès que possible.`,
+  ].join("\n");
+
+  const envoyerRelance = (canal) => {
+    if(!fichesCochees.length){alert("Sélectionnez au moins une fiche.");return;}
+    const num = normaliserTel(techTels[logoKey(destinataire)]||"");
+    if(!num){alert(`Aucun numéro enregistré pour ${destinataire||"ce technicien"}. Renseignez-le dans Administration → Techniciens.`);return;}
+    const msg = messageRelance();
+    if(canal==="whatsapp") window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+    else window.location.href=`sms:+${num}?&body=${encodeURIComponent(msg)}`;
+  };
+
   if(fiches.length===0) return <Empty icon="📭" text="Aucune fiche trouvée" T={T}/>;
+  /* Regroupement par échéance : les fiches passées non traitées ne doivent plus être
+     noyées au milieu des interventions à venir. */
+  const jour = today();
+  const clos = (f) => f.status==="termine" || f.status==="annule";
   const aProgrammer = fiches.filter(estAProgrammer);
-  const autres = fiches.filter(f=>!estAProgrammer(f));
+  const reste = fiches.filter(f=>!estAProgrammer(f));
+  const enRetard = reste.filter(f=>f.dateRdv && f.dateRdv<jour && !clos(f)).sort((a,b)=>a.dateRdv.localeCompare(b.dateRdv));
+  const aujourdhui = reste.filter(f=>f.dateRdv===jour && !clos(f)).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
+  const aVenir = reste.filter(f=>f.dateRdv && f.dateRdv>jour && !clos(f)).sort((a,b)=>a.dateRdv.localeCompare(b.dateRdv));
+  const sansDate = reste.filter(f=>!f.dateRdv && !clos(f));
+  const terminees = reste.filter(clos).sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||""));
+  const bloc = (titre, arr, couleurs) => arr.length>0 && (
+    <div style={{marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div style={{background:`linear-gradient(135deg,${couleurs[0]},${couleurs[1]})`,color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>{titre}</div>
+        <div style={{flex:1,height:1,background:T.border}}/>
+        <span style={{fontSize:12,color:T.textMuted}}>{arr.length} fiche(s)</span>
+      </div>
+      {grille(arr)}
+    </div>
+  );
   const grille = (arr) => (
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
-      {arr.map(fiche=><CarteFiche key={fiche.id} fiche={fiche} onSelect={onSelect} onDelete={onDelete} T={T}/>)}
+      {arr.map(fiche=><CarteFiche key={fiche.id} fiche={fiche} onSelect={onSelect} onDelete={onDelete} T={T}
+        selectionMode={selectionMode} coche={coches.includes(fiche.id)} onToggleCoche={toggleCoche}/>)}
     </div>
   );
   return (
     <div>
-      {aProgrammer.length>0&&(
-        <div style={{marginBottom:18}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <div style={{background:"linear-gradient(135deg,#64748B,#475569)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>📌 À planifier</div>
-            <div style={{flex:1,height:1,background:T.border}}/>
-            <span style={{fontSize:12,color:T.textMuted}}>{aProgrammer.length} fiche(s)</span>
-          </div>
-          {grille(aProgrammer)}
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
+        <button onClick={()=>selectionMode?quitterSelection():setSelectionMode(true)}
+          style={{padding:"8px 14px",borderRadius:8,border:`1px solid ${selectionMode?"#0EA5E9":T.border}`,background:selectionMode?"rgba(14,165,233,0.12)":"none",color:selectionMode?"#0EA5E9":T.textMuted,fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>
+          {selectionMode?"✕ Quitter la sélection":"☑️ Sélectionner des fiches"}
+        </button>
+        {selectionMode&&(
+          <>
+            <span style={{fontSize:12,color:T.textMuted,fontWeight:700}}>{coches.length} sélectionnée(s)</span>
+            <button onClick={()=>setCoches(fiches.map(f=>f.id))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Tout cocher</button>
+            <button onClick={()=>setCoches([])} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Tout décocher</button>
+          </>
+        )}
+      </div>
+      {selectionMode&&coches.length>0&&(
+        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <select value={destinataire} onChange={e=>setDestinataire(e.target.value)}
+            style={{padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
+            <option value="">— Envoyer à —</option>
+            {techniciens.map(t=><option key={t} value={t}>{t}{techTels[logoKey(t)]?"":" (sans n°)"}</option>)}
+          </select>
+          <button onClick={()=>envoyerRelance("whatsapp")} disabled={!destinataire}
+            style={{padding:"9px 16px",borderRadius:8,border:"none",background:destinataire?"linear-gradient(135deg,#25D366,#128C7E)":T.surface2,color:destinataire?"#fff":T.textMuted,fontWeight:800,fontSize:13,cursor:destinataire?"pointer":"not-allowed",fontFamily:"inherit"}}>🟢 WhatsApp</button>
+          <button onClick={()=>envoyerRelance("sms")} disabled={!destinataire}
+            style={{padding:"9px 16px",borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:destinataire?T.text:T.textMuted,fontWeight:800,fontSize:13,cursor:destinataire?"pointer":"not-allowed",fontFamily:"inherit"}}>💬 SMS</button>
         </div>
       )}
-      {autres.length>0&&aProgrammer.length>0&&(
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-          <div style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",borderRadius:10,padding:"6px 14px",fontWeight:800,fontSize:13}}>🗂️ Interventions</div>
-          <div style={{flex:1,height:1,background:T.border}}/>
-          <span style={{fontSize:12,color:T.textMuted}}>{autres.length} fiche(s)</span>
-        </div>
-      )}
-      {grille(autres)}
+      {bloc("🔴 En retard — non traitées", enRetard, ["#EF4444","#B91C1C"])}
+      {bloc("📍 Aujourd'hui", aujourdhui, ["#F59E0B","#D97706"])}
+      {bloc("🗓️ À venir", aVenir, ["#0EA5E9","#6366F1"])}
+      {bloc("📌 À planifier", aProgrammer, ["#64748B","#475569"])}
+      {bloc("🗂️ Sans date", sansDate, ["#64748B","#475569"])}
+      {bloc("✅ Terminées / annulées", terminees, ["#10B981","#059669"])}
     </div>
   );
 }
@@ -6565,7 +6628,7 @@ function AppInterne() {
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={dv=>{if(window.confirm("Supprimer le devis "+dv.id+" ?"))deleteDevisFb(dv.id);}}/>}
-            {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
+            {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} techniciens={techniciens} techTels={techTels} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={f=>{if(window.confirm("Supprimer definitivement l\u2019intervention "+f.id+" ("+(f.client||"sans client")+") ?")){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprime");}}}/>}
             {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
           </>
