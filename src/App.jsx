@@ -4380,7 +4380,6 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
         </div>
         <div style={{flex:1,height:1,background:T.border}}/>
         <span style={{fontSize:12,color:T.textMuted}}>{dayFiches.length} RDV</span>
-        {onNewRdv&&<button onClick={()=>onNewRdv(selDay)} style={{padding:"7px 13px",background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>➕ RDV</button>}
       </div>
       {dayFiches.length===0
         ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter ➕":""}</div>
@@ -6660,9 +6659,10 @@ function AppInterne() {
               absences={absences} onSaveAbsence={estRestreint?null:saveAbsenceFb} onDeleteAbsence={estRestreint?null:deleteAbsenceFb}
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
             {nav==="agenda"&&(
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-                <button onClick={()=>setShowMailImport(true)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>RDV depuis un mail</button>
-                <button onClick={()=>setShowVoiceImport(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>Mémo vocal</button>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <button onClick={()=>setShowMailImport(true)} style={{flex:1,background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>RDV depuis un mail</button>
+                <button onClick={()=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:agendaJour});setShowRdvForm(true);}} style={{flex:1,background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(59,130,246,0.3)"}}>Nouveau RDV</button>
+                <button onClick={()=>setShowVoiceImport(true)} style={{flex:1,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>Mémo vocal</button>
               </div>
             )}
             {nav==="agenda"&&search.trim()&&(
