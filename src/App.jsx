@@ -6187,6 +6187,9 @@ function AppInterne() {
     saveFiche(nf); setSelected(nf);
   };
 
+  /* Un technicien restreint ne voit que ses fiches : lui montrer la liste de ses collègues
+     dans les filtres n'a aucun effet et dévoile l'équipe sans raison. */
+  const techFiltrables = estRestreint ? techniciens.filter(t=>t===monRole.technicien) : techniciens;
   const filtered = useMemo(()=>{
     let r=fiches;
     if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant));
@@ -6665,8 +6668,8 @@ function AppInterne() {
                 {nav!=="liste"&&(
                   <select value={filterTech} onChange={e=>{setFilterTech(e.target.value);if(e.target.value&&nav==="agenda")setNav("liste");}}
                     style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
-                    <option value="">Tous techniciens</option>
-                    {techniciens.map(t=><option key={t} value={t}>{t}</option>)}
+                    <option value="">{estRestreint?"Mes fiches et les fiches libres":"Tous techniciens"}</option>
+                    {techFiltrables.map(t=><option key={t} value={t}>{t}</option>)}
                   </select>
                 )}
                 {nav==="liste"&&(
@@ -6680,10 +6683,10 @@ function AppInterne() {
                 <span style={{fontSize:12,color:T.textMuted}}>{filtered.length}/{fiches.length}</span>
               </div>
             )}
-            {nav==="liste"&&techniciens.length>0&&(
+            {nav==="liste"&&techFiltrables.length>0&&(
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                <button onClick={()=>setFilterTech("")} style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${!filterTech?"#0EA5E9":T.border}`,background:!filterTech?"rgba(14,165,233,0.14)":T.surface,color:!filterTech?"#0EA5E9":T.textMuted,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Tous</button>
-                {techniciens.map(t=>{
+                <button onClick={()=>setFilterTech("")} style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${!filterTech?"#0EA5E9":T.border}`,background:!filterTech?"rgba(14,165,233,0.14)":T.surface,color:!filterTech?"#0EA5E9":T.textMuted,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{estRestreint?"Tout voir":"Tous"}</button>
+                {techFiltrables.map(t=>{
                   const c = techColor(t, techniciens, techColors);
                   const actif = filterTech===t;
                   return (
