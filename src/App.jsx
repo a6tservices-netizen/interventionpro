@@ -1289,10 +1289,10 @@ function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme })
     setStatut("loading");
     const res = await initNotifications(nom.trim());
     if(res.ok) setStatut("ok");
-    verifier(nom.trim());
     else if(res.reason==="denied") setStatut("denied");
     else if(res.reason==="unsupported") setStatut("unsupported");
     else setStatut("error");
+    verifier(nom.trim());
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
