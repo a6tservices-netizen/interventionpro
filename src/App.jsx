@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast } from "firebase/database";
+import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast, get } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
 import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "firebase/storage";
@@ -55,6 +55,7 @@ async function initNotifications(nom) {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return { ok:false, reason:"no-token" };
     await saveNotifToken(nom, token);
+    try { localStorage.setItem("fcmToken", token); } catch(e) {}
     return { ok:true, token };
   } catch (e) {
     console.error("initNotifications error", e);
@@ -468,6 +469,8 @@ const STATUTS = {
 };
 
 // Une fiche "à programmer" = un RDV enregistré sans date
+/* Une fiche est en retard si sa date est passée et qu'elle n'est ni terminée ni annulée. */
+const estEnRetard = (f) => Boolean(f.dateRdv) && f.dateRdv < new Date().toISOString().slice(0,10) && f.status!=="termine" && f.status!=="annule";
 const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
 
 // Section repliable — utilisée dans Administration pour que la page reste rapide à
@@ -1261,12 +1264,32 @@ function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme })
   const T = THEMES[theme] || THEMES.dark;
   const [nom, setNom] = useState(techNom||"");
   const [statut, setStatut] = useState(null); // null | "loading" | "ok" | "denied" | "unsupported" | "error"
+  /* Diagnostic : dire pourquoi les notifications n'arrivent pas, plutôt que de laisser
+     croire qu'elles sont actives alors qu'un autre appareil a pris le même nom. */
+  const [diag, setDiag] = useState(null);
+  const verifier = useCallback(async (n) => {
+    const out = { perm: typeof Notification!=="undefined" ? Notification.permission : "unsupported" };
+    out.ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    out.installee = window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+    if(n){
+      try {
+        const snap = await get(ref(db, `fcmTokens/${logoKey(n)}`));
+        const enBase = snap.val();
+        const local = localStorage.getItem("fcmToken");
+        out.enregistre = Boolean(enBase);
+        out.cetAppareil = Boolean(enBase && local && enBase === local);
+      } catch(e) { out.erreurLecture = true; }
+    }
+    setDiag(out);
+  },[]);
+  useEffect(()=>{ verifier(techNom); },[techNom, verifier]);
   const activer = async () => {
     if(!nom.trim()){ dlgInfo("Choisissez d'abord votre nom."); return; }
     onSaveTechNom(nom.trim());
     setStatut("loading");
     const res = await initNotifications(nom.trim());
     if(res.ok) setStatut("ok");
+    verifier(nom.trim());
     else if(res.reason==="denied") setStatut("denied");
     else if(res.reason==="unsupported") setStatut("unsupported");
     else setStatut("error");
@@ -1288,6 +1311,23 @@ function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme })
         {statut==="denied"&&<div style={{fontSize:12.5,color:"#EF4444",fontWeight:700,marginBottom:12}}>✕ Notifications refusées — autorisez-les dans les réglages de votre téléphone/navigateur pour ce site, puis réessayez.</div>}
         {statut==="unsupported"&&<div style={{fontSize:12.5,color:"#F59E0B",fontWeight:700,marginBottom:12}}>⚠️ Notifications non disponibles sur cet appareil/navigateur (sur iPhone : installez l'app sur l'écran d'accueil d'abord, voir "Partager → Sur l'écran d'accueil").</div>}
         {statut==="error"&&<div style={{fontSize:12.5,color:"#EF4444",fontWeight:700,marginBottom:12}}>✕ Une erreur est survenue. Réessayez.</div>}
+
+        {diag&&(
+          <div style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 13px",marginBottom:14,fontSize:12,lineHeight:1.55,color:T.textMuted}}>
+            <div style={{fontWeight:800,color:T.text,marginBottom:6}}>État des notifications sur cet appareil</div>
+            {diag.ios&&!diag.installee&&(
+              <div style={{color:"#EF4444",fontWeight:700}}>Sur iPhone, les notifications ne fonctionnent que si l'application est installée sur l'écran d'accueil. Ouvrez le menu Partager de Safari puis « Sur l'écran d'accueil », et rouvrez l'app depuis cette icône.</div>
+            )}
+            {diag.perm==="denied"&&<div style={{color:"#EF4444",fontWeight:700}}>Les notifications sont refusées pour ce site. Il faut les réautoriser dans les réglages du téléphone — le bouton ci-dessous ne pourra rien y changer.</div>}
+            {diag.perm==="default"&&<div style={{color:"#F59E0B",fontWeight:700}}>Les notifications n'ont jamais été autorisées sur cet appareil. Appuyez sur « Activer ».</div>}
+            {diag.perm==="granted"&&!techNom&&<div style={{color:"#F59E0B",fontWeight:700}}>Aucun nom n'est associé à ce téléphone : rien ne peut vous être envoyé. Choisissez votre nom puis appuyez sur « Activer ».</div>}
+            {diag.perm==="granted"&&techNom&&!diag.enregistre&&<div style={{color:"#EF4444",fontWeight:700}}>Aucun appareil n'est enregistré pour {techNom}. Appuyez sur « Activer » pour enregistrer celui-ci.</div>}
+            {diag.perm==="granted"&&techNom&&diag.enregistre&&!diag.cetAppareil&&(
+              <div style={{color:"#F59E0B",fontWeight:700}}>Les notifications de {techNom} partent vers un autre appareil. Un seul téléphone à la fois peut recevoir les notifications d'un nom donné — appuyez sur « Activer » pour que ce soit celui-ci.</div>
+            )}
+            {diag.perm==="granted"&&techNom&&diag.cetAppareil&&<div style={{color:"#10B981",fontWeight:700}}>Cet appareil est bien celui qui reçoit les notifications de {techNom}.</div>}
+          </div>
+        )}
 
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose} style={{flex:1,padding:"12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Fermer</button>
@@ -4011,6 +4051,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
       {/* KPIs cliquables */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
         {[
+          {label:"En retard",val:fiches.filter(estEnRetard).length,icon:"⏰",color:"#EF4444",action:()=>onFilterStatus("__retard")},
           {label:"Total fiches",val:fiches.length,icon:"📋",color:"#0EA5E9",action:()=>onFilterStatus("")},
           {label:"RDV planifiés",val:rdvPlanifies.filter(f=>!estAProgrammer(f)).length,icon:"📅",color:"#3B82F6",action:()=>onFilterStatus("planifie")},
           {label:"À planifier",val:fiches.filter(estAProgrammer).length,icon:"📌",color:"#64748B",action:()=>onFilterStatus("__aprogrammer")},
@@ -4495,7 +4536,7 @@ function ListeCartes({ fiches, onSelect, onDelete, theme, techniciens=[], techTe
   const clos = (f) => f.status==="termine" || f.status==="annule";
   const aProgrammer = fiches.filter(estAProgrammer);
   const reste = fiches.filter(f=>!estAProgrammer(f));
-  const enRetard = reste.filter(f=>f.dateRdv && f.dateRdv<jour && !clos(f)).sort((a,b)=>a.dateRdv.localeCompare(b.dateRdv));
+  const enRetard = reste.filter(estEnRetard).sort((a,b)=>a.dateRdv.localeCompare(b.dateRdv));
   const aujourdhui = reste.filter(f=>f.dateRdv===jour && !clos(f)).sort((a,b)=>(a.heureRdv||"").localeCompare(b.heureRdv||""));
   const aVenir = reste.filter(f=>f.dateRdv && f.dateRdv>jour && !clos(f)).sort((a,b)=>a.dateRdv.localeCompare(b.dateRdv));
   const sansDate = reste.filter(f=>!f.dateRdv && !clos(f));
@@ -4613,6 +4654,35 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       {showPreview&&<ReportPreview fiche={fiche} onClose={()=>setShowPreview(false)} parametresMessages={parametresMessages} onMarquerEnvoye={onMarquerEnvoye}/>}
       {showFacturation&&<FacturationModal fiche={fiche} theme={theme} onClose={()=>setShowFacturation(false)}/>}
       {showSousTraitant&&<SousTraitantModal fiche={fiche} sousTraitants={sousTraitants} onSaveSousTraitants={onSaveSousTraitants||(()=>{})} theme={theme} onClose={()=>setShowSousTraitant(false)}/>}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
+        <code style={{fontSize:12,color:isRdv?"#3B82F6":"#0EA5E9",background:isRdv?"rgba(59,130,246,0.1)":"rgba(14,165,233,0.1)",border:`1px solid ${isRdv?"rgba(59,130,246,0.2)":"rgba(14,165,233,0.2)"}`,padding:"5px 12px",borderRadius:6,fontWeight:700}}>
+          {isRdv?"📅 RDV — ":""}{fiche.id}
+        </code>
+        {fiche.urgent&&<span style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",padding:"4px 10px",borderRadius:20}}>🚨 URGENCE</span>}
+      </div>
+
+      {/* Action principale */}
+      {isRdv?(
+        <button onClick={()=>onDemarrer(fiche)} style={{width:"100%",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:10,padding:"14px 18px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>Démarrer l'intervention</button>
+      ):(
+        <button onClick={()=>setShowPreview(true)} style={{width:"100%",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"14px 18px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>Voir le rapport</button>
+      )}
+
+      {/* Actions secondaires */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:8}}>
+        <button onClick={()=>setShowSousTraitant(true)} style={{background:"none",border:"1.5px solid rgba(37,211,102,0.5)",color:"#0F9D58",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Envoyer au sous-traitant</button>
+        {!isRdv&&onCreateDevis&&(
+          <button onClick={()=>onCreateDevis(fiche)} style={{background:"none",border:"1.5px solid rgba(139,92,246,0.5)",color:"#7C3AED",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Créer un devis</button>
+        )}
+        {!isRdv&&(
+          <button onClick={()=>setShowFacturation(true)} style={{background:"none",border:"1.5px solid rgba(16,185,129,0.5)",color:"#0D9488",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Proposition de facturation</button>
+        )}
+        {!isRdv&&onVerifierCases&&(
+          <button onClick={()=>onVerifierCases(fiche)} style={{background:"none",border:`1.5px solid ${T.border}`,color:T.textMuted,borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Vérifier les cases (IA)</button>
+        )}
+      </div>
+
       {!fiche.technicien && onClaim && (
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(14,165,233,0.1)",border:"1.5px solid #0EA5E9",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
           <div style={{fontSize:18}}>🆓</div>
@@ -4632,32 +4702,12 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
           ✅ Pris en charge par {fiche.priseEnCharge.par} à {new Date(fiche.priseEnCharge.ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
         </div>
       )}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        <button onClick={onBack} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
-        <code style={{fontSize:12,color:isRdv?"#3B82F6":"#0EA5E9",background:isRdv?"rgba(59,130,246,0.1)":"rgba(14,165,233,0.1)",border:`1px solid ${isRdv?"rgba(59,130,246,0.2)":"rgba(14,165,233,0.2)"}`,padding:"5px 12px",borderRadius:6,fontWeight:700}}>
-          {isRdv?"📅 RDV — ":""}{fiche.id}
-        </code>
-        {fiche.urgent&&<span style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",padding:"4px 10px",borderRadius:20}}>🚨 URGENCE</span>}
-        <div style={{marginLeft:"auto",display:"flex",gap:7,flexWrap:"wrap"}}>
-          <button onClick={onDelete} style={{background:"none",border:"1px solid #7F1D1D",color:"#EF4444",borderRadius:8,padding:"8px 12px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
-          <button onClick={onEdit} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
-          {onDuplicate&&<button onClick={onDuplicate} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📋 Dupliquer</button>}
-          <button onClick={()=>setShowSousTraitant(true)} style={{background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer au sous-traitant</button>
-          {isRdv?(
-            <button onClick={()=>onDemarrer(fiche)} style={{background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>▶ Démarrer l'intervention</button>
-          ):(
-            <button onClick={()=>setShowPreview(true)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 Voir le rapport</button>
-          )}
-          {!isRdv&&onCreateDevis&&(
-            <button onClick={()=>onCreateDevis(fiche)} style={{background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🧾 Créer devis</button>
-          )}
-          {!isRdv&&onVerifierCases&&(
-            <button onClick={()=>onVerifierCases(fiche)} style={{background:"none",border:"1.5px solid rgba(139,92,246,0.4)",color:"#A78BFA",borderRadius:8,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🔍 Vérifier les cases (IA)</button>
-          )}
-          {!isRdv&&(
-            <button onClick={()=>setShowFacturation(true)} style={{background:"linear-gradient(135deg,#10B981,#0D9488)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>💶 Proposition de facturation</button>
-          )}
-        </div>
+
+      {/* Modification de la fiche */}
+      <div style={{display:"flex",gap:7,marginBottom:20}}>
+        <button onClick={onEdit} style={{flex:1,background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:9,padding:"10px 8px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Modifier</button>
+        {onDuplicate&&<button onClick={onDuplicate} style={{flex:1,background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:9,padding:"10px 8px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Dupliquer</button>}
+        <button onClick={onDelete} style={{flex:1,background:"none",border:"1px solid rgba(239,68,68,0.45)",color:"#EF4444",borderRadius:9,padding:"10px 8px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Supprimer</button>
       </div>
 
       {/* Carte infos */}
@@ -6164,7 +6214,8 @@ function AppInterne() {
     } else {
       setTimeout(()=>setRechercheFloue(false),0);
     }
-    if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
+    if(filterStatus==="__retard") r=r.filter(estEnRetard);
+    else if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
     else if(filterStatus==="__facture") r=r.filter(f=>f.facturation==="facture");
@@ -6603,6 +6654,7 @@ function AppInterne() {
                 <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous statuts</option>
+                  <option value="__retard">⏰ En retard</option>
                   <option value="__aprogrammer">📌 À planifier</option>
                   {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   <option value="__signees">✍️ Signées</option>
@@ -6647,7 +6699,7 @@ function AppInterne() {
             {nav==="liste"&&(filterStatus||filterTech)&&(
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:"#0EA5E9"}}>
-                  Filtre :{filterStatus?` ${filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__brouillon" ? "🧾 Brouillon" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
+                  Filtre :{filterStatus?` ${filterStatus==="__retard" ? "⏰ En retard" : filterStatus==="__aprogrammer" ? "📌 À planifier" : filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__brouillon" ? "🧾 Brouillon" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
                 </span>
                 <button onClick={()=>{setFilterStatus("");setFilterTech("");}} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
               </div>
