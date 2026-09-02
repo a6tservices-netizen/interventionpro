@@ -1916,6 +1916,24 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const acAdresseRef = useRef();
 
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  /* Collage d'un message entier dans l'adresse : proposer de le trier. */
+  const collerAdresse = async (e) => {
+    const t = e.clipboardData?.getData("text") || "";
+    if (t.trim().length < 80) return;                    // collage court : comportement normal
+    e.preventDefault();
+    const brut = t.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+    const ok = await dlgConfirm("Ce texte contient visiblement plus qu'une adresse. Je peux en extraire l'adresse et le téléphone, et mettre le reste dans les notes. Annuler collera le texte tel quel.",{titre:"Texte collé",valider:"Trier"});
+    if (!ok) { set("adresse", brut); return; }
+    try {
+      const j = await decouperCollage(brut);
+      set("adresse", j.adresse || brut);
+      if (j.tel) setF(p=>({...p, tel: p.tel || j.tel}));
+      if (j.note) setF(p=>({...p, notesInternes: [p.notesInternes, j.note].filter(Boolean).join(" — ")}));
+    } catch (err) {
+      set("adresse", brut);
+      dlgInfo("Le tri automatique n'a pas fonctionné ("+(err?.message||err)+"). Le texte a été collé tel quel.","Tri impossible");
+    }
+  };
   const toggleArr = (k,v) => setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
 
   // Autocomplétion clients
@@ -2212,8 +2230,9 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
           {/* Adresse avec autocomplétion */}
           <div style={{gridColumn:"1/-1",position:"relative"}} ref={acAdresseRef}>
             <div style={lblStyle}>Adresse d'intervention <span style={{color:"#EF4444"}}>*</span></div>
-            <input value={f.adresse} onChange={e=>{set("adresse",e.target.value);setAcAdresseOpen(true);if(errors.adresse)setErrors(p=>({...p,adresse:false}));}} onFocus={()=>setAcAdresseOpen(true)}
-              placeholder="Adresse complète (obligatoire)" style={{...inpStyle(),...(errors.adresse?{border:"1.5px solid #EF4444",background:"rgba(239,68,68,0.06)"}:{})}} autoComplete="off"/>
+            <textarea value={f.adresse} onChange={e=>{set("adresse",e.target.value.replace(/\n/g," "));setAcAdresseOpen(true);if(errors.adresse)setErrors(p=>({...p,adresse:false}));}} onFocus={()=>setAcAdresseOpen(true)} onPaste={collerAdresse}
+              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}}} rows={2}
+              placeholder="Adresse complète (obligatoire)" style={{...inpStyle(),resize:"none",minHeight:62,lineHeight:1.4,fontFamily:"inherit",...(errors.adresse?{border:"1.5px solid #EF4444",background:"rgba(239,68,68,0.06)"}:{})}} autoComplete="off"/>
             {errors.adresse&&<div style={{fontSize:11,color:"#EF4444",fontWeight:700,marginTop:4}}>⚠️ Champ obligatoire</div>}
             {acAdresseOpen&&adresseSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
@@ -3701,6 +3720,25 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks
   );
 }
 
+/* Un message entier collé dans le champ adresse : on en extrait l'adresse seule
+   et on renvoie le reste (étage, appartement, nature du problème...) pour la note. */
+async function decouperCollage(texte) {
+  const prompt = `Tu reçois un message concernant une intervention de plomberie/assainissement. Extrais-en les informations.
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans backticks, avec exactement ces clés (chaîne vide si absent) :
+{"adresse":"l'adresse postale seule : numéro, rue, code postal, ville. Ajoute à la fin le nom de la résidence, le bâtiment, l'escalier et le numéro d'appartement s'ils sont donnés, séparés par une virgule. N'inclus JAMAIS le nom d'une personne, un téléphone, ni la description du problème.","tel":"le numéro de téléphone au format 06 00 00 00 00, vide si absent","note":"tout le reste de l'information utile : nature du problème, personne à contacter, étage, consignes d'accès, code. Phrases courtes. N'y remets pas l'adresse. Ignore les formules de politesse et ce que l'expéditeur dit qu'il va faire."}
+
+Message :
+${texte}`;
+  const r = await fetch("/api/claude", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:600, messages:[{role:"user",content:prompt}] })
+  });
+  if(!r.ok) throw new Error("API "+r.status);
+  const data = await r.json();
+  const raw = (data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+  return JSON.parse(raw);
+}
+
 function MailImport({ onExtracted, onCancel, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const [texte, setTexte] = useState("");
@@ -3765,6 +3803,24 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
   const [f, setF] = useState(initial || { client:"", adresse:"", adresseFacturation:"", contact:"", tel:"", technicien:"", dateRdv:today(), heureRdv:"", noteRdv:"", numeroOS:"", status:"planifie", type:"rdv", natureRdv:"intervention" });
   const [errors, setErrors] = useState({});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  /* Collage d'un message entier dans l'adresse : proposer de le trier. */
+  const collerAdresse = async (e) => {
+    const t = e.clipboardData?.getData("text") || "";
+    if (t.trim().length < 80) return;                    // collage court : comportement normal
+    e.preventDefault();
+    const brut = t.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+    const ok = await dlgConfirm("Ce texte contient visiblement plus qu'une adresse. Je peux en extraire l'adresse et le téléphone, et mettre le reste dans les notes. Annuler collera le texte tel quel.",{titre:"Texte collé",valider:"Trier"});
+    if (!ok) { set("adresse", brut); return; }
+    try {
+      const j = await decouperCollage(brut);
+      set("adresse", j.adresse || brut);
+      if (j.tel) setF(p=>({...p, tel: p.tel || j.tel}));
+      if (j.note) setF(p=>({...p, noteRdv: [p.noteRdv, j.note].filter(Boolean).join(" — ")}));
+    } catch (err) {
+      set("adresse", brut);
+      dlgInfo("Le tri automatique n'a pas fonctionné ("+(err?.message||err)+"). Le texte a été collé tel quel.","Tri impossible");
+    }
+  };
 
   const inpStyle = (err) => ({ width:"100%", padding:"10px 14px", background:T.surface2, border:`1.5px solid ${err?"#EF4444":T.border}`, borderRadius:8, color:T.text, fontSize:13.5, outline:"none", boxSizing:"border-box", fontFamily:"inherit" });
   const lblStyle = { display:"block", fontSize:9.5, fontWeight:700, color:T.textMuted, letterSpacing:".08em", textTransform:"uppercase", marginBottom:6 };
@@ -3843,7 +3899,9 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
           </div>
           <div style={{gridColumn:"1/-1",position:"relative"}}>
             <div style={lblStyle}>Adresse</div>
-            <input value={f.adresse} onChange={e=>{set("adresse",e.target.value);setAdrOpen(true);}} onFocus={()=>setAdrOpen(true)} onBlur={()=>setTimeout(()=>setAdrOpen(false),180)} placeholder="Adresse complète" style={inpStyle()}/>
+            <textarea value={f.adresse} onChange={e=>{set("adresse",e.target.value.replace(/\n/g," "));setAdrOpen(true);}} onFocus={()=>setAdrOpen(true)} onBlur={()=>setTimeout(()=>setAdrOpen(false),180)} onPaste={collerAdresse}
+              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}}} rows={2}
+              placeholder="Adresse complète" style={{...inpStyle(),resize:"none",minHeight:62,lineHeight:1.4,fontFamily:"inherit"}} autoComplete="off"/>
             {adrOpen&&adrSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:30,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,marginTop:4,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
                 {adrSuggestions.map((a,i)=>(
