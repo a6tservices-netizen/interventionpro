@@ -4404,7 +4404,6 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         <div style={{fontSize:19,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:10.5,fontWeight:700,marginTop:3,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
         {fiche.urgent&&<div style={{fontSize:10.5,color:"#fff",fontWeight:800,marginTop:4,background:"#EF4444",padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>🚨 URGENCE</div>}
-        {onReplanifier&&!replan&&<div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,marginTop:4,opacity:.75}}>modifier</div>}
       </div>
       <div style={{width:1,height:44,background:T.border}}/>
       {replan?(
@@ -4414,7 +4413,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
             <input type="date" value={dTmp} onChange={e=>setDTmp(e.target.value)}
               style={{flex:1,minWidth:0,padding:"9px 10px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
             <input type="time" value={hTmp} onChange={e=>setHTmp(e.target.value)}
-              style={{width:96,padding:"9px 10px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              style={{width:104,flexShrink:0,padding:"9px 10px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>{onReplanifier(fiche,dTmp,hTmp);setReplan(false);}}
@@ -4473,12 +4472,12 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         )}
       </div>
       )}
-      {!isRdv&&(
+      {!replan&&!isRdv&&(
         <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
           title="Ouvrir le PDF du rapport"
           style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
       )}
-      {isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
+      {!replan&&isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
     </div>
   );
 }
