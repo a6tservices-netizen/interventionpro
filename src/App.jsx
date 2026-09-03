@@ -79,6 +79,12 @@ async function envoyerNotification(technicien, titre, corps, ficheId) {
     logActivite("notification_envoyee", technicien, `${titre} — ERREUR RÉSEAU : ${e.message}`);
   }
 }
+/* Navigation : window.open laisse un onglet vide derrière lui quand on revient dans
+   la PWA iOS. Une navigation directe passe la main à Waze puis rend l'application intacte. */
+const ouvrirNavigation = (adresse) => {
+  if (!adresse) return;
+  window.location.href = `https://waze.com/ul?navigate=yes&q=${encodeURIComponent(adresse)}`;
+};
 const sanitize = (o) => JSON.parse(JSON.stringify(o ?? null));
 const saveFiche = (fiche) => set(ref(db, `fiches/${fiche.id}`), sanitize(fiche));
 const deleteFiche = (id) => remove(ref(db, `fiches/${id}`));
@@ -1289,8 +1295,14 @@ function buildSousTraitantTexte(fiche) {
   ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
 }
 
-function envoyerAuNumero(num, msg) {
+/* Tout le monde n'a pas WhatsApp : le canal est choisi au moment de l'envoi. */
+function envoyerAuNumero(num, msg, canal = "whatsapp") {
   const clean = (num||"").replace(/[^0-9]/g,"");
+  if (canal === "sms") {
+    const tel = normaliserTel(num||"");
+    window.location.href = `sms:${tel}${/iPhone|iPad|iPod|Mac/.test(navigator.userAgent)?"&":"?"}body=${encodeURIComponent(msg)}`;
+    return;
+  }
   window.open(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
 }
 
@@ -1377,7 +1389,8 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
   const [nom, setNom] = useState("");
   const [tel, setTel] = useState("");
   const msg = buildSousTraitantTexte(fiche);
-  const envoyer = (num) => { envoyerAuNumero(num, msg); onClose(); };
+  const [canal, setCanal] = useState("whatsapp");
+  const envoyer = (num) => { envoyerAuNumero(num, msg, canal); onClose(); };
   const ajouterEtEnvoyer = () => {
     if(!tel.trim()){ dlgInfo("Entrez au moins un numéro."); return; }
     const next = [...sousTraitants, { nom: nom.trim()||tel.trim(), tel: tel.trim() }];
@@ -1388,6 +1401,16 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:16,padding:22,width:440,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{fontWeight:800,fontSize:16,color:T.text,marginBottom:4}}>📤 Envoyer au sous-traitant</div>
+        {/* Choix du canal : le message est le même, seul le moyen d'envoi change. */}
+        <div style={{display:"flex",gap:7,marginBottom:14}}>
+          {[["whatsapp","WhatsApp","#0F9D58","rgba(37,211,102,0.5)"],["sms","SMS","#0EA5E9","rgba(14,165,233,0.5)"]].map(([id,label,col,bord])=>(
+            <button key={id} onClick={()=>setCanal(id)}
+              style={{flex:1,padding:"9px 10px",borderRadius:9,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:13,
+                background:canal===id?col+"1F":"none",border:`1.5px solid ${canal===id?bord:T.border}`,color:canal===id?col:T.textMuted}}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div style={{fontSize:12.5,color:T.textMuted,marginBottom:14}}>Choisissez un sous-traitant enregistré, ou saisissez un nouveau numéro.</div>
 
         {sousTraitants.length>0&&(
@@ -1404,8 +1427,8 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
         {/* Sans numéro : WhatsApp s'ouvre sur la liste des discussions, groupes compris. */}
         <button onClick={()=>envoyer("")}
           style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,width:"100%",padding:"11px 14px",background:"rgba(37,211,102,0.1)",border:"1.5px solid rgba(37,211,102,0.5)",borderRadius:9,color:"#0F9D58",cursor:"pointer",fontFamily:"inherit",marginBottom:14,textAlign:"left"}}>
-          <span style={{fontWeight:800,fontSize:13.5}}>Choisir dans WhatsApp</span>
-          <span style={{fontSize:11.5,fontWeight:600,opacity:.85}}>Ouvre WhatsApp avec le message prêt : vous choisissez le groupe ou le contact.</span>
+          <span style={{fontWeight:800,fontSize:13.5}}>{canal==="sms"?"Envoyer sans numéro enregistré":"Choisir dans WhatsApp"}</span>
+          <span style={{fontSize:11.5,fontWeight:600,opacity:.85}}>{canal==="sms"?"Ouvre l'application Messages : vous choisissez le destinataire.":"Ouvre WhatsApp avec le message prêt : vous choisissez le groupe ou le contact."}</span>
         </button>
 
         <button onClick={async()=>{try{await navigator.clipboard.writeText(msg);dlgInfo("Le message est copié. Collez-le où vous voulez.","Copié");}catch(e){dlgInfo("La copie a échoué sur cet appareil.","Copie impossible");}}}
@@ -1894,7 +1917,7 @@ function PhotoViewer({ photos, index, onClose, onIndexChange }) {
 /* ═══════════════════════════════════════════
    FORMULAIRE FICHE — SCROLL UNIQUE
 ═══════════════════════════════════════════ */
-function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {}, parametresIA = {analysePhotos:true,maxPhotos:0} }) {
+function FicheForm({ initial, onSave, onBack, fiches = [], devisList = [], estAdmin = false, theme, societes = ["A6T Services"], onAddSociete, techniciens = [], onAddTechnicien, logos = {}, onSaveLogo, onRemoveLogo, clients = [], champsCustom = {}, parametresIA = {analysePhotos:true,maxPhotos:0} }) {
   const co = (meta, cat) => (champsCustom?.[meta.id]?.[cat]?.length ? champsCustom[meta.id][cat] : meta[cat]);
   const T = THEMES[theme] || THEMES.dark;
   const isDark = theme === "dark";
@@ -2584,10 +2607,23 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
       </>)}
       </div>
 
+      {/* Travaux couverts par un devis déjà accepté : la référence suffit, inutile de
+          tout redétailler. Le texte reste modifiable si une ligne n'a pas été faite. */}
       {/* ── CONCLUSION ── */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>📝 Conclusion <span style={{fontSize:11,fontWeight:400,color:T.textMuted}}>(visible client)</span></div>
         <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:8}}>
+          {estAdmin&&<button onClick={async()=>{
+              const dus = (devisList||[]).filter(d=>(d.client||"").trim().toLowerCase()===(f.client||"").trim().toLowerCase());
+              const suggere = f.devisId || dus[dus.length-1]?.id || "";
+              const ref = await dlgPrompt("Numéro du devis correspondant à ces travaux.", suggere, {titre:"Selon devis", valider:"Insérer"});
+              if(ref===null) return;
+              const phrase = `Dans le cadre de notre intervention, les travaux ont été réalisés conformément au devis${ref.trim()?` n°${ref.trim()}`:""} validé par le client.`;
+              set("conclusion", f.conclusion?.trim() ? `${f.conclusion.trim()}\n\n${phrase}` : phrase);
+            }}
+            style={{fontSize:12,fontWeight:700,color:"#0F9D58",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+            Selon devis
+          </button>}
           <button onClick={ouvrirChatIA} disabled={f.prestations.length===0}
             style={{fontSize:12,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.3)",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
             💬 Discuter avec l'IA
@@ -4283,7 +4319,7 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
             <div style={{width:1,height:32,background:T.border}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:14,color:T.text,lineHeight:1.25,wordBreak:"break-word"}}>{f.client||"Client non renseigné"}</div>
-              <div onClick={()=>f.adresse&&window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(f.adresse)}`,"_blank")}
+              <div onClick={()=>f.adresse&&ouvrirNavigation(f.adresse)}
                 style={{fontSize:11,color:f.adresse?"#0EA5E9":T.textMuted,cursor:f.adresse?"pointer":"default",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:f.adresse?600:400}}>
                 📍 {f.adresse||"—"}{f.adresse?" → GPS":""}
               </div>
@@ -4454,7 +4490,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         )}
         <div style={{fontSize:13,color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>
           {fiche.adresse
-            ? <span onClick={e=>{e.stopPropagation();window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(fiche.adresse)}`,"_blank");}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
+            ? <span onClick={e=>{e.stopPropagation();ouvrirNavigation(fiche.adresse);}} style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}>📍 {fiche.adresse}</span>
             : "📍 —"}
           {fiche.technicien?` · 👤 ${fiche.technicien}`:""}
         </div>
@@ -4860,7 +4896,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
 
       {/* Actions secondaires */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:8}}>
-        <button onClick={()=>setShowSousTraitant(true)} style={{background:"none",border:"1.5px solid rgba(37,211,102,0.5)",color:"#0F9D58",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Envoyer au sous-traitant</button>
+        <button onClick={()=>setShowSousTraitant(true)} style={{gridColumn:"1/-1",background:"none",border:"1.5px solid rgba(37,211,102,0.5)",color:"#0F9D58",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Envoyer</button>
         {!isRdv&&onCreateDevis&&(
           <button onClick={()=>onCreateDevis(fiche)} style={{background:"none",border:"1.5px solid rgba(139,92,246,0.5)",color:"#7C3AED",borderRadius:9,padding:"11px 10px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Créer un devis</button>
         )}
@@ -4903,7 +4939,7 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       <div style={card}>
         <h2 style={{margin:0,fontSize:20,fontWeight:800,color:T.text}}>{fiche.client||"Client non renseigné"}</h2>
         {fiche.adresse&&(
-          <div onClick={()=>window.open(`https://waze.com/ul?navigate=yes&q=${encodeURIComponent(fiche.adresse)}`,"_blank")}
+          <div onClick={()=>ouvrirNavigation(fiche.adresse)}
             style={{color:"#0EA5E9",marginTop:4,cursor:"pointer",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
             📍 {fiche.adresse} <span style={{fontSize:11,opacity:.7}}>→ GPS</span>
           </div>
@@ -5554,7 +5590,7 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
 
 const DEVIS_STATUTS = { brouillon:{label:"Brouillon",color:"#94A3B8"}, envoye:{label:"Envoyé",color:"#0EA5E9"}, accepte:{label:"Accepté",color:"#10B981"}, refuse:{label:"Refusé",color:"#EF4444"} };
 
-function DevisList({ devisList, onOpen, onDelete, onChangeStatut, onCreate, theme }) {
+function DevisList({ devisList, onOpen, onDelete, onChangeStatut, onCreate, onCreerIntervention, theme }) {
   const T = THEMES[theme] || THEMES.dark;
   const sorted = [...devisList].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const btnNew = (
@@ -5585,6 +5621,8 @@ function DevisList({ devisList, onOpen, onDelete, onChangeStatut, onCreate, them
             </select>
             <button onClick={()=>previewDevis(dv)} title="Aperçu" style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🖨</button>
             <button onClick={()=>telechargerPDF(buildDevisHTML(dv),`Devis-${dv.id}.pdf`)} title="Télécharger PDF" style={{background:"none",border:`1px solid rgba(167,139,250,0.4)`,borderRadius:8,color:"#A78BFA",padding:"7px 10px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>📄</button>
+            {onCreerIntervention&&<button onClick={e=>{e.stopPropagation();onCreerIntervention(dv);}} title="Créer l'intervention à partir de ce devis"
+              style={{background:"rgba(16,185,129,0.12)",border:"1px solid rgba(16,185,129,0.45)",borderRadius:8,color:"#0F9D58",padding:"7px 11px",cursor:"pointer",fontSize:11.5,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap"}}>Intervention</button>}
             <button onClick={()=>onDelete(dv)} title="Supprimer" style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🗑️</button>
           </div>
         );
@@ -5854,6 +5892,7 @@ function DialogueHost({ theme }) {
    par technicien pour pouvoir relancer celui qui traîne, en une fois. */
 function FichesNonFaites({ T, fiches = [], techniciens = [], techTels = {} }) {
   const [selection, setSelection] = useState([]);
+  const [canal, setCanal] = useState("whatsapp");
   const jour = today();
 
   const enAttente = useMemo(() => (fiches || []).filter(f =>
@@ -5883,9 +5922,7 @@ function FichesNonFaites({ T, fiches = [], techniciens = [], techTels = {} }) {
     const cibles = choisies.length ? choisies : liste;
     const lignes = cibles.map(f => `• ${dateFr(f.dateRdv)} — ${f.client || "client non renseigné"}${f.adresse ? ` (${f.adresse})` : ""}`).join("\n");
     const msg = `Bonjour ${tech},\nMerci de compléter le rapport de ces interventions, la date est passée et la fiche est restée vide :\n\n${lignes}\n\nMerci.`;
-    const tel = normaliserTel(techTels[tech] || "");
-    window.open(tel ? `https://wa.me/${tel.replace("+", "")}?text=${encodeURIComponent(msg)}`
-                    : `https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    envoyerAuNumero(techTels[logoKey(tech)] || "", msg, canal);
   };
 
   if (!enAttente.length) return (
@@ -5899,6 +5936,15 @@ function FichesNonFaites({ T, fiches = [], techniciens = [], techTels = {} }) {
       <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 12, lineHeight: 1.55 }}>
         Interventions dont la date est passée et dont la fiche n'a jamais été remplie.
         Cochez celles à rappeler, ou relancez tout le lot d'un technicien.
+      </div>
+      <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
+        {[["whatsapp", "WhatsApp", "#0F9D58"], ["sms", "SMS", "#0EA5E9"]].map(([id, label, col]) => (
+          <button key={id} onClick={() => setCanal(id)}
+            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: 12.5,
+              background: canal === id ? col + "1F" : "none", border: `1.5px solid ${canal === id ? col : T.border}`, color: canal === id ? col : T.textMuted }}>
+            {label}
+          </button>
+        ))}
       </div>
       {groupes.map(([tech, liste]) => (
         <div key={tech} style={{ border: `1px solid ${T.border}`, borderRadius: 11, marginBottom: 10, overflow: "hidden" }}>
@@ -6443,6 +6489,23 @@ function AppInterne() {
   },[loaded, contrats, fiches]);
 
   const handleSaveClient = (c) => saveClient(c);
+  /* Chemin inverse du devis : les travaux acceptés deviennent une intervention,
+     sans avoir à ressaisir le client, l'adresse ni le détail des lignes. */
+  const handleCreerInterventionDepuisDevis = (dv) => {
+    const lignes = (dv.lignes||[]).filter(l=>l.label?.trim())
+      .map(l=>`• ${l.label}${l.qte&&Number(l.qte)!==1?` (x${l.qte})`:""}`).join("\n");
+    setEditing({
+      client: dv.client||"", adresse: dv.adresse||dv.site||"", tel:"", email:"",
+      societe: dv.societe||"", logoSociete: dv.logoSociete||null,
+      status:"planifie", type:"rdv", dateRdv:"", heureRdv:"",
+      devisId: dv.id,
+      notesInternes: `Travaux prévus au devis ${dv.id}${lignes?` :\n${lignes}`:""}`,
+      prestations:[], photos:[], preconisations:[],
+    });
+    setView("form");
+    showToast(`Intervention préparée depuis le devis ${dv.id}`);
+  };
+
   const handleCreateDevis = (fiche) => {
     const lignes = (fiche.preconisations||[]).map(p=>({label:p.replace(/ recommandé| à prévoir| à planifier| à établir| requise|Prévoir /gi,"").trim().replace(/^./,m=>m.toUpperCase()), qte:1, pu:""}));
     setEditingDevis({ id:nextDevisNum(devisList), ficheId:fiche.id, client:fiche.client||"", site:"", adresse:fiche.adresse||"",
@@ -6757,7 +6820,7 @@ function AppInterne() {
         )}
 
         {view==="form"&&(
-          <FicheForm champsCustom={champsCustom} initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients} parametresIA={parametresIA}/>
+          <FicheForm champsCustom={champsCustom} devisList={devisList} estAdmin={!estRestreint} initial={editing} onSave={handleSave} onBack={()=>setView(selected&&editing?"detail":"accueil")} fiches={fiches} theme={theme} societes={societes} onAddSociete={ajouterSociete} techniciens={techniciens} onAddTechnicien={ajouterTechnicien} logos={logos} onSaveLogo={(nom,d)=>saveLogo(nom,d)} onRemoveLogo={nom=>removeLogo(nom)} clients={clients} parametresIA={parametresIA}/>
         )}
 
         {view==="rdv"&&editing&&(
@@ -7067,7 +7130,7 @@ function AppInterne() {
                 </div>} fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} onReplanifier={replanifierFiche} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
-            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={async dv=>{if(await dlgConfirm("Le devis "+dv.id+" sera supprimé définitivement.",{titre:"Supprimer le devis",danger:true}))deleteDevisFb(dv.id);}}/>}
+            {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreerIntervention={handleCreerInterventionDepuisDevis} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={async dv=>{if(await dlgConfirm("Le devis "+dv.id+" sera supprimé définitivement.",{titre:"Supprimer le devis",danger:true}))deleteDevisFb(dv.id);}}/>}
             {nav==="liste"&&<ListeCartes fiches={filteredTriee} theme={theme} techniciens={techniciens} techTels={techTels} onSelect={f=>{setSelected(f);setView("detail");}} onDelete={async f=>{if(await dlgConfirm("L\u2019intervention "+f.id+" ("+(f.client||"sans client")+") sera supprim\u00e9e d\u00e9finitivement.",{titre:"Supprimer l\u2019intervention",danger:true})){deleteFiche(f.id);showToast("\ud83d\uddd1\ufe0f Supprim\u00e9e");}}}/>}
             {nav==="carte"&&<CarteView fiches={fichesVisibles} positions={positions} theme={theme}/>}
             {nav==="memos"&&<MemosVocauxView memos={memosVocaux} theme={theme} onReprendre={m=>{setVoiceResume({texte:m.texte,mode:m.mode});setShowVoiceImport(true);}}/>}
