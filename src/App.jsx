@@ -861,6 +861,13 @@ function buildReportHTML(fiche, hideInternal = false) {
       </div>`;
     }).join("");
 
+  /* Le texte saisi contient des retours à la ligne ; en HTML ils disparaissent et tout
+     se retrouve collé. On rétablit les paragraphes et on échappe le HTML au passage. */
+  const enParagraphes = (txt) => (txt||"")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean)
+    .map(b=>`<p class="para">${b.replace(/\n/g,"<br/>")}</p>`).join("") || "—";
+
   const photoItem = p => `<div class="photo-item"><img src="${p.data}" alt="" class="photo-zoomable" style="cursor:zoom-in" onclick="zoomPhoto(this.src)"/></div>`;
   /* Le titre de section ("Après travaux") est collé à sa première rangée de photos dans un
      bloc insécable : Chrome ignore break-after:avoid, d'où les titres restés seuls en bas
@@ -939,6 +946,8 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
 .phrase{font-size:12px;color:#3d4a5c;line-height:1.85;margin-bottom:4px}
 .resp-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:8px;font-size:11px;font-weight:600;background:${resp?.color||'#64748b'}12;color:${resp?.color||'#64748b'};border:1.5px solid ${resp?.color||'#64748b'}}
 .conclusion-box{background:#f6fbf8;border:1.5px solid #7fb896;border-radius:9px;padding:15px 19px;color:#20553a;font-size:12px;line-height:1.85}
+.conclusion-box .para{margin:0 0 9px}
+.conclusion-box .para:last-child{margin-bottom:0}
 .conclusion-box::before{content:"";display:block;width:24px;height:3px;background:#3ba873;border-radius:2px;margin-bottom:11px}
 .preco-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .preco-list li{font-size:11px;font-weight:600;color:#5b4b9e;background:#f7f6fc;border:1.5px solid #b7a9e0;border-radius:7px;padding:7px 11px}
@@ -970,9 +979,14 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
    L'en-tête est aussi resserré pour l'impression afin de libérer de la place pour le
    contenu, quelle que soit la longueur du rapport. */
 @media print{
-  .info-card,.presta-card,.conclusion-box,.sig-box,.photo-item,.resp-badge,.loc-banner,.preco-list li,.int-card{
+  .info-card,.presta-card,.conclusion-box,.sig-box,.photo-item,.resp-badge,.loc-banner,.preco-list li,.int-card,.photo-tete{
     break-inside:avoid;page-break-inside:avoid;
   }
+  /* Photos resserrées : un bloc titre + rangée qui tient plus facilement en bas de page,
+     donc moins de demi-pages blanches. */
+  .photo-item,.photo-item img{max-height:150px}
+  .photo-subtitle{margin:8px 0 5px}
+  .photo-grid{gap:8px}
   .section-title{break-after:avoid;page-break-after:avoid}
   .presta-header{break-after:avoid;page-break-after:avoid}
   .conclusion-box,.phrase{orphans:3;widows:3}
@@ -1035,7 +1049,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
   </div>
   ${fiche.responsabilite&&fiche.responsabilite!=="na"?`<div class="section-block"><div class="section-title">Responsabilité</div><div class="resp-badge">● ${resp?.label} — ${resp?.desc}</div></div>`:""}
   ${fiche.preconisations?.length?`<div class="section-block"><div class="section-title">Préconisations</div><ul class="preco-list">${fiche.preconisations.map(p=>`<li>${p}</li>`).join("")}</ul></div>`:""}
-  <div class="section-block"><div class="section-title">Conclusion</div><div class="conclusion-box">${fiche.conclusion||"—"}</div></div>
+  <div class="section-block"><div class="section-title">Conclusion</div><div class="conclusion-box">${enParagraphes(fiche.conclusion)}</div></div>
   ${majorationsTexte(fiche).length?`<div class="section-block"><div class="section-title">Conditions d'intervention</div><ul class="preco-list">${majorationsTexte(fiche).map(t=>`<li>${t}</li>`).join("")}</ul></div>`:""}
   ${photoGrid}
   ${sigZone}
