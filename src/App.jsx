@@ -471,6 +471,9 @@ const STATUTS = {
 // Une fiche "à programmer" = un RDV enregistré sans date
 /* Une fiche est en retard si sa date est passée et qu'elle n'est ni terminée ni annulée. */
 const estEnRetard = (f) => Boolean(f.dateRdv) && f.dateRdv < new Date().toISOString().slice(0,10) && f.status!=="termine" && f.status!=="annule";
+/* Date passée et fiche jamais remplie : le rapport n'a pas été fait. */
+const sansRapport = (f) => Boolean(f.dateRdv) && f.dateRdv < new Date().toISOString().slice(0,10)
+  && f.status !== "termine" && f.status !== "annule" && !(f.prestations?.length > 0);
 const estAProgrammer = (f) => !f.dateRdv && (f.type==="rdv" || (f.status==="planifie" && !(f.prestations&&f.prestations.length)));
 
 // Section repliable — utilisée dans Administration pour que la page reste rapide à
@@ -2858,6 +2861,9 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       </div>
 
       {/* Journal d'activité — connexions, ajouts de photo... */}
+      <Repliable T={T} icone="📕" titre="Interventions sans rapport" badge={(fiches||[]).filter(f=>f.dateRdv&&f.dateRdv<today()&&f.status!=="termine"&&f.status!=="annule"&&!(f.prestations?.length>0)).length||null}>
+        <FichesNonFaites T={T} fiches={fiches} techniciens={techniciens} techTels={techTels}/>
+      </Repliable>
       {onSaveAbsence&&<Repliable T={T} icone="🌴" titre="Absences des techniciens" badge={absences.length||null}>
         <AbsencesAdmin T={T} theme={theme} techniciens={techniciens} fiches={fiches} absences={absences} onSaveAbsence={onSaveAbsence} onDeleteAbsence={onDeleteAbsence}/>
       </Repliable>}
@@ -5843,6 +5849,99 @@ function DialogueHost({ theme }) {
   );
 }
 
+/* Interventions dont la date est passée et qui n'ont jamais été renseignées : le
+   technicien s'est déplacé (ou pas) mais aucune fiche n'a été remplie. On les regroupe
+   par technicien pour pouvoir relancer celui qui traîne, en une fois. */
+function FichesNonFaites({ T, fiches = [], techniciens = [], techTels = {} }) {
+  const [selection, setSelection] = useState([]);
+  const jour = today();
+
+  const enAttente = useMemo(() => (fiches || []).filter(f =>
+    f.dateRdv && f.dateRdv < jour &&
+    f.status !== "termine" && f.status !== "annule" &&
+    !(f.prestations?.length > 0)
+  ).sort((a, b) => a.dateRdv.localeCompare(b.dateRdv)), [fiches, jour]);
+
+  const groupes = useMemo(() => {
+    const map = {};
+    enAttente.forEach(f => {
+      const k = f.technicien || "__libre";
+      (map[k] = map[k] || []).push(f);
+    });
+    return Object.entries(map).sort((a, b) => b[1].length - a[1].length);
+  }, [enAttente]);
+
+  const basculer = (id) => setSelection(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const toutDuGroupe = (liste) => {
+    const ids = liste.map(f => f.id);
+    const tousPris = ids.every(i => selection.includes(i));
+    setSelection(s => tousPris ? s.filter(i => !ids.includes(i)) : [...new Set([...s, ...ids])]);
+  };
+
+  const relancer = (tech, liste) => {
+    const choisies = liste.filter(f => selection.includes(f.id));
+    const cibles = choisies.length ? choisies : liste;
+    const lignes = cibles.map(f => `• ${dateFr(f.dateRdv)} — ${f.client || "client non renseigné"}${f.adresse ? ` (${f.adresse})` : ""}`).join("\n");
+    const msg = `Bonjour ${tech},\nMerci de compléter le rapport de ces interventions, la date est passée et la fiche est restée vide :\n\n${lignes}\n\nMerci.`;
+    const tel = normaliserTel(techTels[tech] || "");
+    window.open(tel ? `https://wa.me/${tel.replace("+", "")}?text=${encodeURIComponent(msg)}`
+                    : `https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  if (!enAttente.length) return (
+    <div style={{ fontSize: 13, color: T.textMuted, padding: "4px 2px" }}>
+      Aucune intervention passée sans rapport. Tout est à jour.
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 12, lineHeight: 1.55 }}>
+        Interventions dont la date est passée et dont la fiche n'a jamais été remplie.
+        Cochez celles à rappeler, ou relancez tout le lot d'un technicien.
+      </div>
+      {groupes.map(([tech, liste]) => (
+        <div key={tech} style={{ border: `1px solid ${T.border}`, borderRadius: 11, marginBottom: 10, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: T.surface2, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 800, fontSize: 13.5, color: T.text }}>
+              {tech === "__libre" ? "Sans technicien assigné" : tech}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#EF4444", background: "rgba(239,68,68,0.12)", padding: "2px 9px", borderRadius: 10 }}>
+              {liste.length}
+            </span>
+            <button onClick={() => toutDuGroupe(liste)}
+              style={{ marginLeft: "auto", background: "none", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, color: T.textMuted, cursor: "pointer", fontFamily: "inherit" }}>
+              Tout cocher
+            </button>
+            {tech !== "__libre" && (
+              <button onClick={() => relancer(tech, liste)}
+                style={{ background: "rgba(37,211,102,0.12)", border: "1px solid rgba(37,211,102,0.5)", borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 800, color: "#0F9D58", cursor: "pointer", fontFamily: "inherit" }}>
+                Relancer
+              </button>
+            )}
+          </div>
+          {liste.map(f => (
+            <label key={f.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "9px 12px", borderTop: `1px solid ${T.border}`, cursor: "pointer" }}>
+              <input type="checkbox" checked={selection.includes(f.id)} onChange={() => basculer(f.id)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: T.text }}>{f.client || "Client non renseigné"}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: T.textMuted, marginTop: 2 }}>
+                  {dateFr(f.dateRdv)}{f.adresse ? ` — ${f.adresse}` : ""}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      ))}
+      {!Object.keys(techTels).length && (
+        <div style={{ fontSize: 11.5, color: "#F59E0B", fontWeight: 700, marginTop: 6 }}>
+          Aucun numéro de technicien enregistré : la relance ouvrira WhatsApp sans destinataire.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AbsencesAdmin({ T, theme, techniciens=[], fiches=[], absences=[], onSaveAbsence, onDeleteAbsence }) {
   const [a, setA] = useState({technicien:"",du:today(),au:today(),motif:""});
   const inp = {padding:"9px 12px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",width:"100%",colorScheme:theme==="dark"?"dark":"light"};
@@ -6416,7 +6515,8 @@ function AppInterne() {
     } else {
       setTimeout(()=>setRechercheFloue(false),0);
     }
-    if(filterStatus==="__retard") r=r.filter(estEnRetard);
+    if(filterStatus==="__sansrapport") r=r.filter(sansRapport);
+    else if(filterStatus==="__retard") r=r.filter(estEnRetard);
     else if(filterStatus==="__aprogrammer") r=r.filter(estAProgrammer);
     else if(filterStatus==="__signees") r=r.filter(f=>f.signature);
     else if(filterStatus==="__afacturer") r=r.filter(f=>f.facturation==="a_facturer");
@@ -6542,6 +6642,19 @@ function AppInterne() {
     const seuil = Date.now() - 3*24*60*60*1000;
     return fichesVisibles.filter(f => f.status==="a_prevoir" && (f.createdAt||0) < seuil);
   },[fichesVisibles]);
+  const mesSansRapport = useMemo(()=>fichesVisibles.filter(sansRapport),[fichesVisibles]);
+  const sansRapportBanner = mesSansRapport.length>0 && nav!=="liste" && (
+    <div onClick={()=>{setFilterStatus("__sansrapport");setNav("liste");}}
+      style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",marginBottom:12,borderRadius:11,cursor:"pointer",
+        background:"rgba(239,68,68,0.09)",border:"1px solid rgba(239,68,68,0.4)"}}>
+      <span style={{fontSize:18}}>📕</span>
+      <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:700,color:T.text,lineHeight:1.45}}>
+        {mesSansRapport.length} intervention{mesSansRapport.length>1?"s":""} dont la date est passée sans rapport rempli.
+      </span>
+      <span style={{fontSize:12,fontWeight:800,color:"#EF4444",whiteSpace:"nowrap"}}>Voir</span>
+    </div>
+  );
+
   const retardBanner = fichesEnRetard.length>0 && nav!=="liste" && (
     <div onClick={()=>{setView("accueil");setNav("liste");setFilterStatus("a_prevoir");}} style={{cursor:"pointer",background:"rgba(249,115,22,0.15)",borderBottom:"1px solid rgba(249,115,22,0.35)",color:"#F97316",textAlign:"center",fontWeight:800,fontSize:12.5,padding:"8px 12px"}}>
       ⚠️ {fichesEnRetard.length} fiche(s) "Retour à prévoir" en attente depuis plus de 3 jours — cliquez pour voir
@@ -6598,6 +6711,7 @@ function AppInterne() {
       {rolesErrorBanner}
       {derniereErreurBanner}
       {retardBanner}
+      {sansRapportBanner}
       <header style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:300}}>
         <button onClick={()=>setShowRdvForm(false)} style={{background:"none",border:`1px solid ${T.border}`,color:T.textMuted,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>← Retour</button>
         <div style={{fontWeight:800,fontSize:16,color:T.text}}>📅 Nouveau RDV</div>
@@ -6615,6 +6729,7 @@ function AppInterne() {
       {rolesErrorBanner}
       {derniereErreurBanner}
       {retardBanner}
+      {sansRapportBanner}
       {mailImportModal}
       {voiceImportModal}
       {showExportMensuel && <ExportMensuelModal fiches={fiches} theme={theme} onClose={()=>setShowExportMensuel(false)}/>}
@@ -6858,6 +6973,7 @@ function AppInterne() {
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous statuts</option>
                   <option value="__retard">⏰ En retard</option>
+                  <option value="__sansrapport">📕 Sans rapport</option>
                   <option value="__aprogrammer">📌 À planifier</option>
                   {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   <option value="__signees">✍️ Signées</option>
@@ -6902,7 +7018,7 @@ function AppInterne() {
             {nav==="liste"&&(filterStatus||filterTech)&&(
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.35)",borderRadius:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:"#0EA5E9"}}>
-                  Filtre :{filterStatus?` ${filterStatus==="__retard" ? "⏰ En retard" : filterStatus==="__aprogrammer" ? "📌 À planifier" : filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__brouillon" ? "🧾 Brouillon" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
+                  Filtre :{filterStatus?` ${filterStatus==="__sansrapport" ? "📕 Sans rapport" : filterStatus==="__retard" ? "⏰ En retard" : filterStatus==="__aprogrammer" ? "📌 À planifier" : filterStatus==="__signees" ? "✍️ Signées" : filterStatus==="__afacturer" ? "💶 À facturer" : filterStatus==="__brouillon" ? "🧾 Brouillon" : filterStatus==="__facture" ? "✅ Facturé" : STATUTS[filterStatus]?.label}`:""}{filterStatus&&filterTech?" · ":""}{filterTech?` 👤 ${filterTech}`:""} — {filtered.length} fiche(s)
                 </span>
                 <button onClick={()=>{setFilterStatus("");setFilterTech("");}} style={{marginLeft:"auto",background:"none",border:"1px solid rgba(14,165,233,0.4)",borderRadius:6,color:"#0EA5E9",fontSize:11,fontWeight:700,cursor:"pointer",padding:"3px 10px",fontFamily:"inherit"}}>✕ Tout afficher</button>
               </div>
