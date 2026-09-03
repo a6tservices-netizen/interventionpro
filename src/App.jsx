@@ -4402,7 +4402,8 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
       <div onClick={()=>onSelect(fiche)} style={{cursor:"pointer",marginBottom:9}}>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:5}}>
       <div style={{fontWeight:700,fontSize:16.5,color:T.text,overflowWrap:"anywhere",lineHeight:1.25}}>{fiche.client||"Client non renseigné"}</div>
-      <span style={{fontSize:11,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
+      {/* Le badge répétait ce que la colonne de gauche indique déjà pour un RDV. */}
+      {!isRdv&&<span style={{fontSize:11,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>}
       {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
       {(fiche.journalAppels||[]).length>0 && (()=>{
       const dernier = fiche.journalAppels[fiche.journalAppels.length-1];
@@ -4476,13 +4477,18 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         )}
       </div>
       )}
-      {!replan&&!isRdv&&(
-        <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
-          title="Ouvrir le PDF du rapport"
-          style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
-      )}
-      {!replan&&isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
     </div>
+      {/* Action sur sa propre ligne : la colonne d'informations récupère toute la largeur. */}
+      {!replan&&(
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+        {!replan&&!isRdv&&(
+          <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
+            title="Ouvrir le PDF du rapport"
+            style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
+        )}
+        {!replan&&isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
+        </div>
+      )}
     </div>
   );
 }
