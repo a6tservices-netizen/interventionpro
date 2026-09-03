@@ -4438,7 +4438,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           </div>
         </div>
       ):(
-      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
+      <div style={{flex:1,minWidth:0,cursor:"pointer",display:"flex",flexDirection:"column",gap:5}} onClick={()=>onSelect(fiche)}>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:5}}>
             {fiche.tempsInterne&&<span style={{fontSize:12,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"4px 10px",borderRadius:13,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
@@ -4455,6 +4455,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         {fiche.tel&&(
           <a href={telHref(fiche.tel)} onClick={e=>e.stopPropagation()} style={{fontSize:13,color:"#0EA5E9",fontWeight:600,textDecoration:"none"}}>📞 {fiche.tel}</a>
         )}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
         {fiche.technicien&&tColor&&(
           <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:tColor,background:tColor+"1A",padding:"3px 10px",borderRadius:13,marginTop:4}}>
             👤 {fiche.technicien} {fiche.priseEnCharge?"✅":"⏳"}
@@ -4471,10 +4472,11 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           </span>
         )}
         {fiche.typesIntervention?.length>0&&(
-          <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+          <div style={{display:"contents"}}>
             {fiche.typesIntervention.map(id=>{const p=PRESTATIONS.find(x=>x.id===id);return p?<span key={id} style={{fontSize:11.5,fontWeight:600,color:p.color,background:p.color+"18",padding:"2px 9px",borderRadius:13}}>{p.icon} {p.label}</span>:null;})}
           </div>
         )}
+        </div>
       </div>
       )}
     </div>
