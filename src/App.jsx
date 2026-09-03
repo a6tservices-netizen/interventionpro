@@ -987,6 +987,16 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
   .photo-item,.photo-item img{max-height:150px}
   .photo-subtitle{margin:8px 0 5px}
   .photo-grid{gap:8px}
+  /* Le cadre de signature ne doit jamais être coupé en deux pages : soit il tient à la
+     suite des photos, soit il part entier. On le resserre pour qu'il tienne le plus
+     souvent possible et n'entraîne pas une page supplémentaire presque vide. */
+  .sig-zone{break-inside:avoid;page-break-inside:avoid;margin-top:14px;gap:14px}
+  .sig-box{min-height:74px;padding:11px 13px}
+  .sig-box-label{margin-bottom:9px}
+  .sig-line{height:34px}
+  .sig-img{max-height:52px}
+  .sig-name{margin-top:7px;padding-top:6px}
+  .footer{margin-top:14px;padding-top:8px}
   .section-title{break-after:avoid;page-break-after:avoid}
   .presta-header{break-after:avoid;page-break-after:avoid}
   .conclusion-box,.phrase{orphans:3;widows:3}
