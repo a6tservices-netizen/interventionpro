@@ -800,6 +800,43 @@ function chargerPdfMake() {
   return _pdfMakeChargement;
 }
 
+/* Les polices du rapport (DM Sans pour le texte, Fraunces pour le titre) ne sont pas
+   fournies avec le moteur PDF. Si les fichiers sont déposés dans public/fonts/, on les
+   charge ; sinon on garde la police par défaut et le PDF sort quand même. */
+let _policesEtat = null;
+function base64Depuis(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+async function chargerPolices(pdfMake) {
+  if (_policesEtat !== null) return _policesEtat;
+  const fichiers = {
+    "DMSans-Regular.ttf": "/fonts/DMSans-Regular.ttf",
+    "DMSans-Bold.ttf":    "/fonts/DMSans-Bold.ttf",
+    "Fraunces-Bold.ttf":  "/fonts/Fraunces-Bold.ttf",
+  };
+  try {
+    for (const [nom, url] of Object.entries(fichiers)) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("absente : " + url);
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength < 5000) throw new Error("fichier invalide : " + url);
+      pdfMake.vfs[nom] = base64Depuis(buf);
+    }
+    pdfMake.fonts = {
+      Roboto: { normal:"Roboto-Regular.ttf", bold:"Roboto-Medium.ttf", italics:"Roboto-Italic.ttf", bolditalics:"Roboto-MediumItalic.ttf" },
+      DMSans: { normal:"DMSans-Regular.ttf", bold:"DMSans-Bold.ttf", italics:"DMSans-Regular.ttf", bolditalics:"DMSans-Bold.ttf" },
+      Fraunces: { normal:"Fraunces-Bold.ttf", bold:"Fraunces-Bold.ttf", italics:"Fraunces-Bold.ttf", bolditalics:"Fraunces-Bold.ttf" },
+    };
+    _policesEtat = true;
+  } catch (e) {
+    _policesEtat = false;
+  }
+  return _policesEtat;
+}
+
 /* pdfmake n'accepte que des images en base64 : les photos stockées sur une URL
    sont récupérées puis converties. Une photo illisible est simplement omise. */
 async function imagePourPdf(src) {
@@ -822,6 +859,9 @@ const PDF_GRIS = "#7A8AA0";
 
 async function genererPdfRapport(fiche) {
   const pdfMake = await chargerPdfMake();
+  const policesMaison = await chargerPolices(pdfMake);
+  const POLICE_TEXTE = policesMaison ? "DMSans" : "Roboto";
+  const POLICE_TITRE = policesMaison ? "Fraunces" : "Roboto";
   const status = STATUTS[fiche.status] || STATUTS.planifie;
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
   const locStr = formatLoc(fiche.loc);
@@ -844,8 +884,8 @@ async function genererPdfRapport(fiche) {
   refStack.push({ text: status.label, fontSize: 9.5, bold: true, color: "#6EE7B7", margin: [0, 1, 0, 0] });
 
   const titreStack = [
-    { text: fiche.societe || "A6T Services", fontSize: 10.5, bold: true, color: "#9BBEEC" },
-    { text: "Rapport d'intervention technique", fontSize: 17, bold: true, color: "#FFFFFF", margin: [0, 9, 0, 0] },
+    { text: fiche.societe || "A6T Services", font: POLICE_TITRE, fontSize: 11.5, bold: true, color: "#9BBEEC" },
+    { text: "Rapport d'intervention technique", font: POLICE_TITRE, fontSize: 18, bold: true, color: "#FFFFFF", margin: [0, 9, 0, 0] },
     { text: "Rapport généré après intervention sur site", fontSize: 8.5, color: "#93A9C8", margin: [0, 3, 0, 0] },
   ];
   if (fiche.urgent) titreStack.push({ text: "INTERVENTION URGENTE", fontSize: 8, bold: true, color: "#FCA5A5", characterSpacing: 0.8, margin: [0, 9, 0, 0] });
@@ -908,7 +948,7 @@ async function genererPdfRapport(fiche) {
       const phrases = phrasesPrestation(p, locStr);
       const corps = [{
         text: (p.meta?.label || "Prestation") + (p.diametre ? ` — Ø ${p.diametre} mm` : ""),
-        fontSize: 10.5, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 5 : 0],
+        font: POLICE_TITRE, fontSize: 11, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 5 : 0],
       }];
       phrases.forEach(t => corps.push({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] }));
       contenu.push({
@@ -969,7 +1009,7 @@ async function genererPdfRapport(fiche) {
       const images = [];
       for (const p of liste) {
         const data = await imagePourPdf(p.data);
-        if (data) images.push({ image: data, fit: [246, 152], margin: [0, 0, 0, 8] });
+        if (data) images.push({ image: data, fit: [252, 132], margin: [0, 0, 0, 7] });
       }
       if (!images.length) continue;
       const rangees = [];
@@ -991,8 +1031,8 @@ async function genererPdfRapport(fiche) {
     cases.push({
       stack: [
         { text: label.toUpperCase(), fontSize: 6, bold: true, characterSpacing: 0.9, color: PDF_GRIS, margin: [0, 0, 0, 6] },
-        { image: data, fit: [190, 46] },
-        { text: nom || " ", fontSize: 9, bold: true, margin: [0, 6, 0, 0] },
+        { image: data, fit: [190, 40] },
+        { text: nom || " ", fontSize: 9, bold: true, margin: [0, 5, 0, 0] },
       ],
       fillColor: "#FBFCFD", margin: [12, 10, 12, 10],
     });
@@ -1006,7 +1046,7 @@ async function genererPdfRapport(fiche) {
     contenu.push({
       table: { widths: ["*", "*"], body: rgs },
       layout: "noBorders",
-      margin: [0, 16, 0, 0],
+      margin: [0, 12, 0, 0],
       unbreakable: true,
     });
   }
@@ -1015,11 +1055,11 @@ async function genererPdfRapport(fiche) {
     pageSize: "A4",
     pageMargins: [32, 30, 32, 34],
     info: { title: `Rapport ${fiche.id}`, author: fiche.societe || "A6T Services" },
-    defaultStyle: { fontSize: 9.5, color: "#1E293B", lineHeight: 1.25 },
+    defaultStyle: { font: POLICE_TEXTE, fontSize: 9.5, color: "#1E293B", lineHeight: 1.25 },
     footer: (page, total) => ({
       margin: [32, 6, 32, 0],
       columns: [
-        { text: fiche.societe || "A6T Services", fontSize: 7, color: "#A0AEC0" },
+        { text: fiche.societe || "A6T Services", font: POLICE_TITRE, fontSize: 7.5, color: "#A0AEC0" },
         { text: `${fiche.id} — Confidentiel`, fontSize: 7, color: "#A0AEC0", alignment: "center" },
         { text: `Page ${page} / ${total}`, fontSize: 7, color: "#A0AEC0", alignment: "right" },
       ],
