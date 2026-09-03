@@ -6904,13 +6904,6 @@ function AppInterne() {
               parametresMessages={parametresMessages} onSaveParametresMessages={p=>{setParametresMessages(p);saveParametresMessages(p);}}
               absences={absences} onSaveAbsence={estRestreint?null:saveAbsenceFb} onDeleteAbsence={estRestreint?null:deleteAbsenceFb}
               userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} theme={theme} activiteLog={activiteLog} fiches={fiches}/>}
-            {nav==="agenda"&&(
-              <div style={{display:"flex",gap:10,marginBottom:10}}>
-                <button onClick={()=>setShowMailImport(true)} style={{flex:1,background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>RDV depuis un mail</button>
-                <button onClick={()=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:agendaJour});setShowRdvForm(true);}} style={{flex:1,background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(59,130,246,0.3)"}}>Nouveau RDV</button>
-                <button onClick={()=>setShowVoiceImport(true)} style={{flex:1,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>Mémo vocal</button>
-              </div>
-            )}
             {nav==="agenda"&&search.trim()&&(
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -6936,6 +6929,14 @@ function AppInterne() {
               </div>
             )}
             {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} onReplanifier={replanifierFiche} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {/* Les trois créations passent sous l'agenda : la semaine doit arriver en premier. */}
+            {nav==="agenda"&&(
+              <div style={{display:"flex",gap:10,marginTop:16,marginBottom:10}}>
+                <button onClick={()=>setShowMailImport(true)} style={{flex:1,background:"linear-gradient(135deg,#A78BFA,#7C3AED)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(124,58,237,0.3)"}}>RDV depuis un mail</button>
+                <button onClick={()=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:agendaJour});setShowRdvForm(true);}} style={{flex:1,background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(59,130,246,0.3)"}}>Nouveau RDV</button>
+                <button onClick={()=>setShowVoiceImport(true)} style={{flex:1,background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(14,165,233,0.3)"}}>Mémo vocal</button>
+              </div>
+            )}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={async dv=>{if(await dlgConfirm("Le devis "+dv.id+" sera supprimé définitivement.",{titre:"Supprimer le devis",danger:true}))deleteDevisFb(dv.id);}}/>}
