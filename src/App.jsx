@@ -772,6 +772,286 @@ Sois concis, professionnel et naturel en français.`;
 /* ═══════════════════════════════════════════
    RAPPORT PDF
 ═══════════════════════════════════════════ */
+/* ---------------------------------------------------------------------------
+   Génération directe du PDF du rapport.
+   L'impression du navigateur donnait une pagination différente sur iPhone et
+   sur PC, et ajoutait ses propres en-têtes (adresse du site, date, numéro de
+   page). Ici la mise en page est calculée par l'application : le fichier est
+   identique partout, et c'est un vrai PDF, joignable à un mail.
+   La bibliothèque n'est téléchargée qu'au premier PDF demandé.
+---------------------------------------------------------------------------- */
+const PDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7";
+let _pdfMakeChargement = null;
+function chargerPdfMake() {
+  if (window.pdfMake?.createPdf) return Promise.resolve(window.pdfMake);
+  if (_pdfMakeChargement) return _pdfMakeChargement;
+  const script = (src) => new Promise((ok, ko) => {
+    const el = document.createElement("script");
+    el.src = src; el.onload = () => ok(); el.onerror = () => ko(new Error("Téléchargement impossible : " + src));
+    document.head.appendChild(el);
+  });
+  _pdfMakeChargement = script(`${PDF_CDN}/pdfmake.min.js`)
+    .then(() => script(`${PDF_CDN}/vfs_fonts.js`))
+    .then(() => {
+      if (!window.pdfMake?.createPdf) throw new Error("bibliothèque PDF incomplète");
+      return window.pdfMake;
+    })
+    .catch(e => { _pdfMakeChargement = null; throw e; });
+  return _pdfMakeChargement;
+}
+
+/* pdfmake n'accepte que des images en base64 : les photos stockées sur une URL
+   sont récupérées puis converties. Une photo illisible est simplement omise. */
+async function imagePourPdf(src) {
+  if (!src || typeof src !== "string") return null;
+  if (src.startsWith("data:image")) return src;
+  try {
+    const r = await fetch(src);
+    const b = await r.blob();
+    return await new Promise((ok, ko) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(fr.result);
+      fr.onerror = ko;
+      fr.readAsDataURL(b);
+    });
+  } catch (e) { return null; }
+}
+
+const PDF_BLEU = "#12294D";
+const PDF_GRIS = "#7A8AA0";
+
+async function genererPdfRapport(fiche) {
+  const pdfMake = await chargerPdfMake();
+  const status = STATUTS[fiche.status] || STATUTS.planifie;
+  const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
+  const locStr = formatLoc(fiche.loc);
+  const presta = (fiche.prestations || []).map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
+
+  const contenu = [];
+
+  /* En-tête */
+  const refStack = [
+    { text: "RÉFÉRENCE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 },
+    { text: fiche.id || "", fontSize: 12, bold: true, color: "#FFFFFF", margin: [0, 2, 0, 7] },
+    { text: "DATE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 },
+    { text: dateFr(fiche.dateRdv), fontSize: 9.5, color: "#FFFFFF", margin: [0, 1, 0, 7] },
+  ];
+  if (fiche.heureRdv) {
+    refStack.push({ text: "HEURE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 });
+    refStack.push({ text: fiche.heureRdv, fontSize: 9.5, color: "#FFFFFF", margin: [0, 1, 0, 7] });
+  }
+  refStack.push({ text: "STATUT", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 });
+  refStack.push({ text: status.label, fontSize: 9.5, bold: true, color: "#6EE7B7", margin: [0, 1, 0, 0] });
+
+  const titreStack = [
+    { text: fiche.societe || "A6T Services", fontSize: 10.5, bold: true, color: "#9BBEEC" },
+    { text: "Rapport d'intervention technique", fontSize: 17, bold: true, color: "#FFFFFF", margin: [0, 9, 0, 0] },
+    { text: "Rapport généré après intervention sur site", fontSize: 8.5, color: "#93A9C8", margin: [0, 3, 0, 0] },
+  ];
+  if (fiche.urgent) titreStack.push({ text: "INTERVENTION URGENTE", fontSize: 8, bold: true, color: "#FCA5A5", characterSpacing: 0.8, margin: [0, 9, 0, 0] });
+
+  contenu.push({
+    table: { widths: ["*", 118], body: [[
+      { stack: titreStack, fillColor: PDF_BLEU, margin: [16, 16, 8, 16] },
+      { stack: refStack, fillColor: PDF_BLEU, margin: [4, 16, 14, 16] },
+    ]] },
+    layout: "noBorders",
+    margin: [0, 0, 0, 15],
+  });
+
+  /* Cartes d'information */
+  const carte = (label, valeur) => ({
+    stack: [
+      { text: (label || "").toUpperCase(), fontSize: 6, color: PDF_GRIS, characterSpacing: 0.8, margin: [0, 0, 0, 3] },
+      { text: valeur, fontSize: 10, bold: true },
+    ],
+    fillColor: "#F4F7FB", margin: [10, 8, 10, 8],
+  });
+  const infos = [];
+  if (fiche.client) infos.push({ l: "Client / Société", v: fiche.client, large: true });
+  const tousTech = [fiche.technicien, ...(fiche.techniciensSupp || [])].filter(Boolean);
+  if (tousTech.length) infos.push({ l: tousTech.length > 1 ? "Techniciens" : "Technicien", v: tousTech.join(", ") });
+  if (fiche.adresse) infos.push({ l: "Adresse d'intervention", v: fiche.adresse + (fiche.diametreCanalisation ? " — DN " + fiche.diametreCanalisation : ""), large: true });
+  if (fiche.tel) infos.push({ l: "Téléphone", v: fiche.tel });
+  if (fiche.email) infos.push({ l: "Email", v: fiche.email });
+
+  const lignes = [];
+  let attente = null;
+  for (const i of infos) {
+    if (i.large) {
+      if (attente) { lignes.push([carte(attente.l, attente.v), {}]); attente = null; }
+      lignes.push([{ ...carte(i.l, i.v), colSpan: 2 }, {}]);
+    } else if (attente) {
+      lignes.push([carte(attente.l, attente.v), carte(i.l, i.v)]); attente = null;
+    } else attente = i;
+  }
+  if (attente) lignes.push([carte(attente.l, attente.v), {}]);
+  if (lignes.length) contenu.push({ table: { widths: ["*", "*"], body: lignes }, layout: "noBorders", margin: [0, 0, 0, 6] });
+
+  if (locStr) contenu.push({ text: locStr, fontSize: 9, bold: true, color: "#0F766E", fillColor: "#ECFDF5", margin: [0, 6, 0, 6] });
+
+  const titreSection = (t) => ({
+    stack: [
+      { text: (t || "").toUpperCase(), fontSize: 7.5, bold: true, characterSpacing: 1, color: "#334155", margin: [0, 0, 0, 4] },
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 531, y2: 0, lineWidth: 1.1, lineColor: "#1E293B" }] },
+    ],
+    margin: [0, 12, 0, 8],
+  });
+
+  /* Compte-rendu */
+  contenu.push(titreSection(`Compte-rendu d'intervention${presta.length ? ` — ${presta.length} prestation(s)` : ""}`));
+  if (!presta.length) {
+    contenu.push({ text: "Aucune prestation enregistrée.", italics: true, color: "#94A3B8" });
+  } else {
+    for (const p of presta) {
+      const couleur = p.meta?.color || "#0EA5E9";
+      const phrases = phrasesPrestation(p, locStr);
+      const corps = [{
+        text: (p.meta?.label || "Prestation") + (p.diametre ? ` — Ø ${p.diametre} mm` : ""),
+        fontSize: 10.5, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 5 : 0],
+      }];
+      phrases.forEach(t => corps.push({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] }));
+      contenu.push({
+        table: { widths: [3, "*"], body: [[
+          { text: " ", fillColor: couleur },
+          { stack: corps, fillColor: "#F7F9FC", margin: [11, 9, 11, 9] },
+        ]] },
+        layout: "noBorders",
+        margin: [0, 0, 0, 7],
+        unbreakable: phrases.length <= 8,
+      });
+    }
+  }
+
+  if (fiche.responsabilite && fiche.responsabilite !== "na" && resp) {
+    contenu.push(titreSection("Responsabilité"));
+    contenu.push({ text: `${resp.label} — ${resp.desc}`, fontSize: 9.5, bold: true, color: "#7C3AED", fillColor: "#F7F5FE", margin: [0, 2, 0, 2] });
+  }
+
+  if (fiche.preconisations?.length) {
+    contenu.push(titreSection("Préconisations"));
+    contenu.push({ ul: fiche.preconisations.map(t => ({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] })), color: "#5B4B9E", margin: [4, 0, 0, 0] });
+  }
+
+  /* Conclusion : les paragraphes du texte saisi sont conservés */
+  contenu.push(titreSection("Conclusion"));
+  const paras = (fiche.conclusion || "").split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
+  contenu.push({
+    table: { widths: ["*"], body: [[{
+      stack: paras.length
+        ? paras.map((t, i) => ({ text: t.replace(/\n/g, " "), fontSize: 9.5, color: "#20553A", lineHeight: 1.35, margin: [0, 0, 0, i === paras.length - 1 ? 0 : 7] }))
+        : [{ text: "—", color: "#94A3B8" }],
+      fillColor: "#F4FAF7", margin: [13, 12, 13, 12],
+    }]] },
+    layout: "noBorders",
+  });
+
+  const majs = majorationsTexte(fiche);
+  if (majs.length) {
+    contenu.push(titreSection("Conditions d'intervention"));
+    contenu.push({ ul: majs.map(t => ({ text: t, fontSize: 9.5 })), color: "#5B4B9E", margin: [4, 0, 0, 0] });
+  }
+
+  /* Photos : deux par rangée, le titre reste collé à sa première rangée */
+  const photos = fiche.photos || [];
+  if (photos.length) {
+    contenu.push(titreSection(`Photos (${photos.length})`));
+    const parTag = photos.some(p => p.tag);
+    const groupes = parTag
+      ? [["Avant travaux", photos.filter(p => p.tag === "avant")],
+         ["Pendant intervention", photos.filter(p => p.tag === "pendant")],
+         ["Après travaux", photos.filter(p => p.tag === "apres")],
+         ["Autres photos", photos.filter(p => !p.tag)]]
+      : [[null, photos]];
+
+    for (const [titre, liste] of groupes) {
+      if (!liste.length) continue;
+      const images = [];
+      for (const p of liste) {
+        const data = await imagePourPdf(p.data);
+        if (data) images.push({ image: data, fit: [246, 152], margin: [0, 0, 0, 8] });
+      }
+      if (!images.length) continue;
+      const rangees = [];
+      for (let i = 0; i < images.length; i += 2) rangees.push([images[i], images[i + 1] || {}]);
+      const tableau = (rgs) => ({ table: { widths: ["*", "*"], body: rgs }, layout: "noBorders" });
+      const entete = [];
+      if (titre) entete.push({ text: `${titre.toUpperCase()} (${liste.length})`, fontSize: 7, bold: true, characterSpacing: 0.9, color: "#5C6B80", margin: [0, 0, 0, 6] });
+      entete.push(tableau([rangees[0]]));
+      contenu.push({ stack: entete, unbreakable: true, margin: [0, 0, 0, 4] });
+      if (rangees.length > 1) contenu.push(tableau(rangees.slice(1)));
+    }
+  }
+
+  /* Signatures */
+  const cases = [];
+  const ajouterSignature = async (label, src, nom) => {
+    const data = await imagePourPdf(src);
+    if (!data) return;
+    cases.push({
+      stack: [
+        { text: label.toUpperCase(), fontSize: 6, bold: true, characterSpacing: 0.9, color: PDF_GRIS, margin: [0, 0, 0, 6] },
+        { image: data, fit: [190, 46] },
+        { text: nom || " ", fontSize: 9, bold: true, margin: [0, 6, 0, 0] },
+      ],
+      fillColor: "#FBFCFD", margin: [12, 10, 12, 10],
+    });
+  };
+  await ajouterSignature("Signature technicien", fiche.signatureTech, fiche.technicien || "Technicien");
+  for (const s of (fiche.signaturesSupp || [])) await ajouterSignature("Signature — co-intervenant", s.data, s.nom);
+  await ajouterSignature("Signature client — Bon pour accord", fiche.signature, fiche.nomSignataire);
+  if (cases.length) {
+    const rgs = [];
+    for (let i = 0; i < cases.length; i += 2) rgs.push([cases[i], cases[i + 1] || {}]);
+    contenu.push({
+      table: { widths: ["*", "*"], body: rgs },
+      layout: "noBorders",
+      margin: [0, 16, 0, 0],
+      unbreakable: true,
+    });
+  }
+
+  const dd = {
+    pageSize: "A4",
+    pageMargins: [32, 30, 32, 34],
+    info: { title: `Rapport ${fiche.id}`, author: fiche.societe || "A6T Services" },
+    defaultStyle: { fontSize: 9.5, color: "#1E293B", lineHeight: 1.25 },
+    footer: (page, total) => ({
+      margin: [32, 6, 32, 0],
+      columns: [
+        { text: fiche.societe || "A6T Services", fontSize: 7, color: "#A0AEC0" },
+        { text: `${fiche.id} — Confidentiel`, fontSize: 7, color: "#A0AEC0", alignment: "center" },
+        { text: `Page ${page} / ${total}`, fontSize: 7, color: "#A0AEC0", alignment: "right" },
+      ],
+    }),
+    content: contenu,
+  };
+
+  const nomFichier = `Rapport-${fiche.id}.pdf`;
+  await new Promise((ok) => {
+    pdfMake.createPdf(dd).getBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nomFichier; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      ok();
+    });
+  });
+}
+
+/* Point d'entrée utilisé par les boutons : gère l'attente et les erreurs. */
+async function telechargerRapportPdf(fiche, setBusy) {
+  try {
+    setBusy?.(true);
+    await genererPdfRapport(fiche);
+  } catch (e) {
+    dlgInfo("Le PDF n'a pas pu être créé (" + (e?.message || e) + "). Vérifiez votre connexion : la première création nécessite Internet.", "PDF indisponible");
+  } finally {
+    setBusy?.(false);
+  }
+}
+
 function telechargerPDF(html, filename) {
   // Méthode universelle : on ouvre le rapport dans un onglet propre avec une barre d'action.
   // Le bouton déclenche l'impression native du navigateur -> "Enregistrer au format PDF".
@@ -804,6 +1084,34 @@ function telechargerPDF(html, filename) {
 const MAJORATIONS_LABEL = { soir50:"Majoration soirée +50 %", weekend100:"Majoration nuit / week-end +100 %" };
 function majorationsTexte(fiche){ return (fiche.majorations||[]).map(m=>MAJORATIONS_LABEL[m]).filter(Boolean); }
 
+/* Les phrases d'une prestation, utilisées par le rapport HTML et par le PDF :
+   une seule source, pour que les deux ne divergent jamais. */
+function phrasesPrestation(p, locStr) {
+  const sentences = [];
+      const pLocStr = locStr || (p.localisations?.length ? `${p.localisations.join(", ")}` : null);
+      if (pLocStr) sentences.push(`L'intervention a été réalisée : ${pLocStr}.`);
+      if (p.problemes?.length) sentences.push(`Problème constaté : ${p.problemes.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.causes?.length) sentences.push(`Cause identifiée : ${p.causes.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.constatCamera?.length) sentences.push(`Constat caméra : ${p.constatCamera.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.methodes?.length) sentences.push(`Méthode${p.methodes.length>1?"s":""} de détection utilisée${p.methodes.length>1?"s":""} : ${p.methodes.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.actions?.length) {
+        // Phrase spéciale pour création ouverture + camion hydrocureur
+        const hasCreation = p.actions.includes("Création ouverture sur colonne");
+        const hasCamion = p.actions.includes("Par camion hydrocureur");
+        if (hasCreation && hasCamion) {
+          const autres = p.actions.filter(a => a !== "Création ouverture sur colonne" && a !== "Par camion hydrocureur");
+          let phrase = "Action réalisée : création d'une ouverture sur colonne, puis hydrocurage par camion hydrocureur";
+          if (autres.length) phrase += `, ${autres.map(s=>s.toLowerCase()).join(", ")}`;
+          sentences.push(phrase + ".");
+        } else {
+          sentences.push(`Action${p.actions.length>1?"s":""} réalisée${p.actions.length>1?"s":""} : ${p.actions.map(s=>s.toLowerCase()).join(", ")}.`);
+        }
+      }
+      if (p.resultats?.length) sentences.push(`Résultat : ${p.resultats.map(s=>s.toLowerCase()).join(", ")}.`);
+      if (p.note?.trim()) sentences.push(p.note.trim());
+  return sentences;
+}
+
 function buildReportHTML(fiche, hideInternal = false) {
   const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
   const presta = (fiche.prestations||[]).map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
@@ -826,29 +1134,7 @@ function buildReportHTML(fiche, hideInternal = false) {
   const nbPrestaAffichees = prestaAffichees.length;
   const prestaHTML = prestaAffichees
     .map(p => {
-      const sentences = [];
-      const pLocStr = locStr || (p.localisations?.length ? `${p.localisations.join(", ")}` : null);
-      if (pLocStr) sentences.push(`L'intervention a été réalisée : ${pLocStr}.`);
-      if (p.problemes?.length) sentences.push(`Problème constaté : ${p.problemes.map(s=>s.toLowerCase()).join(", ")}.`);
-      if (p.causes?.length) sentences.push(`Cause identifiée : ${p.causes.map(s=>s.toLowerCase()).join(", ")}.`);
-      if (p.constatCamera?.length) sentences.push(`Constat caméra : ${p.constatCamera.map(s=>s.toLowerCase()).join(", ")}.`);
-      if (p.methodes?.length) sentences.push(`Méthode${p.methodes.length>1?"s":""} de détection utilisée${p.methodes.length>1?"s":""} : ${p.methodes.map(s=>s.toLowerCase()).join(", ")}.`);
-      if (p.actions?.length) {
-        // Phrase spéciale pour création ouverture + camion hydrocureur
-        const hasCreation = p.actions.includes("Création ouverture sur colonne");
-        const hasCamion = p.actions.includes("Par camion hydrocureur");
-        if (hasCreation && hasCamion) {
-          const autres = p.actions.filter(a => a !== "Création ouverture sur colonne" && a !== "Par camion hydrocureur");
-          let phrase = "Action réalisée : création d'une ouverture sur colonne, puis hydrocurage par camion hydrocureur";
-          if (autres.length) phrase += `, ${autres.map(s=>s.toLowerCase()).join(", ")}`;
-          sentences.push(phrase + ".");
-        } else {
-          sentences.push(`Action${p.actions.length>1?"s":""} réalisée${p.actions.length>1?"s":""} : ${p.actions.map(s=>s.toLowerCase()).join(", ")}.`);
-        }
-      }
-      if (p.resultats?.length) sentences.push(`Résultat : ${p.resultats.map(s=>s.toLowerCase()).join(", ")}.`);
-      if (p.note?.trim()) sentences.push(p.note.trim());
-
+      const sentences = phrasesPrestation(p, locStr);
       return `
       <div class="presta-card" style="border-left-color:${p.meta?.color||'#0ea5e9'}">
         <div class="presta-header">
@@ -4023,6 +4309,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
 function ReportPreview({ fiche, onClose, parametresMessages = {modeles:MODELES_MESSAGE_DEFAUT}, onMarquerEnvoye = null }) {
   const [versionInterne, setVersionInterne] = useState(false);
   const [dl, setDl] = useState(false);
+  const [pdfEnCours, setPdfEnCours] = useState(false);
   const [showSendOptions, setShowSendOptions] = useState(false);
   // Aperçu WhatsApp/SMS : l'état vit ici, dans le composant qui contient les boutons.
   const [apercuEnvoi, setApercuEnvoi] = useState(null);
@@ -4060,7 +4347,7 @@ function ReportPreview({ fiche, onClose, parametresMessages = {modeles:MODELES_M
           <button onClick={()=>setShowSendOptions(v=>!v)} style={{background:"#0B1829",border:"1px solid #1a3050",color:"#E2E8F0",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>
           <button onClick={download} style={{background:"#0B1829",border:"1px solid #10B981",color:"#10B981",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{dl?"✓ Téléchargé":"⬇ Fichier"}</button>
           <button onClick={tryPrint} style={{background:"none",border:"1px solid #1a3050",color:"#94A3B8",borderRadius:8,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Imprimer</button>
-          <button onClick={()=>telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 Télécharger PDF</button>
+          <button onClick={()=>telechargerRapportPdf(fiche,setPdfEnCours)} disabled={pdfEnCours} style={{background:pdfEnCours?"#334155":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:pdfEnCours?"default":"pointer",fontFamily:"inherit"}}>{pdfEnCours?"Création du PDF…":"📄 Télécharger PDF"}</button>
         </div>
       </div>
       {showSendOptions&&(
@@ -4401,7 +4688,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         )}
       </div>
       {!isRdv&&(
-        <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
+        <button onClick={(ev)=>{ev.stopPropagation();telechargerRapportPdf(fiche);}}
           title="Ouvrir le PDF du rapport"
           style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
       )}
@@ -4588,7 +4875,7 @@ function CarteFiche({ fiche, onSelect, onDelete, T, selectionMode=false, coche=f
           <span style={{fontSize:11,fontWeight:700,color:statutColor}}>{aProg?"📌":"●"} {statutLabel}</span>
           {fiche.signature&&"· ✍️"}
           {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:700,color:"#A78BFA",display:"flex",alignItems:"center",gap:2}}>📷 {fiche.photos.length}</span>}
-          {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
+          {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerRapportPdf(fiche);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
           {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
         </span>
       </div>
