@@ -6837,7 +6837,8 @@ function AppInterne() {
               <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
                 <input placeholder="🔍 Rechercher…" value={search} onChange={e=>setSearch(e.target.value)}
                   style={{flex:1,minWidth:160,padding:"10px 14px",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-                <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
+                {/* Dans l'agenda, la semaine prime : seule la recherche reste au-dessus. */}
+                {nav!=="agenda"&&(<select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
                   style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                   <option value="">Tous statuts</option>
                   <option value="__retard">⏰ En retard</option>
@@ -6847,8 +6848,8 @@ function AppInterne() {
                   <option value="__afacturer">💶 À facturer</option>
                   <option value="__brouillon">🧾 Brouillon (à valider dans Pennylane)</option>
                   <option value="__facture">✅ Facturé</option>
-                </select>
-                {nav!=="liste"&&(
+                </select>)}
+                {nav!=="liste"&&nav!=="agenda"&&(
                   <select value={filterTech} onChange={e=>{setFilterTech(e.target.value);if(e.target.value&&nav==="agenda")setNav("liste");}}
                     style={{padding:"10px 12px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",colorScheme:theme==="dark"?"dark":"light"}}>
                     <option value="">{estRestreint?"Mes fiches et les fiches libres":"Tous techniciens"}</option>
