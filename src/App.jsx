@@ -81,6 +81,9 @@ async function envoyerNotification(technicien, titre, corps, ficheId) {
 }
 /* Navigation : window.open laisse un onglet vide derrière lui quand on revient dans
    la PWA iOS. Une navigation directe passe la main à Waze puis rend l'application intacte. */
+/* Même raison que la navigation : un lien WhatsApp ouvert dans un onglet laisse une
+   page blanche derrière lui quand on revient dans l'application installée. */
+const ouvrirLien = (url) => { window.location.href = url; };
 const ouvrirNavigation = (adresse) => {
   if (!adresse) return;
   window.location.href = `https://waze.com/ul?navigate=yes&q=${encodeURIComponent(adresse)}`;
@@ -1303,7 +1306,7 @@ function envoyerAuNumero(num, msg, canal = "whatsapp") {
     window.location.href = `sms:${tel}${/iPhone|iPad|iPod|Mac/.test(navigator.userAgent)?"&":"?"}body=${encodeURIComponent(msg)}`;
     return;
   }
-  window.open(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+  ouvrirLien(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`);
 }
 
 function ProfilModal({ techniciens=[], techNom, onSaveTechNom, onClose, theme }) {
@@ -1470,7 +1473,7 @@ async function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
     const saisie = await dlgPrompt(`Numéro WhatsApp de ${fiche.technicien}\nFormat conseillé : 33612345678. Il sera mémorisé pour les prochaines relances. Laissez vide pour choisir le contact à la main.`, "", {titre:"Numéro du technicien",valider:"Enregistrer"});
     if(saisie&&saisie.trim()){ num = saisie.replace(/[^0-9+]/g,""); onSaveTel(fiche.technicien, num); }
   }
-  window.open(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+  ouvrirLien(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
 }
 
 function composerRapportWhatsApp(fiche) {
@@ -1509,7 +1512,7 @@ function normaliserTel(tel) {
 function envoyerRapportWhatsApp(fiche, texteModifie) {
   const num = normaliserTel(fiche.tel);
   if(!num){ dlgInfo("Aucun numéro de téléphone sur cette fiche — renseigne-le avant d'envoyer."); return; }
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(texteModifie ?? composerRapportWhatsApp(fiche))}`,"_blank");
+  ouvrirLien(`https://wa.me/${num}?text=${encodeURIComponent(texteModifie ?? composerRapportWhatsApp(fiche))}`);
 }
 
 function composerRapportSMS(fiche) {
@@ -3053,7 +3056,7 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
               {hasLogo
                 ? <img src={logos[lk]} style={{height:26,maxWidth:64,objectFit:"contain",borderRadius:4,background:"#fff",padding:2}} alt=""/>
                 : <span style={{fontSize:10,color:T.textMuted,border:`1px dashed ${T.border}`,borderRadius:4,padding:"4px 7px"}}>sans logo</span>}
-              <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s}</span>
+              <span style={{flex:1,minWidth:90,fontSize:13,fontWeight:700,color:T.text,overflowWrap:"anywhere"}}>{s}</span>
               <button onClick={()=>{setLogoTarget(s);logoRef.current?.click();}} style={{...btn,width:"auto",padding:"0 8px",fontSize:11}}>📷 {hasLogo?"Changer":"Logo"}</button>
               {hasLogo&&<button onClick={async ()=>{if(await dlgConfirm(`Le logo de ${s} sera retiré des prochains rapports.`,{titre:"Retirer le logo",danger:true}))onRemoveLogo(s);}} style={btn}>🚫</button>}
               <button onClick={async ()=>{if(await dlgConfirm(`« ${s} » sera retirée de la liste. Les fiches existantes la conservent.`,{titre:"Supprimer la société",danger:true}))onSaveSocietes(societes.filter(x=>x!==s));}} style={{...btn,color:"#EF4444"}}>✕</button>
@@ -3080,14 +3083,14 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
           },0);
           return (
           <div key={t}>
-            <div style={row(false)}>
-              <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{t}</span>
+            <div style={{...row(false),flexWrap:"wrap"}}>
+              <span style={{flexBasis:"100%",fontSize:13.5,fontWeight:800,color:T.text,marginBottom:2}}>{t}</span>
               <button onClick={()=>setStatsOuvertes(statsOuvertes===t?null:t)} title="Statistiques du mois" style={{...btn,width:"auto",padding:"0 9px",color:statsOuvertes===t?"#0EA5E9":T.textMuted}}>📊</button>
               <input type="color" title="Couleur de l'agenda" value={techColor(t,techniciens,techColors)}
                 onChange={e=>onSaveTechColor(t,e.target.value)}
                 style={{width:34,height:30,padding:0,border:`1px solid ${T.border}`,borderRadius:6,background:"none",cursor:"pointer"}}/>
               <input key={t+(techTels[logoKey(t)]||"")} defaultValue={techTels[logoKey(t)]||""} onBlur={e=>{if(e.target.value!==(techTels[logoKey(t)]||""))onSaveTechTel(t,e.target.value);}} placeholder="N° WhatsApp (33612345678)"
-                style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                style={{flex:1,minWidth:120,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
               <button onClick={async ()=>{if(await dlgConfirm(`${t} sera retiré de la liste, avec son numéro et sa couleur d'agenda.`,{titre:"Supprimer le technicien",danger:true})){onSaveTechniciens(techniciens.filter(x=>x!==t));onSaveTechTel(t,"");onSaveTechColor(t,null);}}} style={{...btn,color:"#EF4444"}}>✕</button>
             </div>
             {statsOuvertes===t&&(
@@ -3118,10 +3121,10 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
         </div>
         {sousTraitants.length===0&&<div style={{fontSize:12,color:T.textMuted,padding:"6px 0"}}>Aucun sous-traitant enregistré — ils s'ajoutent aussi automatiquement depuis le bouton "Envoyer au sous-traitant" sur une fiche.</div>}
         {sousTraitants.map((s,i)=>(
-          <div key={i} style={row(i===sousTraitants.length-1)}>
-            <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{s.nom}</span>
+          <div key={i} style={{...row(i===sousTraitants.length-1),flexWrap:"wrap"}}>
+            <span style={{flexBasis:"100%",fontSize:13.5,fontWeight:800,color:T.text,marginBottom:2}}>{s.nom}</span>
             <input key={s.nom+s.tel} defaultValue={s.tel} onBlur={e=>{if(e.target.value!==s.tel){const next=[...sousTraitants];next[i]={...next[i],tel:e.target.value};onSaveSousTraitants(next);}}} placeholder="N° WhatsApp (33612345678)"
-              style={{width:170,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+              style={{flex:1,minWidth:120,padding:"7px 10px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:6,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
             <button onClick={async ()=>{if(await dlgConfirm(`${s.nom} sera retiré de la liste des sous-traitants.`,{titre:"Supprimer le sous-traitant",danger:true}))onSaveSousTraitants(sousTraitants.filter((_,j)=>j!==i));}} style={{...btn,color:"#EF4444"}}>✕</button>
           </div>
         ))}
@@ -3977,7 +3980,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
       `Bonne intervention ! 💪`,
     ].filter(l=>l!==null&&l!==undefined&&(l===""||l.trim()!=="")).join("\n");
     const num = normaliserTel(f.tel);
-    if(canal==="whatsapp") window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+    if(canal==="whatsapp") ouvrirLien(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
     if(canal==="sms") window.location.href=`sms:+${num}?&body=${encodeURIComponent(msg)}`;
   };
 
@@ -4750,7 +4753,7 @@ function ListeCartes({ fiches, onSelect, onDelete, theme, techniciens=[], techTe
     const num = normaliserTel(techTels[logoKey(destinataire)]||"");
     if(!num){dlgInfo(`Aucun numéro enregistré pour ${destinataire||"ce technicien"}. Renseignez-le dans Administration → Techniciens.`);return;}
     const msg = messageRelance();
-    if(canal==="whatsapp") window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+    if(canal==="whatsapp") ouvrirLien(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
     else window.location.href=`sms:+${num}?&body=${encodeURIComponent(msg)}`;
   };
 
