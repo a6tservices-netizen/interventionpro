@@ -979,7 +979,7 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
    L'en-tête est aussi resserré pour l'impression afin de libérer de la place pour le
    contenu, quelle que soit la longueur du rapport. */
 @media print{
-  .info-card,.presta-card,.conclusion-box,.sig-box,.photo-item,.resp-badge,.loc-banner,.preco-list li,.int-card,.photo-tete{
+  .info-card,.presta-card,.sig-box,.photo-item,.resp-badge,.loc-banner,.preco-list li,.int-card,.photo-tete{
     break-inside:avoid;page-break-inside:avoid;
   }
   /* Photos resserrées : un bloc titre + rangée qui tient plus facilement en bas de page,
@@ -999,7 +999,8 @@ body{font-family:'DM Sans',sans-serif;color:#1e293b;background:#fff;font-size:12
   .footer{margin-top:14px;padding-top:8px}
   .section-title{break-after:avoid;page-break-after:avoid}
   .presta-header{break-after:avoid;page-break-after:avoid}
-  .conclusion-box,.phrase{orphans:3;widows:3}
+  .conclusion-box,.phrase,.para{orphans:3;widows:3}
+  .conclusion-box .para{break-inside:avoid;page-break-inside:avoid}
   .header{padding:18px 30px}
   .report-title{font-size:21px;margin-top:10px}
   .report-subtitle{margin-top:3px}
