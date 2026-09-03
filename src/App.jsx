@@ -4397,7 +4397,21 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   const accent = COUL[e];
   const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens, techColors) : null;
   return(
-    <div style={{display:"flex",alignItems:"center",gap:14,background:fiche.urgent?"rgba(239,68,68,0.06)":T.surface,border:`1px solid ${fiche.urgent?"rgba(239,68,68,0.35)":T.border}`,borderLeft:`7px solid ${fiche.urgent?"#EF4444":(tColor||accent)}`,borderRadius:14,padding:"16px 20px",marginBottom:10,transition:"all .2s"}}>
+    <div style={{background:fiche.urgent?"rgba(239,68,68,0.06)":T.surface,border:`1px solid ${fiche.urgent?"rgba(239,68,68,0.35)":T.border}`,borderLeft:`7px solid ${fiche.urgent?"#EF4444":accent}`,borderRadius:12,padding:"12px 14px",marginBottom:9}}>
+      {/* Nom du client sur toute la largeur : dans la colonne du milieu il se coupait en deux. */}
+      <div onClick={()=>onSelect(fiche)} style={{cursor:"pointer",marginBottom:9}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:5}}>
+      <div style={{fontWeight:700,fontSize:16.5,color:T.text,overflowWrap:"anywhere",lineHeight:1.25}}>{fiche.client||"Client non renseigné"}</div>
+      <span style={{fontSize:11,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
+      {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
+      {(fiche.journalAppels||[]).length>0 && (()=>{
+      const dernier = fiche.journalAppels[fiche.journalAppels.length-1];
+      const meta = {pas_de_reponse:{label:"❌ Pas de réponse",color:"#EF4444"},reussi:{label:"✅ Contact pris",color:"#10B981"},message_laisse:{label:"📧 Messagerie",color:"#F59E0B"},injoignable:{label:"📵 Injoignable",color:"#64748B"}}[dernier.resultat]||{label:dernier.resultat,color:T.textMuted};
+      return <span title={dernier.note||""} style={{fontSize:11,fontWeight:800,color:meta.color,background:meta.color+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{meta.label}</span>;
+      })()}
+      </div>
+      </div>
+    <div style={{display:"flex",alignItems:"center",gap:14}}>
       <div style={{textAlign:"center",minWidth:66,flexShrink:0,cursor:onReplanifier?"pointer":"default"}}
         onClick={e=>{if(onReplanifier){e.stopPropagation();setReplan(v=>!v);}}}>
         {fiche.dateRdv&&<div style={{fontSize:11.5,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
@@ -4424,16 +4438,6 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
         </div>
       ):(
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:5}}>
-          <div style={{fontWeight:700,fontSize:16.5,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
-          <span style={{fontSize:11,fontWeight:800,color:badgeInfo.c,background:badgeInfo.c+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{badgeInfo.t}</span>
-          {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:800,color:"#A78BFA",whiteSpace:"nowrap"}}>📷 {fiche.photos.length}</span>}
-          {(fiche.journalAppels||[]).length>0 && (()=>{
-            const dernier = fiche.journalAppels[fiche.journalAppels.length-1];
-            const meta = {pas_de_reponse:{label:"❌ Pas de réponse",color:"#EF4444"},reussi:{label:"✅ Contact pris",color:"#10B981"},message_laisse:{label:"📧 Messagerie",color:"#F59E0B"},injoignable:{label:"📵 Injoignable",color:"#64748B"}}[dernier.resultat]||{label:dernier.resultat,color:T.textMuted};
-            return <span title={dernier.note||""} style={{fontSize:11,fontWeight:800,color:meta.color,background:meta.color+"1A",padding:"3px 9px",borderRadius:11,whiteSpace:"nowrap"}}>{meta.label}</span>;
-          })()}
-        </div>
         {(fiche.tempsInterne||fiche.majorations?.length>0)&&(
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:5}}>
             {fiche.tempsInterne&&<span style={{fontSize:12,fontWeight:800,color:"#F59E0B",background:"rgba(245,158,11,0.14)",padding:"4px 10px",borderRadius:13,whiteSpace:"nowrap"}}>⏱️ {fiche.tempsInterne}</span>}
@@ -4478,6 +4482,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
       )}
       {!replan&&isRdv&&<button onClick={()=>onDemarrer(fiche)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>▶ Démarrer</button>}
+    </div>
     </div>
   );
 }
