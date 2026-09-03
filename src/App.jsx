@@ -868,6 +868,18 @@ async function genererPdfRapport(fiche) {
   const presta = (fiche.prestations || []).map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
 
   const contenu = [];
+  /* Encadrements réutilisables : le rapport d'origine tirait son allure de ses cadres,
+     pas seulement de ses polices. On les redessine ici. */
+  const cadre = (couleur, remplissage) => ({
+    hLineWidth: () => 1, vLineWidth: () => 1,
+    hLineColor: () => couleur, vLineColor: () => couleur,
+    paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0,
+    fillColor: () => remplissage || null,
+  });
+  const boite = (contenuInterne, couleur, remplissage, marge) => ({
+    table: { widths: ["*"], body: [[{ stack: Array.isArray(contenuInterne) ? contenuInterne : [contenuInterne], margin: marge || [12, 10, 12, 10] }]] },
+    layout: cadre(couleur, remplissage),
+  });
 
   /* En-tête */
   const refStack = [
@@ -880,8 +892,11 @@ async function genererPdfRapport(fiche) {
     refStack.push({ text: "HEURE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 });
     refStack.push({ text: fiche.heureRdv, fontSize: 9.5, color: "#FFFFFF", margin: [0, 1, 0, 7] });
   }
-  refStack.push({ text: "STATUT", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 });
-  refStack.push({ text: status.label, fontSize: 9.5, bold: true, color: "#6EE7B7", margin: [0, 1, 0, 0] });
+  refStack.push({ text: "STATUT", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8, margin: [0, 0, 0, 3] });
+  refStack.push({
+    table: { widths: ["auto"], body: [[{ text: status.label.toUpperCase(), fontSize: 7, bold: true, color: "#6EE7B7", characterSpacing: 0.6, margin: [7, 3, 7, 3] }]] },
+    layout: cadre("#2E6B54", "#163A31"),
+  });
 
   const titreStack = [
     { text: fiche.societe || "A6T Services", font: POLICE_TITRE, fontSize: 11.5, bold: true, color: "#9BBEEC" },
@@ -893,20 +908,20 @@ async function genererPdfRapport(fiche) {
   contenu.push({
     table: { widths: ["*", 118], body: [[
       { stack: titreStack, fillColor: PDF_BLEU, margin: [16, 16, 8, 16] },
-      { stack: refStack, fillColor: PDF_BLEU, margin: [4, 16, 14, 16] },
+      { stack: [{
+          table: { widths: ["*"], body: [[{ stack: refStack, margin: [11, 10, 11, 11] }]] },
+          layout: cadre("#2D4C7C", "#193558"),
+        }], fillColor: PDF_BLEU, margin: [4, 16, 14, 16] },
     ]] },
     layout: "noBorders",
     margin: [0, 0, 0, 15],
   });
 
   /* Cartes d'information */
-  const carte = (label, valeur) => ({
-    stack: [
-      { text: (label || "").toUpperCase(), fontSize: 6, color: PDF_GRIS, characterSpacing: 0.8, margin: [0, 0, 0, 3] },
-      { text: valeur, fontSize: 10, bold: true },
-    ],
-    fillColor: "#F4F7FB", margin: [10, 8, 10, 8],
-  });
+  const carte = (label, valeur) => boite([
+    { text: (label || "").toUpperCase(), fontSize: 6, color: PDF_GRIS, characterSpacing: 0.8, margin: [0, 0, 0, 3] },
+    { text: valeur, fontSize: 10, bold: true },
+  ], "#DCE4EF", "#F7FAFD", [11, 9, 11, 9]);
   const infos = [];
   if (fiche.client) infos.push({ l: "Client / Société", v: fiche.client, large: true });
   const tousTech = [fiche.technicien, ...(fiche.techniciensSupp || [])].filter(Boolean);
@@ -919,16 +934,20 @@ async function genererPdfRapport(fiche) {
   let attente = null;
   for (const i of infos) {
     if (i.large) {
-      if (attente) { lignes.push([carte(attente.l, attente.v), {}]); attente = null; }
-      lignes.push([{ ...carte(i.l, i.v), colSpan: 2 }, {}]);
+      if (attente) { lignes.push([carte(attente.l, attente.v), { text: "" }]); attente = null; }
+      lignes.push([{ ...carte(i.l, i.v), colSpan: 2 }, { text: "" }]);
     } else if (attente) {
       lignes.push([carte(attente.l, attente.v), carte(i.l, i.v)]); attente = null;
     } else attente = i;
   }
-  if (attente) lignes.push([carte(attente.l, attente.v), {}]);
-  if (lignes.length) contenu.push({ table: { widths: ["*", "*"], body: lignes }, layout: "noBorders", margin: [0, 0, 0, 6] });
+  if (attente) lignes.push([carte(attente.l, attente.v), { text: "" }]);
+  if (lignes.length) contenu.push({
+    table: { widths: ["*", "*"], body: lignes },
+    layout: { defaultBorder: false, paddingLeft: (i) => (i === 0 ? 0 : 4), paddingRight: (i) => (i === 0 ? 4 : 0), paddingTop: () => 0, paddingBottom: () => 6 },
+    margin: [0, 0, 0, 4],
+  });
 
-  if (locStr) contenu.push({ text: locStr, fontSize: 9, bold: true, color: "#0F766E", fillColor: "#ECFDF5", margin: [0, 6, 0, 6] });
+  if (locStr) contenu.push({ ...boite({ text: locStr, fontSize: 9, bold: true, color: "#0F766E" }, "#8ED3B8", "#F0FBF6", [11, 7, 11, 7]), margin: [0, 4, 0, 2] });
 
   const titreSection = (t) => ({
     stack: [
@@ -947,16 +966,17 @@ async function genererPdfRapport(fiche) {
       const couleur = p.meta?.color || "#0EA5E9";
       const phrases = phrasesPrestation(p, locStr);
       const corps = [{
-        text: (p.meta?.label || "Prestation") + (p.diametre ? ` — Ø ${p.diametre} mm` : ""),
-        font: POLICE_TITRE, fontSize: 11, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 5 : 0],
+        text: [{ text: "\u25CF  ", color: couleur }, { text: (p.meta?.label || "Prestation") + (p.diametre ? ` — Ø ${p.diametre} mm` : "") }],
+        font: POLICE_TITRE, fontSize: 11, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 6 : 0],
       }];
       phrases.forEach(t => corps.push({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] }));
       contenu.push({
         table: { widths: [3, "*"], body: [[
-          { text: " ", fillColor: couleur },
-          { stack: corps, fillColor: "#F7F9FC", margin: [11, 9, 11, 9] },
+          { text: " ", fillColor: couleur, border: [false, false, false, false] },
+          { stack: corps, fillColor: "#FAFCFE", margin: [11, 9, 11, 9], border: [false, true, true, true] },
         ]] },
-        layout: "noBorders",
+        layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => "#E2E9F1", vLineColor: () => "#E2E9F1",
+                  paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
         margin: [0, 0, 0, 7],
         unbreakable: phrases.length <= 8,
       });
@@ -965,7 +985,7 @@ async function genererPdfRapport(fiche) {
 
   if (fiche.responsabilite && fiche.responsabilite !== "na" && resp) {
     contenu.push(titreSection("Responsabilité"));
-    contenu.push({ text: `${resp.label} — ${resp.desc}`, fontSize: 9.5, bold: true, color: "#7C3AED", fillColor: "#F7F5FE", margin: [0, 2, 0, 2] });
+    contenu.push(boite({ text: [{ text: "\u25CF  ", color: "#8B5CF6" }, { text: `${resp.label} — ${resp.desc}` }], fontSize: 9.5, bold: true, color: "#5B4B9E" }, "#B7A9E0", "#F8F6FD", [12, 8, 12, 8]));
   }
 
   if (fiche.preconisations?.length) {
@@ -976,15 +996,12 @@ async function genererPdfRapport(fiche) {
   /* Conclusion : les paragraphes du texte saisi sont conservés */
   contenu.push(titreSection("Conclusion"));
   const paras = (fiche.conclusion || "").split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
-  contenu.push({
-    table: { widths: ["*"], body: [[{
-      stack: paras.length
-        ? paras.map((t, i) => ({ text: t.replace(/\n/g, " "), fontSize: 9.5, color: "#20553A", lineHeight: 1.35, margin: [0, 0, 0, i === paras.length - 1 ? 0 : 7] }))
-        : [{ text: "—", color: "#94A3B8" }],
-      fillColor: "#F4FAF7", margin: [13, 12, 13, 12],
-    }]] },
-    layout: "noBorders",
-  });
+  contenu.push(boite([
+    { canvas: [{ type: "rect", x: 0, y: 0, w: 24, h: 3, r: 1.5, color: "#3BA873" }], margin: [0, 0, 0, 9] },
+    ...(paras.length
+      ? paras.map((t, i) => ({ text: t.replace(/\n/g, " "), fontSize: 9.5, color: "#20553A", lineHeight: 1.35, margin: [0, 0, 0, i === paras.length - 1 ? 0 : 7] }))
+      : [{ text: "—", color: "#94A3B8" }]),
+  ], "#7FB896", "#F6FBF8", [15, 13, 15, 13]));
 
   const majs = majorationsTexte(fiche);
   if (majs.length) {
@@ -1013,7 +1030,7 @@ async function genererPdfRapport(fiche) {
       }
       if (!images.length) continue;
       const rangees = [];
-      for (let i = 0; i < images.length; i += 2) rangees.push([images[i], images[i + 1] || {}]);
+      for (let i = 0; i < images.length; i += 2) rangees.push([images[i], images[i + 1] || { text: "" }]);
       const tableau = (rgs) => ({ table: { widths: ["*", "*"], body: rgs }, layout: "noBorders" });
       const entete = [];
       if (titre) entete.push({ text: `${titre.toUpperCase()} (${liste.length})`, fontSize: 7, bold: true, characterSpacing: 0.9, color: "#5C6B80", margin: [0, 0, 0, 6] });
@@ -1028,24 +1045,22 @@ async function genererPdfRapport(fiche) {
   const ajouterSignature = async (label, src, nom) => {
     const data = await imagePourPdf(src);
     if (!data) return;
-    cases.push({
-      stack: [
-        { text: label.toUpperCase(), fontSize: 6, bold: true, characterSpacing: 0.9, color: PDF_GRIS, margin: [0, 0, 0, 6] },
-        { image: data, fit: [190, 40] },
-        { text: nom || " ", fontSize: 9, bold: true, margin: [0, 5, 0, 0] },
-      ],
-      fillColor: "#FBFCFD", margin: [12, 10, 12, 10],
-    });
+    cases.push(boite([
+      { text: label.toUpperCase(), fontSize: 6, bold: true, characterSpacing: 0.9, color: PDF_GRIS, margin: [0, 0, 0, 7] },
+      { image: data, fit: [185, 40] },
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, lineColor: "#E8EDF3" }], margin: [0, 6, 0, 0] },
+      { text: nom || " ", fontSize: 9, bold: true, margin: [0, 5, 0, 0] },
+    ], "#B8C2CF", "#FBFCFD", [13, 11, 13, 11]));
   };
   await ajouterSignature("Signature technicien", fiche.signatureTech, fiche.technicien || "Technicien");
   for (const s of (fiche.signaturesSupp || [])) await ajouterSignature("Signature — co-intervenant", s.data, s.nom);
   await ajouterSignature("Signature client — Bon pour accord", fiche.signature, fiche.nomSignataire);
   if (cases.length) {
     const rgs = [];
-    for (let i = 0; i < cases.length; i += 2) rgs.push([cases[i], cases[i + 1] || {}]);
+    for (let i = 0; i < cases.length; i += 2) rgs.push([cases[i], cases[i + 1] || { text: "" }]);
     contenu.push({
       table: { widths: ["*", "*"], body: rgs },
-      layout: "noBorders",
+      layout: { defaultBorder: false, paddingLeft: (i) => (i === 0 ? 0 : 5), paddingRight: (i) => (i === 0 ? 5 : 0), paddingTop: () => 0, paddingBottom: () => 0 },
       margin: [0, 12, 0, 0],
       unbreakable: true,
     });
