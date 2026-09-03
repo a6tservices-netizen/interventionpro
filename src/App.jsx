@@ -772,341 +772,6 @@ Sois concis, professionnel et naturel en français.`;
 /* ═══════════════════════════════════════════
    RAPPORT PDF
 ═══════════════════════════════════════════ */
-/* ---------------------------------------------------------------------------
-   Génération directe du PDF du rapport.
-   L'impression du navigateur donnait une pagination différente sur iPhone et
-   sur PC, et ajoutait ses propres en-têtes (adresse du site, date, numéro de
-   page). Ici la mise en page est calculée par l'application : le fichier est
-   identique partout, et c'est un vrai PDF, joignable à un mail.
-   La bibliothèque n'est téléchargée qu'au premier PDF demandé.
----------------------------------------------------------------------------- */
-const PDF_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7";
-let _pdfMakeChargement = null;
-function chargerPdfMake() {
-  if (window.pdfMake?.createPdf) return Promise.resolve(window.pdfMake);
-  if (_pdfMakeChargement) return _pdfMakeChargement;
-  const script = (src) => new Promise((ok, ko) => {
-    const el = document.createElement("script");
-    el.src = src; el.onload = () => ok(); el.onerror = () => ko(new Error("Téléchargement impossible : " + src));
-    document.head.appendChild(el);
-  });
-  _pdfMakeChargement = script(`${PDF_CDN}/pdfmake.min.js`)
-    .then(() => script(`${PDF_CDN}/vfs_fonts.js`))
-    .then(() => {
-      if (!window.pdfMake?.createPdf) throw new Error("bibliothèque PDF incomplète");
-      return window.pdfMake;
-    })
-    .catch(e => { _pdfMakeChargement = null; throw e; });
-  return _pdfMakeChargement;
-}
-
-/* Les polices du rapport (DM Sans pour le texte, Fraunces pour le titre) ne sont pas
-   fournies avec le moteur PDF. Si les fichiers sont déposés dans public/fonts/, on les
-   charge ; sinon on garde la police par défaut et le PDF sort quand même. */
-let _policesEtat = null;
-function base64Depuis(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-async function chargerPolices(pdfMake) {
-  if (_policesEtat !== null) return _policesEtat;
-  const fichiers = {
-    "DMSans-Regular.ttf": "/fonts/DMSans-Regular.ttf",
-    "DMSans-Bold.ttf":    "/fonts/DMSans-Bold.ttf",
-    "Fraunces-Bold.ttf":  "/fonts/Fraunces-Bold.ttf",
-  };
-  try {
-    for (const [nom, url] of Object.entries(fichiers)) {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("absente : " + url);
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength < 5000) throw new Error("fichier invalide : " + url);
-      pdfMake.vfs[nom] = base64Depuis(buf);
-    }
-    pdfMake.fonts = {
-      Roboto: { normal:"Roboto-Regular.ttf", bold:"Roboto-Medium.ttf", italics:"Roboto-Italic.ttf", bolditalics:"Roboto-MediumItalic.ttf" },
-      DMSans: { normal:"DMSans-Regular.ttf", bold:"DMSans-Bold.ttf", italics:"DMSans-Regular.ttf", bolditalics:"DMSans-Bold.ttf" },
-      Fraunces: { normal:"Fraunces-Bold.ttf", bold:"Fraunces-Bold.ttf", italics:"Fraunces-Bold.ttf", bolditalics:"Fraunces-Bold.ttf" },
-    };
-    _policesEtat = true;
-  } catch (e) {
-    _policesEtat = false;
-  }
-  return _policesEtat;
-}
-
-/* pdfmake n'accepte que des images en base64 : les photos stockées sur une URL
-   sont récupérées puis converties. Une photo illisible est simplement omise. */
-async function imagePourPdf(src) {
-  if (!src || typeof src !== "string") return null;
-  if (src.startsWith("data:image")) return src;
-  try {
-    const r = await fetch(src);
-    const b = await r.blob();
-    return await new Promise((ok, ko) => {
-      const fr = new FileReader();
-      fr.onload = () => ok(fr.result);
-      fr.onerror = ko;
-      fr.readAsDataURL(b);
-    });
-  } catch (e) { return null; }
-}
-
-const PDF_BLEU = "#12294D";
-const PDF_GRIS = "#7A8AA0";
-
-async function genererPdfRapport(fiche) {
-  const pdfMake = await chargerPdfMake();
-  const policesMaison = await chargerPolices(pdfMake);
-  const POLICE_TEXTE = policesMaison ? "DMSans" : "Roboto";
-  const POLICE_TITRE = policesMaison ? "Fraunces" : "Roboto";
-  const status = STATUTS[fiche.status] || STATUTS.planifie;
-  const resp = RESPONSABILITES.find(r => r.id === fiche.responsabilite);
-  const locStr = formatLoc(fiche.loc);
-  const presta = (fiche.prestations || []).map(p => ({ ...p, meta: PRESTATIONS.find(x => x.id === p.id) }));
-
-  const contenu = [];
-  /* Encadrements réutilisables : le rapport d'origine tirait son allure de ses cadres,
-     pas seulement de ses polices. On les redessine ici. */
-  const cadre = (couleur, remplissage) => ({
-    hLineWidth: () => 1, vLineWidth: () => 1,
-    hLineColor: () => couleur, vLineColor: () => couleur,
-    paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0,
-    fillColor: () => remplissage || null,
-  });
-  const boite = (contenuInterne, couleur, remplissage, marge) => ({
-    table: { widths: ["*"], body: [[{ stack: Array.isArray(contenuInterne) ? contenuInterne : [contenuInterne], margin: marge || [12, 10, 12, 10] }]] },
-    layout: cadre(couleur, remplissage),
-  });
-
-  /* En-tête */
-  const refStack = [
-    { text: "RÉFÉRENCE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 },
-    { text: fiche.id || "", fontSize: 12, bold: true, color: "#FFFFFF", margin: [0, 2, 0, 7] },
-    { text: "DATE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 },
-    { text: dateFr(fiche.dateRdv), fontSize: 9.5, color: "#FFFFFF", margin: [0, 1, 0, 7] },
-  ];
-  if (fiche.heureRdv) {
-    refStack.push({ text: "HEURE", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8 });
-    refStack.push({ text: fiche.heureRdv, fontSize: 9.5, color: "#FFFFFF", margin: [0, 1, 0, 7] });
-  }
-  refStack.push({ text: "STATUT", fontSize: 6, color: "#93A9C8", characterSpacing: 0.8, margin: [0, 0, 0, 3] });
-  refStack.push({
-    table: { widths: ["auto"], body: [[{ text: status.label.toUpperCase(), fontSize: 7, bold: true, color: "#6EE7B7", characterSpacing: 0.6, margin: [7, 3, 7, 3] }]] },
-    layout: cadre("#2E6B54", "#163A31"),
-  });
-
-  const titreStack = [
-    { text: fiche.societe || "A6T Services", font: POLICE_TITRE, fontSize: 11.5, bold: true, color: "#9BBEEC" },
-    { text: "Rapport d'intervention technique", font: POLICE_TITRE, fontSize: 18, bold: true, color: "#FFFFFF", margin: [0, 9, 0, 0] },
-    { text: "Rapport généré après intervention sur site", fontSize: 8.5, color: "#93A9C8", margin: [0, 3, 0, 0] },
-  ];
-  if (fiche.urgent) titreStack.push({ text: "INTERVENTION URGENTE", fontSize: 8, bold: true, color: "#FCA5A5", characterSpacing: 0.8, margin: [0, 9, 0, 0] });
-
-  contenu.push({
-    table: { widths: ["*", 118], body: [[
-      { stack: titreStack, fillColor: PDF_BLEU, margin: [16, 16, 8, 16] },
-      { stack: [{
-          table: { widths: ["*"], body: [[{ stack: refStack, margin: [11, 10, 11, 11] }]] },
-          layout: cadre("#2D4C7C", "#193558"),
-        }], fillColor: PDF_BLEU, margin: [4, 16, 14, 16] },
-    ]] },
-    layout: "noBorders",
-    margin: [0, 0, 0, 15],
-  });
-
-  /* Cartes d'information */
-  const carte = (label, valeur) => boite([
-    { text: (label || "").toUpperCase(), fontSize: 6, color: PDF_GRIS, characterSpacing: 0.8, margin: [0, 0, 0, 3] },
-    { text: valeur, fontSize: 10, bold: true },
-  ], "#DCE4EF", "#F7FAFD", [11, 9, 11, 9]);
-  const infos = [];
-  if (fiche.client) infos.push({ l: "Client / Société", v: fiche.client, large: true });
-  const tousTech = [fiche.technicien, ...(fiche.techniciensSupp || [])].filter(Boolean);
-  if (tousTech.length) infos.push({ l: tousTech.length > 1 ? "Techniciens" : "Technicien", v: tousTech.join(", ") });
-  if (fiche.adresse) infos.push({ l: "Adresse d'intervention", v: fiche.adresse + (fiche.diametreCanalisation ? " — DN " + fiche.diametreCanalisation : ""), large: true });
-  if (fiche.tel) infos.push({ l: "Téléphone", v: fiche.tel });
-  if (fiche.email) infos.push({ l: "Email", v: fiche.email });
-
-  const lignes = [];
-  let attente = null;
-  for (const i of infos) {
-    if (i.large) {
-      if (attente) { lignes.push([carte(attente.l, attente.v), { text: "" }]); attente = null; }
-      lignes.push([{ ...carte(i.l, i.v), colSpan: 2 }, { text: "" }]);
-    } else if (attente) {
-      lignes.push([carte(attente.l, attente.v), carte(i.l, i.v)]); attente = null;
-    } else attente = i;
-  }
-  if (attente) lignes.push([carte(attente.l, attente.v), { text: "" }]);
-  if (lignes.length) contenu.push({
-    table: { widths: ["*", "*"], body: lignes },
-    layout: { defaultBorder: false, paddingLeft: (i) => (i === 0 ? 0 : 4), paddingRight: (i) => (i === 0 ? 4 : 0), paddingTop: () => 0, paddingBottom: () => 6 },
-    margin: [0, 0, 0, 4],
-  });
-
-  if (locStr) contenu.push({ ...boite({ text: locStr, fontSize: 9, bold: true, color: "#0F766E" }, "#8ED3B8", "#F0FBF6", [11, 7, 11, 7]), margin: [0, 4, 0, 2] });
-
-  const titreSection = (t) => ({
-    stack: [
-      { text: (t || "").toUpperCase(), fontSize: 7.5, bold: true, characterSpacing: 1, color: "#334155", margin: [0, 0, 0, 4] },
-      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 531, y2: 0, lineWidth: 1.1, lineColor: "#1E293B" }] },
-    ],
-    margin: [0, 12, 0, 8],
-  });
-
-  /* Compte-rendu */
-  contenu.push(titreSection(`Compte-rendu d'intervention${presta.length ? ` — ${presta.length} prestation(s)` : ""}`));
-  if (!presta.length) {
-    contenu.push({ text: "Aucune prestation enregistrée.", italics: true, color: "#94A3B8" });
-  } else {
-    for (const p of presta) {
-      const couleur = p.meta?.color || "#0EA5E9";
-      const phrases = phrasesPrestation(p, locStr);
-      const corps = [{
-        text: [{ text: "\u25CF  ", color: couleur }, { text: (p.meta?.label || "Prestation") + (p.diametre ? ` — Ø ${p.diametre} mm` : "") }],
-        font: POLICE_TITRE, fontSize: 11, bold: true, color: couleur, margin: [0, 0, 0, phrases.length ? 6 : 0],
-      }];
-      phrases.forEach(t => corps.push({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] }));
-      contenu.push({
-        table: { widths: [3, "*"], body: [[
-          { text: " ", fillColor: couleur, border: [false, false, false, false] },
-          { stack: corps, fillColor: "#FAFCFE", margin: [11, 9, 11, 9], border: [false, true, true, true] },
-        ]] },
-        layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => "#E2E9F1", vLineColor: () => "#E2E9F1",
-                  paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
-        margin: [0, 0, 0, 7],
-        unbreakable: phrases.length <= 8,
-      });
-    }
-  }
-
-  if (fiche.responsabilite && fiche.responsabilite !== "na" && resp) {
-    contenu.push(titreSection("Responsabilité"));
-    contenu.push(boite({ text: [{ text: "\u25CF  ", color: "#8B5CF6" }, { text: `${resp.label} — ${resp.desc}` }], fontSize: 9.5, bold: true, color: "#5B4B9E" }, "#B7A9E0", "#F8F6FD", [12, 8, 12, 8]));
-  }
-
-  if (fiche.preconisations?.length) {
-    contenu.push(titreSection("Préconisations"));
-    contenu.push({ ul: fiche.preconisations.map(t => ({ text: t, fontSize: 9.5, margin: [0, 0, 0, 2] })), color: "#5B4B9E", margin: [4, 0, 0, 0] });
-  }
-
-  /* Conclusion : les paragraphes du texte saisi sont conservés */
-  contenu.push(titreSection("Conclusion"));
-  const paras = (fiche.conclusion || "").split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
-  contenu.push(boite([
-    { canvas: [{ type: "rect", x: 0, y: 0, w: 24, h: 3, r: 1.5, color: "#3BA873" }], margin: [0, 0, 0, 9] },
-    ...(paras.length
-      ? paras.map((t, i) => ({ text: t.replace(/\n/g, " "), fontSize: 9.5, color: "#20553A", lineHeight: 1.35, margin: [0, 0, 0, i === paras.length - 1 ? 0 : 7] }))
-      : [{ text: "—", color: "#94A3B8" }]),
-  ], "#7FB896", "#F6FBF8", [15, 13, 15, 13]));
-
-  const majs = majorationsTexte(fiche);
-  if (majs.length) {
-    contenu.push(titreSection("Conditions d'intervention"));
-    contenu.push({ ul: majs.map(t => ({ text: t, fontSize: 9.5 })), color: "#5B4B9E", margin: [4, 0, 0, 0] });
-  }
-
-  /* Photos : deux par rangée, le titre reste collé à sa première rangée */
-  const photos = fiche.photos || [];
-  if (photos.length) {
-    contenu.push(titreSection(`Photos (${photos.length})`));
-    const parTag = photos.some(p => p.tag);
-    const groupes = parTag
-      ? [["Avant travaux", photos.filter(p => p.tag === "avant")],
-         ["Pendant intervention", photos.filter(p => p.tag === "pendant")],
-         ["Après travaux", photos.filter(p => p.tag === "apres")],
-         ["Autres photos", photos.filter(p => !p.tag)]]
-      : [[null, photos]];
-
-    for (const [titre, liste] of groupes) {
-      if (!liste.length) continue;
-      const images = [];
-      for (const p of liste) {
-        const data = await imagePourPdf(p.data);
-        if (data) images.push({ image: data, fit: [252, 132], margin: [0, 0, 0, 7] });
-      }
-      if (!images.length) continue;
-      const rangees = [];
-      for (let i = 0; i < images.length; i += 2) rangees.push([images[i], images[i + 1] || { text: "" }]);
-      const tableau = (rgs) => ({ table: { widths: ["*", "*"], body: rgs }, layout: "noBorders" });
-      const entete = [];
-      if (titre) entete.push({ text: `${titre.toUpperCase()} (${liste.length})`, fontSize: 7, bold: true, characterSpacing: 0.9, color: "#5C6B80", margin: [0, 0, 0, 6] });
-      entete.push(tableau([rangees[0]]));
-      contenu.push({ stack: entete, unbreakable: true, margin: [0, 0, 0, 4] });
-      if (rangees.length > 1) contenu.push(tableau(rangees.slice(1)));
-    }
-  }
-
-  /* Signatures */
-  const cases = [];
-  const ajouterSignature = async (label, src, nom) => {
-    const data = await imagePourPdf(src);
-    if (!data) return;
-    cases.push(boite([
-      { text: label.toUpperCase(), fontSize: 6, bold: true, characterSpacing: 0.9, color: PDF_GRIS, margin: [0, 0, 0, 7] },
-      { image: data, fit: [185, 40] },
-      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, lineColor: "#E8EDF3" }], margin: [0, 6, 0, 0] },
-      { text: nom || " ", fontSize: 9, bold: true, margin: [0, 5, 0, 0] },
-    ], "#B8C2CF", "#FBFCFD", [13, 11, 13, 11]));
-  };
-  await ajouterSignature("Signature technicien", fiche.signatureTech, fiche.technicien || "Technicien");
-  for (const s of (fiche.signaturesSupp || [])) await ajouterSignature("Signature — co-intervenant", s.data, s.nom);
-  await ajouterSignature("Signature client — Bon pour accord", fiche.signature, fiche.nomSignataire);
-  if (cases.length) {
-    const rgs = [];
-    for (let i = 0; i < cases.length; i += 2) rgs.push([cases[i], cases[i + 1] || { text: "" }]);
-    contenu.push({
-      table: { widths: ["*", "*"], body: rgs },
-      layout: { defaultBorder: false, paddingLeft: (i) => (i === 0 ? 0 : 5), paddingRight: (i) => (i === 0 ? 5 : 0), paddingTop: () => 0, paddingBottom: () => 0 },
-      margin: [0, 12, 0, 0],
-      unbreakable: true,
-    });
-  }
-
-  const dd = {
-    pageSize: "A4",
-    pageMargins: [32, 30, 32, 34],
-    info: { title: `Rapport ${fiche.id}`, author: fiche.societe || "A6T Services" },
-    defaultStyle: { font: POLICE_TEXTE, fontSize: 9.5, color: "#1E293B", lineHeight: 1.25 },
-    footer: (page, total) => ({
-      margin: [32, 6, 32, 0],
-      columns: [
-        { text: fiche.societe || "A6T Services", font: POLICE_TITRE, fontSize: 7.5, color: "#A0AEC0" },
-        { text: `${fiche.id} — Confidentiel`, fontSize: 7, color: "#A0AEC0", alignment: "center" },
-        { text: `Page ${page} / ${total}`, fontSize: 7, color: "#A0AEC0", alignment: "right" },
-      ],
-    }),
-    content: contenu,
-  };
-
-  const nomFichier = `Rapport-${fiche.id}.pdf`;
-  await new Promise((ok) => {
-    pdfMake.createPdf(dd).getBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = nomFichier; a.rel = "noopener";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      ok();
-    });
-  });
-}
-
-/* Point d'entrée utilisé par les boutons : gère l'attente et les erreurs. */
-async function telechargerRapportPdf(fiche, setBusy) {
-  try {
-    setBusy?.(true);
-    await genererPdfRapport(fiche);
-  } catch (e) {
-    dlgInfo("Le PDF n'a pas pu être créé (" + (e?.message || e) + "). Vérifiez votre connexion : la première création nécessite Internet.", "PDF indisponible");
-  } finally {
-    setBusy?.(false);
-  }
-}
-
 function telechargerPDF(html, filename) {
   // Méthode universelle : on ouvre le rapport dans un onglet propre avec une barre d'action.
   // Le bouton déclenche l'impression native du navigateur -> "Enregistrer au format PDF".
@@ -2315,10 +1980,19 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
   const toggleArr = (k,v) => setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
 
   // Autocomplétion clients
+  /* Un syndic a plusieurs immeubles : on retient toutes les adresses vues pour un même
+     client, la plus récente en tête, au lieu d'écraser la précédente. */
   const clientsConnus = useMemo(()=>{
     const map={};
-    fiches.forEach(f=>{if(f.client)map[f.client.toLowerCase()]={client:f.client,adresse:f.adresse||"",tel:f.tel||"",email:f.email||""};});
-    return Object.values(map);
+    fiches.forEach(f=>{
+      if(!f.client)return;
+      const k=f.client.toLowerCase();
+      if(!map[k])map[k]={client:f.client,tel:"",email:"",adresses:[]};
+      const e=map[k];
+      e.tel=e.tel||f.tel||""; e.email=e.email||f.email||"";
+      if(f.adresse&&!e.adresses.some(a=>a.toLowerCase()===f.adresse.toLowerCase()))e.adresses.push(f.adresse);
+    });
+    return Object.values(map).map(c=>({...c,adresse:c.adresses[0]||""}));
   },[fiches]);
 
   const adressesConnues = useMemo(()=>{
@@ -2332,10 +2006,22 @@ function FicheForm({ initial, onSave, onBack, fiches = [], theme, societes = ["A
     return clientsConnus.filter(c=>c.client.toLowerCase().includes(f.client.toLowerCase())).slice(0,5);
   },[f.client,clientsConnus]);
 
+  /* Les adresses du client saisi passent devant, et s'affichent même champ vide :
+     c'est ce qui permet de choisir le bon immeuble d'un syndic. */
+  const adressesDuClient = useMemo(()=>{
+    const c=clientsConnus.find(x=>x.client.toLowerCase()===(f.client||"").trim().toLowerCase());
+    return c?c.adresses:[];
+  },[f.client,clientsConnus]);
+
   const adresseSuggestions = useMemo(()=>{
-    if(!f.adresse||f.adresse.length<3)return[];
-    return adressesConnues.filter(a=>a.toLowerCase().includes(f.adresse.toLowerCase())).slice(0,5);
-  },[f.adresse,adressesConnues]);
+    const saisie=(f.adresse||"").trim().toLowerCase();
+    const filtre=a=>!saisie||a.toLowerCase().includes(saisie);
+    const propres=adressesDuClient.filter(filtre);
+    if(!saisie)return propres.slice(0,6);
+    if(saisie.length<3)return propres.slice(0,6);
+    const autres=adressesConnues.filter(a=>filtre(a)&&!propres.some(x=>x.toLowerCase()===a.toLowerCase()));
+    return [...propres,...autres].slice(0,6);
+  },[f.adresse,adressesConnues,adressesDuClient]);
 
   useEffect(()=>{
     const h=e=>{
@@ -2593,7 +2279,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
             {acOpen&&clientSuggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:`1.5px solid #0EA5E9`,borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
                 {clientSuggestions.map((c,i)=>(
-                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,tel:c.tel,email:c.email}));setAcOpen(false);}}
+                  <div key={i} onMouseDown={()=>{setF(p=>({...p,client:c.client,tel:c.tel||p.tel,email:c.email||p.email,adresse:p.adresse||(c.adresses.length===1?c.adresses[0]:"")}));setAcOpen(false);if(c.adresses.length>1)setTimeout(()=>setAcAdresseOpen(true),80);}}
                     style={{padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.08)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -4203,13 +3889,33 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
   const inpStyle = (err) => ({ width:"100%", padding:"10px 14px", background:T.surface2, border:`1.5px solid ${err?"#EF4444":T.border}`, borderRadius:8, color:T.text, fontSize:13.5, outline:"none", boxSizing:"border-box", fontFamily:"inherit" });
   const lblStyle = { display:"block", fontSize:9.5, fontWeight:700, color:T.textMuted, letterSpacing:".08em", textTransform:"uppercase", marginBottom:6 };
 
-  const clients = useMemo(()=>{const map={};fiches.forEach(f=>{if(f.client)map[f.client.toLowerCase()]={client:f.client,adresse:f.adresse||"",tel:f.tel||""};});return Object.values(map);},[fiches]);
+  /* Toutes les adresses connues d'un même client (un syndic en a plusieurs). */
+  const clients = useMemo(()=>{
+    const map={};
+    fiches.forEach(f=>{
+      if(!f.client)return;
+      const k=f.client.toLowerCase();
+      if(!map[k])map[k]={client:f.client,tel:"",adresses:[]};
+      const e=map[k];
+      e.tel=e.tel||f.tel||"";
+      if(f.adresse&&!e.adresses.some(a=>a.toLowerCase()===f.adresse.toLowerCase()))e.adresses.push(f.adresse);
+    });
+    return Object.values(map).map(c=>({...c,adresse:c.adresses[0]||""}));
+  },[fiches]);
   const [acOpen, setAcOpen] = useState(false);
   const acRef = useRef();
   const suggestions = useMemo(()=>{if(!f.client||f.client.length<2)return[];return clients.filter(c=>c.client.toLowerCase().includes(f.client.toLowerCase())).slice(0,5);},[f.client,clients]);
   const [adrOpen, setAdrOpen] = useState(false);
   const adressesConnues = useMemo(()=>{const map={};fiches.forEach(x=>{if(x.adresse)map[x.adresse.toLowerCase()]=x.adresse;});return Object.values(map);},[fiches]);
-  const adrSuggestions = useMemo(()=>{if(!f.adresse||f.adresse.length<3)return[];return adressesConnues.filter(a=>a.toLowerCase().includes(f.adresse.toLowerCase())&&a.toLowerCase()!==f.adresse.toLowerCase()).slice(0,5);},[f.adresse,adressesConnues]);
+  const adressesDuClient = useMemo(()=>{const c=clients.find(x=>x.client.toLowerCase()===(f.client||"").trim().toLowerCase());return c?c.adresses:[];},[f.client,clients]);
+  const adrSuggestions = useMemo(()=>{
+    const saisie=(f.adresse||"").trim().toLowerCase();
+    const filtre=a=>(!saisie||a.toLowerCase().includes(saisie))&&a.toLowerCase()!==saisie;
+    const propres=adressesDuClient.filter(filtre);
+    if(saisie.length<3)return propres.slice(0,6);
+    const autres=adressesConnues.filter(a=>filtre(a)&&!propres.some(x=>x.toLowerCase()===a.toLowerCase()));
+    return [...propres,...autres].slice(0,6);
+  },[f.adresse,adressesConnues,adressesDuClient]);
   useEffect(()=>{const h=e=>{if(acRef.current&&!acRef.current.contains(e.target))setAcOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
 
   const validate = () => { return true; };
@@ -4265,7 +3971,7 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
             {acOpen&&suggestions.length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:T.surface,border:"1.5px solid #3B82F6",borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
                 {suggestions.map((c,i)=>(
-                  <div key={i} onClick={()=>{setF(p=>({...p,client:c.client,tel:c.tel}));setAcOpen(false);}}
+                  <div key={i} onMouseDown={()=>{setF(p=>({...p,client:c.client,tel:c.tel||p.tel,adresse:p.adresse||(c.adresses.length===1?c.adresses[0]:"")}));setAcOpen(false);if(c.adresses.length>1)setTimeout(()=>setAdrOpen(true),80);}}
                     style={{padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,fontSize:13,color:T.text}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.08)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -4364,7 +4070,6 @@ function RdvForm({ initial, onSave, onBack, fiches = [], theme, techniciens = []
 function ReportPreview({ fiche, onClose, parametresMessages = {modeles:MODELES_MESSAGE_DEFAUT}, onMarquerEnvoye = null }) {
   const [versionInterne, setVersionInterne] = useState(false);
   const [dl, setDl] = useState(false);
-  const [pdfEnCours, setPdfEnCours] = useState(false);
   const [showSendOptions, setShowSendOptions] = useState(false);
   // Aperçu WhatsApp/SMS : l'état vit ici, dans le composant qui contient les boutons.
   const [apercuEnvoi, setApercuEnvoi] = useState(null);
@@ -4402,7 +4107,7 @@ function ReportPreview({ fiche, onClose, parametresMessages = {modeles:MODELES_M
           <button onClick={()=>setShowSendOptions(v=>!v)} style={{background:"#0B1829",border:"1px solid #1a3050",color:"#E2E8F0",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>
           <button onClick={download} style={{background:"#0B1829",border:"1px solid #10B981",color:"#10B981",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{dl?"✓ Téléchargé":"⬇ Fichier"}</button>
           <button onClick={tryPrint} style={{background:"none",border:"1px solid #1a3050",color:"#94A3B8",borderRadius:8,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨 Imprimer</button>
-          <button onClick={()=>telechargerRapportPdf(fiche,setPdfEnCours)} disabled={pdfEnCours} style={{background:pdfEnCours?"#334155":"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:pdfEnCours?"default":"pointer",fontFamily:"inherit"}}>{pdfEnCours?"Création du PDF…":"📄 Télécharger PDF"}</button>
+          <button onClick={()=>telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`)} style={{background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>📄 Télécharger PDF</button>
         </div>
       </div>
       {showSendOptions&&(
@@ -4672,7 +4377,13 @@ function TableauDeBord({ fiches, onNew, onNewRdv, onDemarrer, onSelect, onFilter
 /* ═══════════════════════════════════════════
    AGENDA
 ═══════════════════════════════════════════ */
-function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], techColors={} }) {
+function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], techColors={}, onReplanifier }) {
+  /* La date et l'heure se modifient directement sur la carte : le cas le plus
+     fréquent est un simple report, inutile d'ouvrir la fiche pour ça. */
+  const [replan, setReplan] = useState(false);
+  const [dTmp, setDTmp] = useState(fiche.dateRdv || "");
+  const [hTmp, setHTmp] = useState(fiche.heureRdv || "");
+  useEffect(()=>{ setDTmp(fiche.dateRdv||""); setHTmp(fiche.heureRdv||""); },[fiche.dateRdv,fiche.heureRdv]);
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
   const isDevis = isRdv && fiche.natureRdv==="devis";
   const prestas = fiche.prestations?.map(p=>PRESTATIONS.find(x=>x.id===p.id)).filter(Boolean)||[];
@@ -4687,13 +4398,32 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   const tColor = fiche.technicien ? techColor(fiche.technicien, techniciens, techColors) : null;
   return(
     <div style={{display:"flex",alignItems:"center",gap:14,background:fiche.urgent?"rgba(239,68,68,0.06)":T.surface,border:`1px solid ${fiche.urgent?"rgba(239,68,68,0.35)":T.border}`,borderLeft:`7px solid ${fiche.urgent?"#EF4444":(tColor||accent)}`,borderRadius:14,padding:"16px 20px",marginBottom:10,transition:"all .2s"}}>
-      <div style={{textAlign:"center",minWidth:66,flexShrink:0}}>
+      <div style={{textAlign:"center",minWidth:66,flexShrink:0,cursor:onReplanifier?"pointer":"default"}}
+        onClick={e=>{if(onReplanifier){e.stopPropagation();setReplan(v=>!v);}}}>
         {fiche.dateRdv&&<div style={{fontSize:11.5,fontWeight:800,color:T.textMuted,whiteSpace:"nowrap"}}>{new Date(fiche.dateRdv).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"})}</div>}
         <div style={{fontSize:19,fontWeight:800,color:isDevis?"#F59E0B":(isRdv?"#3B82F6":"#0EA5E9")}}>{fiche.heureRdv||"--:--"}</div>
         <div style={{fontSize:10.5,fontWeight:700,marginTop:3,color:aProg?"#64748B":(isDevis?"#F59E0B":(isRdv?"#3B82F6":STATUTS[fiche.status]?.color))}}>{aProg?"📌 À planifier":(isDevis?"💰 Devis":(isRdv?"📅 RDV":`● ${STATUTS[fiche.status]?.label}`))}</div>
         {fiche.urgent&&<div style={{fontSize:10.5,color:"#fff",fontWeight:800,marginTop:4,background:"#EF4444",padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>🚨 URGENCE</div>}
+        {onReplanifier&&!replan&&<div style={{fontSize:9.5,fontWeight:700,color:T.textMuted,marginTop:4,opacity:.75}}>modifier</div>}
       </div>
       <div style={{width:1,height:44,background:T.border}}/>
+      {replan?(
+        <div style={{flex:1,minWidth:0}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:10,fontWeight:800,color:T.textMuted,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>Nouvelle date</div>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <input type="date" value={dTmp} onChange={e=>setDTmp(e.target.value)}
+              style={{flex:1,minWidth:0,padding:"9px 10px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            <input type="time" value={hTmp} onChange={e=>setHTmp(e.target.value)}
+              style={{width:96,padding:"9px 10px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>{onReplanifier(fiche,dTmp,hTmp);setReplan(false);}}
+              style={{flex:1,padding:"9px",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>Enregistrer</button>
+            <button onClick={()=>{setDTmp(fiche.dateRdv||"");setHTmp(fiche.heureRdv||"");setReplan(false);}}
+              style={{padding:"9px 14px",background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+          </div>
+        </div>
+      ):(
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onSelect(fiche)}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:5}}>
           <div style={{fontWeight:700,fontSize:16.5,color:T.text,wordBreak:"break-word"}}>{fiche.client||"Client non renseigné"}</div>
@@ -4742,8 +4472,9 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
           </div>
         )}
       </div>
+      )}
       {!isRdv&&(
-        <button onClick={(ev)=>{ev.stopPropagation();telechargerRapportPdf(fiche);}}
+        <button onClick={(ev)=>{ev.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}}
           title="Ouvrir le PDF du rapport"
           style={{padding:"7px 12px",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:8,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📄 PDF</button>
       )}
@@ -4752,7 +4483,7 @@ function AgendaCarte({ fiche, onSelect, onDemarrer, T, etat, techniciens=[], tec
   );
 }
 
-function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[], techColors={}, jour, onJour, absences=[], onSaveAbsence, onDeleteAbsence }) {
+function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, techniciens=[], techColors={}, jour, onJour, absences=[], onSaveAbsence, onDeleteAbsence, onReplanifier }) {
   const T = THEMES[theme] || THEMES.dark;
   const todayStr = today();
   /* Le jour affiché est mémorisé par le parent : l'agenda est démonté quand on ouvre une
@@ -4867,7 +4598,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
       </div>
       {dayFiches.length===0
         ? <div onClick={()=>onNewRdv&&onNewRdv(selDay)} style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12,cursor:onNewRdv?"pointer":"default"}}>Rien de prévu ce jour{onNewRdv?" — touchez pour ajouter ➕":""}</div>
-        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors}/>)}
+        : dayFiches.map(fiche=><AgendaCarte key={fiche.id} fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors} onReplanifier={onReplanifier}/>)}
 
       {/* Sans date */}
       {sansDate.length>0&&(
@@ -4879,7 +4610,7 @@ function Agenda({ fiches, onSelect, onDemarrer, onNewRdv, onProgrammer, theme, t
           </div>
           {sansDate.map(fiche=>(
             <div key={fiche.id}>
-              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors}/>
+              <AgendaCarte fiche={fiche} etat={etatFiche(fiche)} onSelect={onSelect} onDemarrer={onDemarrer} T={T} techniciens={techniciens} techColors={techColors} onReplanifier={onReplanifier}/>
               {onProgrammer&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,margin:"-2px 0 12px",paddingLeft:6}}>
                   <span style={{fontSize:12,color:T.textMuted,fontWeight:600}}>📅 Programmer :</span>
@@ -4930,7 +4661,7 @@ function CarteFiche({ fiche, onSelect, onDelete, T, selectionMode=false, coche=f
           <span style={{fontSize:11,fontWeight:700,color:statutColor}}>{aProg?"📌":"●"} {statutLabel}</span>
           {fiche.signature&&"· ✍️"}
           {fiche.photos?.length>0&&<span title={`${fiche.photos.length} photo(s)`} style={{fontSize:11,fontWeight:700,color:"#A78BFA",display:"flex",alignItems:"center",gap:2}}>📷 {fiche.photos.length}</span>}
-          {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerRapportPdf(fiche);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
+          {fiche.prestations?.length>0&&<button onClick={e=>{e.stopPropagation();telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`);}} title="Ouvrir le PDF du rapport" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#0EA5E9",padding:"0 2px",fontFamily:"inherit",fontWeight:700}}>📄</button>}
           {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(fiche);}} title="Supprimer" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#EF4444",padding:"0 2px",fontFamily:"inherit"}}>🗑️</button>}
         </span>
       </div>
@@ -6627,6 +6358,12 @@ function AppInterne() {
   /* Un technicien restreint ne voit que ses fiches : lui montrer la liste de ses collègues
      dans les filtres n'a aucun effet et dévoile l'équipe sans raison. */
   const techFiltrables = estRestreint ? techniciens.filter(t=>t===monRole.technicien) : techniciens;
+  /* Report d'un RDV depuis la carte de l'agenda : on ne touche qu'à la date et l'heure. */
+  const replanifierFiche = useCallback((fiche, dateRdv, heureRdv) => {
+    if ((fiche.dateRdv||"") === (dateRdv||"") && (fiche.heureRdv||"") === (heureRdv||"")) return;
+    saveFiche({ ...fiche, dateRdv: dateRdv||"", heureRdv: heureRdv||"" });
+  }, []);
+
   const filtered = useMemo(()=>{
     let r=fiches;
     if(estRestreint) r=r.filter(f=>f.technicien===monRole.technicien || (!f.technicien && !monRole.sousTraitant));
@@ -7180,7 +6917,7 @@ function AppInterne() {
                   ? <div style={{textAlign:"center",padding:"24px",color:T.textMuted,fontSize:13,background:T.surface,border:`1px dashed ${T.border}`,borderRadius:12}}>Aucune intervention ne correspond à « {search} », même en recherche approximative.</div>
                   : [...filtered].sort((a,b)=>(b.dateRdv||"").localeCompare(a.dateRdv||"")).map(f=>(
                       <div key={f.id}>
-                        <AgendaCarte fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors}/>
+                        <AgendaCarte fiche={f} etat={(f.type==="rdv"||(f.status==="planifie"&&!f.prestations?.length))?"rdv":"complete"} onSelect={x=>{setSelected(x);setView("detail");}} onDemarrer={demarrerIntervention} T={T} techniciens={techniciens} techColors={techColors} onReplanifier={replanifierFiche}/>
                         {rechercheFloue&&motsTrouvesFloue[f.id]&&(
                           <div style={{fontSize:11,color:"#F59E0B",marginTop:-6,marginBottom:8,paddingLeft:6}}>🔍 Ressemble à « {motsTrouvesFloue[f.id]} » dans « {search} »</div>
                         )}
@@ -7188,7 +6925,7 @@ function AppInterne() {
                     ))}
               </div>
             )}
-            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
+            {nav==="agenda"&&!search.trim()&&<Agenda fiches={filtered} theme={theme} jour={agendaJour} onJour={setAgendaJour} absences={absences} onReplanifier={replanifierFiche} techniciens={techniciens} techColors={techColors} onSelect={f=>{setSelected(f);setView("detail");}} onDemarrer={demarrerIntervention} onProgrammer={(fiche,date)=>{const nf={...fiche,dateRdv:date};saveFiche(nf);showToast("📅 Programmé le "+dateFr(date));}} onNewRdv={d=>{setRdvPrefill({technicien:"",status:"planifie",type:"rdv",dateRdv:d});setShowRdvForm(true);}}/>}
             {nav==="clients"&&<ClientsView clients={clients} fiches={fiches} onSaveClient={handleSaveClient} onDeleteClient={deleteClient} onSelectFiche={f=>{setSelected(f);setView("detail");}} theme={theme}/>}
             {nav==="contrats"&&<ContratsView contrats={contrats} clients={clients} techniciens={techniciens} onSaveContrat={saveContrat} onDeleteContrat={deleteContrat} theme={theme}/>}
             {nav==="devis"&&<DevisList devisList={devisList} theme={theme} onCreate={()=>{setEditingDevis({id:nextDevisNum(devisList),date:today(),client:"",site:"",adresse:"",tva:10,statut:"brouillon",lignes:[{label:"",qte:1,pu:""}],photos:[],notes:"",createdAt:ts(),_photosDispo:[]});setView("devisform");}} onOpen={dv=>{setEditingDevis(dv);setView("devisform");}} onChangeStatut={(dv,s)=>saveDevisFb({...dv,statut:s})} onDelete={async dv=>{if(await dlgConfirm("Le devis "+dv.id+" sera supprimé définitivement.",{titre:"Supprimer le devis",danger:true}))deleteDevisFb(dv.id);}}/>}
