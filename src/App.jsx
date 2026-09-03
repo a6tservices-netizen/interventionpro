@@ -1381,6 +1381,18 @@ function SousTraitantModal({ fiche, sousTraitants=[], onSaveSousTraitants, onClo
           </div>
         )}
 
+        {/* Sans numéro : WhatsApp s'ouvre sur la liste des discussions, groupes compris. */}
+        <button onClick={()=>envoyer("")}
+          style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,width:"100%",padding:"11px 14px",background:"rgba(37,211,102,0.1)",border:"1.5px solid rgba(37,211,102,0.5)",borderRadius:9,color:"#0F9D58",cursor:"pointer",fontFamily:"inherit",marginBottom:14,textAlign:"left"}}>
+          <span style={{fontWeight:800,fontSize:13.5}}>Choisir dans WhatsApp</span>
+          <span style={{fontSize:11.5,fontWeight:600,opacity:.85}}>Ouvre WhatsApp avec le message prêt : vous choisissez le groupe ou le contact.</span>
+        </button>
+
+        <button onClick={async()=>{try{await navigator.clipboard.writeText(msg);dlgInfo("Le message est copié. Collez-le où vous voulez.","Copié");}catch(e){dlgInfo("La copie a échoué sur cet appareil.","Copie impossible");}}}
+          style={{width:"100%",padding:"10px 14px",background:"none",border:`1px solid ${T.border}`,borderRadius:9,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",marginBottom:16}}>
+          Copier le message
+        </button>
+
         <div style={{fontSize:11,fontWeight:700,color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Nouveau numéro</div>
         <input value={nom} onChange={e=>setNom(e.target.value)} placeholder="Nom (optionnel)"
           style={{width:"100%",padding:"10px 14px",background:T.surface2,border:`1.5px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:8,boxSizing:"border-box"}}/>
