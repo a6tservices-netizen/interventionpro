@@ -5025,6 +5025,16 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
             </span>
           )}
         </div>
+        {/* Le numéro saisi au passage en « Facturé » n'apparaissait nulle part sur la fiche :
+            on l'affiche, et un appui permet de le corriger. */}
+        {fiche.facturation==="facture"&&(
+          <div onClick={()=>onToggleFacturation&&onToggleFacturation(fiche,"facture")}
+            style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:9,background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.4)",cursor:"pointer"}}>
+            <span style={{fontSize:10,fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:T.textMuted}}>N° de facture</span>
+            <span style={{fontSize:13.5,fontWeight:800,color:"#10B981"}}>{fiche.numeroFacture||"à renseigner"}</span>
+            <span style={{fontSize:11,fontWeight:700,color:T.textMuted}}>modifier</span>
+          </div>
+        )}
         {(fiche.facturation==="a_facturer"||fiche.facturation==="brouillon"||fiche.facturation==="facture")&&onPreparerFacturePennylane&&(
           <div style={{marginTop:8}}>
             {fiche.pennylaneInvoiceId
