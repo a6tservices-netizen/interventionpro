@@ -6973,6 +6973,9 @@ function AppInterne() {
                   const nf = {...f, pennylaneInvoiceId: d.invoiceId, pennylaneInvoiceNumber: d.invoiceNumber};
                   saveFiche(nf); setSelected(nf);
                   showToast(`🧾 Facture Pennylane créée (n° ${d.invoiceNumber||d.invoiceId}) — à valider dans Pennylane`);
+                  /* Un client vient d'être créé : c'est le moment de vérifier que ce n'est
+                     pas un doublon, pendant qu'on y pense. */
+                  if(d.clientCree) dlgInfo(`Le client « ${d.clientNom||draft.client} » n'existait pas dans Pennylane, il vient d'y être créé. Vérifiez qu'il ne fait pas doublon avec une fiche client existante.`,"Nouveau client créé");;
                 } else {
                   dlgInfo("❌ Échec de la création de la facture Pennylane : "+(d.error||"erreur inconnue"));
                 }

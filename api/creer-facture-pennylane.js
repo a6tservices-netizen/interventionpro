@@ -1,9 +1,9 @@
 // Fonction serveur Vercel — création d'une facture brouillon dans Pennylane à partir
 // d'une fiche InterventionPro.
 //
-// Prudence volontaire pour ce premier jet : la facture est toujours créée en BROUILLON
-// ("draft": true) dans Pennylane — jamais envoyée automatiquement au client. Adel la
-// relit et la valide lui-même directement dans Pennylane.
+// Prudence volontaire : la facture est toujours créée en BROUILLON ("draft": true) dans
+// Pennylane — jamais envoyée automatiquement au client. Adel la relit et la valide
+// lui-même directement dans Pennylane.
 //
 // Nécessite la variable d'environnement Vercel PENNYLANE_API_KEY (clé API générée depuis
 // Pennylane → Paramètres → API).
@@ -30,24 +30,64 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// Source des doublons : la recherche se faisait sur le nom EXACT. « SDC 272 - COEUR
+// CITADIN » et « SDC 272 – COEUR CITADIN » (tiret long) sont deux clients différents
+// pour Pennylane, alors que c'est le même pour nous. On compare donc sur une forme
+// normalisée : sans accents, sans casse, tirets et espaces unifiés.
+function normaliserNom(nom) {
+  return (nom || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // accents
+    .replace(/[–—−]/g, "-")                             // tirets longs → tiret simple
+    .replace(/[^a-zA-Z0-9]+/g, " ")                     // ponctuation → espace
+    .trim().replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+// Les réponses de l'API n'ont pas toujours la même enveloppe selon l'endpoint.
+function extraireListe(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.customers)) return data.customers;
+  return [];
+}
+
+async function chercherParFiltre(filtreObjet, headers, label) {
+  const filtre = encodeURIComponent(JSON.stringify(filtreObjet));
+  const res = await withTimeout(fetch(`${BASE}/customers?filter=${filtre}&limit=100`, { headers }), 8000, label);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  return extraireListe(data);
+}
+
 async function trouverOuCreerClient(client, adresse, headers) {
-  // Recherche d'abord un client existant portant ce nom exact, pour éviter les doublons.
-  const filtre = encodeURIComponent(JSON.stringify([{ field: "name", operator: "eq", value: client }]));
-  const rechercheRes = await withTimeout(fetch(`${BASE}/customers?filter=${filtre}`, { headers }), 8000, "recherche client");
-  const rechercheData = await rechercheRes.json().catch(() => ({}));
-  if (rechercheRes.ok && Array.isArray(rechercheData.items) && rechercheData.items.length) {
-    return rechercheData.items[0].id;
+  const cible = normaliserNom(client);
+
+  // 1. Nom exact — le cas le plus fréquent, et le moins coûteux.
+  let candidats = await chercherParFiltre([{ field: "name", operator: "eq", value: client }], headers, "recherche client (exact)");
+  let trouve = candidats.find(c => normaliserNom(c.name) === cible);
+  if (trouve) return { id: trouve.id, cree: false, nomPennylane: trouve.name };
+
+  // 2. Recherche approchante : on prend le premier mot significatif du nom et on
+  //    compare nous-mêmes sur la forme normalisée. C'est ce qui rattrape les tirets,
+  //    accents et espaces doubles qui créaient des doublons.
+  const racine = (client || "").trim().split(/\s+/).slice(0, 2).join(" ");
+  if (racine && racine.length >= 3) {
+    candidats = await chercherParFiltre([{ field: "name", operator: "match", value: racine }], headers, "recherche client (approchante)");
+    trouve = candidats.find(c => normaliserNom(c.name) === cible);
+    if (trouve) return { id: trouve.id, cree: false, nomPennylane: trouve.name };
   }
-  // Pas trouvé : on le crée — attention, l'endpoint de CRÉATION est différent de celui
-  // de recherche (/company_customers, pas /customers — piège classique de l'API v2).
-  // billing_address est obligatoire côté Pennylane, au format structuré.
+
+  // 3. Toujours rien : on crée — attention, l'endpoint de CRÉATION est différent de
+  //    celui de recherche (/company_customers, pas /customers — piège de l'API v2).
+  //    billing_address est obligatoire côté Pennylane, au format structuré.
   const creationRes = await withTimeout(fetch(`${BASE}/company_customers`, {
     method: "POST", headers,
     body: JSON.stringify({ name: client, billing_address: parseAdresseFr(adresse) }),
   }), 8000, "création client");
   const creationData = await creationRes.json().catch(() => ({}));
   if (!creationRes.ok) throw new Error("Création du client Pennylane échouée : " + (creationData?.message || creationRes.status));
-  return creationData.id;
+  return { id: creationData.id, cree: true, nomPennylane: client };
 }
 
 export default async function handler(req, res) {
@@ -58,13 +98,16 @@ export default async function handler(req, res) {
   const headers = { Authorization: `Bearer ${cle}`, "Content-Type": "application/json", Accept: "application/json" };
 
   try {
-    const { client, adresse, lignes, dateFacture } = req.body || {};
+    const { client, adresse, lignes, dateFacture, clientIdImpose } = req.body || {};
     if (!client || !Array.isArray(lignes) || !lignes.length) {
       res.status(400).json({ ok: false, error: "Données manquantes : client et au moins une ligne de facturation sont requis." });
       return;
     }
 
-    const customerId = await trouverOuCreerClient(client, adresse, headers);
+    // clientIdImpose : permet de forcer un client déjà choisi, sans nouvelle recherche.
+    const resultatClient = clientIdImpose
+      ? { id: clientIdImpose, cree: false, nomPennylane: client }
+      : await trouverOuCreerClient(client, adresse, headers);
 
     // Correspondance taux de TVA (%) → code Pennylane. Le taux peut être détecté
     // automatiquement dans le texte dicté (ex: "TVA 10") — sinon 20% par défaut.
@@ -90,7 +133,7 @@ export default async function handler(req, res) {
     const factureRes = await withTimeout(fetch(`${BASE}/customer_invoices`, {
       method: "POST", headers,
       body: JSON.stringify({
-        customer_id: customerId,
+        customer_id: resultatClient.id,
         date: dateFactureFinale,
         deadline: echeance.toISOString().slice(0, 10), // échéance à 30 jours — probablement obligatoire côté Pennylane
         invoice_lines: invoiceLines,
@@ -105,6 +148,11 @@ export default async function handler(req, res) {
       invoiceId: factureData.id,
       invoiceNumber: factureData.invoice_number,
       montant: factureData.currency_amount,
+      // Permet à l'application de prévenir : un nouveau client vient d'être créé,
+      // c'est le moment de vérifier que ce n'est pas un doublon.
+      clientCree: resultatClient.cree,
+      clientId: resultatClient.id,
+      clientNom: resultatClient.nomPennylane,
     });
   } catch (e) {
     console.error("creer-facture-pennylane error:", e);
