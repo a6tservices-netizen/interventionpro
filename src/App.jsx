@@ -191,7 +191,7 @@ const watchDevis = (cb) => onValue(ref(db, "devis"), snap => { const d=snap.val(
 const saveContrat = (c) => set(ref(db, `contrats/${c.id}`), sanitize(c));
 const deleteContrat = (id) => remove(ref(db, `contrats/${id}`));
 const watchContrats = (cb) => onValue(ref(db, "contrats"), snap => { const d=snap.val(); cb(d?Object.values(d):[]); });
-const logoKey = (nom) => (nom||"").replace(/[.#$/\[\]]/g, "_");
+const logoKey = (nom) => (nom||"").replace(/[.#$/[\]]/g, "_");
 const watchLogos = (cb) => onValue(ref(db, "logos"), snap => cb(snap.val()||{}));
 const watchTechTels = (cb) => onValue(ref(db, "techTels"), snap => cb(snap.val()||{}));
 const watchTechColors = (cb) => onValue(ref(db, "techColors"), snap => cb(snap.val()||{}));
@@ -511,6 +511,7 @@ const techColor = (nom, techniciens=[], techColors={}) => {
   return TECH_COLORS[idx>=0 ? idx%TECH_COLORS.length : Math.abs(nom.split("").reduce((a,c)=>a+c.charCodeAt(0),0))%TECH_COLORS.length];
 };
 const ETAGES = ["Sous-sol 2","Sous-sol 1","Rez-de-chaussée","1er étage","2ème étage","3ème étage","4ème étage","5ème étage","6ème étage","7ème étage","8ème étage","9ème étage","10ème étage","11ème étage","12ème étage","13ème étage","14ème étage","15ème étage","16ème étage","17ème étage","18ème étage","19ème étage","20ème étage"];
+const BATIMENTS = ["A","B","C","D","E","F","G","H","I","J","K","L"];
 const CAGES = ["1","2","3","4","5","6","7","8","9","10"];
 const POSITIONS = ["Côté gauche","Côté droit","Central","Façade rue","Façade cour","Angle"];
 const EMPTY_LOC = { batimentLettre:"", batimentNom:"", etage:"", cage:"", appartement:"", position:"" };
@@ -2083,14 +2084,28 @@ function FicheForm({ initial, onSave, onBack, fiches = [], devisList = [], estAd
   };
 
   const handleGenererConclusion = async () => {
-    if(f.prestations.length===0)return;
+    if(f.prestations.length===0 && !f.notesInternes?.trim() && !f.typesIntervention?.length && !(f.photos||[]).length){
+      dlgInfo("Cochez une prestation, ajoutez une note ou une photo : sans aucune information, il n'y a rien à rédiger.","Rien à résumer");
+      return;
+    }
     setGeneratingConclusion(true);
     try {
       const locStr = formatLoc(f.loc);
       const photosPourIA = parametresIA.analysePhotos
         ? (parametresIA.maxPhotos>0 ? (f.photos||[]).slice(0,parametresIA.maxPhotos) : (f.photos||[]))
         : [];
-      const text = await generateConclusionIA(f.prestations, locStr, f.responsabilite, f.preconisations, photosPourIA);
+      /* Aucune case cochée : on fabrique une prestation de secours à partir de ce que
+         le technicien a écrit, pour que l'IA ait de la matière. */
+      /* Le texte déjà présent dans la conclusion (souvent dicté) sert de matière première :
+         l'IA le reformule dans le style maison au lieu de repartir de zéro. */
+      const dicte = (f.conclusion||"").trim();
+      const base = f.prestations.length ? f.prestations : [{
+        id: (f.typesIntervention||[])[0] || "autre",
+        probleme: [dicte, f.notesInternes].filter(Boolean).join("\n"),
+        action: "", resultat: "",
+      }];
+      if (f.prestations.length && dicte) base[0] = { ...base[0], probleme: [base[0].probleme, dicte].filter(Boolean).join("\n") };
+      const text = await generateConclusionIA(base, locStr, f.responsabilite, f.preconisations, photosPourIA);
       set("conclusion", text);
     } catch(e) { dlgInfo("Erreur lors de la génération : " + (e?.message || e)); }
     finally { setGeneratingConclusion(false); }
@@ -2627,12 +2642,12 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
             style={{fontSize:12,fontWeight:700,color:"#0F9D58",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontFamily:"inherit"}}>
             Selon devis
           </button>}
-          <button onClick={ouvrirChatIA} disabled={f.prestations.length===0}
+          <button onClick={ouvrirChatIA}
             style={{fontSize:12,fontWeight:700,color:"#0EA5E9",background:"rgba(14,165,233,0.1)",border:"1px solid rgba(14,165,233,0.3)",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
             💬 Discuter avec l'IA
           </button>
-          <button onClick={handleGenererConclusion} disabled={generatingConclusion||f.prestations.length===0}
-            style={{fontSize:12,fontWeight:800,color:f.prestations.length===0?"#A78BFA":"#fff",background:f.prestations.length===0?"rgba(167,139,250,0.1)":"linear-gradient(135deg,#8B5CF6,#6366F1)",border:f.prestations.length===0?"1px solid rgba(167,139,250,0.3)":"none",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
+          <button onClick={handleGenererConclusion} disabled={generatingConclusion}
+            style={{fontSize:12,fontWeight:800,color:"#fff",background:"linear-gradient(135deg,#8B5CF6,#6366F1)",border:"none",borderRadius:8,padding:"7px 14px",cursor:f.prestations.length===0?"not-allowed":"pointer",fontFamily:"inherit",opacity:f.prestations.length===0?0.5:1}}>
             {generatingConclusion?"⏳ Génération en cours…":"✨ Générer la conclusion"}
           </button>
         </div>
