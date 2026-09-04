@@ -542,6 +542,13 @@ const DEVIS_CATALOGUE = [
   {label:"Remplacement tampon de visite", unite:"u"},
   {label:"Débouchage canalisation", unite:"u"},
 ];
+const estImage = (f) => {
+  if (!f) return false;
+  if ((f.type||"").startsWith("image/")) return true;
+  if (f.type) return false;
+  return /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(f.name||"");
+};
+
 const resizePhoto = (file) => new Promise(res => {
   const r = new FileReader();
   r.onload = e => { const img = new Image(); img.onload = async () => {
@@ -557,7 +564,11 @@ const resizePhoto = (file) => new Promise(res => {
       // pour ne jamais bloquer la prise de photo sur site.
       res({ name: file.name, data: dataUrl, _uploadFailed: true });
     }
-  }; img.src = e.target.result; };
+    };
+    img.onerror = () => res({ name: file.name, data: e.target.result, _nonRedimensionnee: true });
+    img.src = e.target.result;
+  };
+  r.onerror = () => res(null);
   r.readAsDataURL(file);
 });
 const CONTRAT_TYPES = ["Bac à graisse","Poste de relevage","Curage annuel","Entretien copropriété","Autre entretien"];
@@ -2078,7 +2089,11 @@ function FicheForm({ initial, onSave, onBack, fiches = [], devisList = [], estAd
     const all = [...files];
     const videos = all.filter(x=>x.type.startsWith("video/"));
     if(videos.length) dlgInfo("Les vidéos ne sont pas encore prises en charge (limite de stockage). Seules les photos ont été ajoutées.");
-    const imgs = await Promise.all(all.filter(x=>x.type.startsWith("image/")).map(resizePhoto));
+    const imgs = (await Promise.all(all.filter(estImage).map(resizePhoto))).filter(Boolean);
+    if(!imgs.length && all.length && !videos.length){
+      dlgInfo("Aucune photo n'a pu être lue. Réessayez en passant par l'appareil photo ou la galerie plutôt que par le gestionnaire de fichiers.","Photos non ajoutées");
+      return;
+    }
     setF(p=>({...p,photos:[...p.photos,...imgs]}));
     if(imgs.length) logActivite("photo_ajoutee", f.technicien||null, `${imgs.length} photo(s) — ${f.client||f.id||"fiche"}`);
   };
@@ -5568,7 +5583,7 @@ Réponds UNIQUEMENT avec le paragraphe, sans titre ni préambule.`;
         )}
         <button onClick={()=>photoRef.current?.click()} style={{width:"100%",padding:"12px",background:"none",border:`2px dashed ${T.border}`,borderRadius:10,color:T.textMuted,fontWeight:700,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>📸 Ajouter des photos</button>
         <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={async e=>{
-          const files=[...(e.target.files||[])].filter(x=>x.type.startsWith("image/"));
+          const files=[...(e.target.files||[])].filter(estImage);
           const imgs=await Promise.all(files.map(resizePhoto));
           setD(p=>({...p,photos:[...p.photos,...imgs]})); e.target.value="";
         }}/>
