@@ -3172,10 +3172,14 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
               erreur_app:{icon:"🐞",label:"Erreur technique",color:"#EF4444"},
             }[a.type]||{icon:"•",label:a.type,color:T.textMuted};
             return (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"5px 8px",background:T.surface2,borderRadius:7}}>
+              <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,padding:"6px 8px",background:T.surface2,borderRadius:7}}>
                 <span>{meta.icon}</span>
                 <span style={{fontWeight:700,color:meta.color,flexShrink:0}}>{meta.label}</span>
-                <span style={{color:T.textMuted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.technicien||a.detail||""}</span>
+                {/* Le résultat d'un envoi (nombre d'appareils, erreur serveur) est dans "detail".
+                    Il était masqué par le nom du technicien et coupé par l'ellipse : on affiche
+                    les deux, sur plusieurs lignes si nécessaire — c'est le seul endroit où l'on
+                    peut diagnostiquer un échec de notification. */}
+                <span style={{color:T.textMuted,flex:1,minWidth:0,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.45}}>{[a.technicien,a.detail].filter(Boolean).join(" — ")}</span>
                 <span style={{color:T.textFaint,fontSize:10.5,flexShrink:0}}>{new Date(a.ts).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
               </div>
             );
