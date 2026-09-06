@@ -148,7 +148,7 @@ async function idbSupprimerMemo(id) {
     tx.onerror = () => reject(tx.error);
   });
 }
-const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/\[\]]/g,"_");
+const emailKey = (email) => (email||"").toLowerCase().replace(/[.#$/[\]]/g,"_");
 // ── Journal d'activité (connexions, actions clés) ──
 // Trace qui a fait quoi et quand : connexions à l'app, ajout de photo... Visible dans
 // Administration → Journal d'activité. Sert aussi de "vu" implicite pour les alertes :
@@ -599,7 +599,7 @@ function distanceLevenshtein(a, b) {
 }
 function scoreRessemblance(recherche, texteOriginal) {
   const motsRecherche = sansAccents(recherche).toLowerCase().split(/\s+/).filter(Boolean);
-  const motsTexteOriginal = (texteOriginal||"").split(/[\s,.\-]+/).filter(Boolean); // garde la casse d'origine pour l'affichage
+  const motsTexteOriginal = (texteOriginal||"").split(/[\s,.-]+/).filter(Boolean); // garde la casse d'origine pour l'affichage
   const motsTexte = motsTexteOriginal.map(m=>sansAccents(m).toLowerCase());
   if (!motsRecherche.length || !motsTexte.length) return { score: Infinity, motTrouve: null };
   let total = 0;
@@ -630,7 +630,7 @@ const dateFr = (d) => d ? new Date(d).toLocaleDateString("fr-FR",{weekday:"short
 // tout en laissant le texte complet affiché tel quel.
 const telHref = (raw) => {
   if (!raw) return "";
-  const m = String(raw).match(/(\+?\d[\d\s.\-]{6,})/);
+  const m = String(raw).match(/(\+?\d[\d\s.-]{6,})/);
   const brut = m ? m[1] : raw;
   return `tel:${String(brut).replace(/[^\d+]/g,"")}`;
 };
@@ -1335,10 +1335,12 @@ function buildSousTraitantTexte(fiche) {
 
 /* Tout le monde n'a pas WhatsApp : le canal est choisi au moment de l'envoi. */
 function envoyerAuNumero(num, msg, canal = "whatsapp") {
-  const clean = (num||"").replace(/[^0-9]/g,"");
+  /* wa.me exige le format international sans "+" (33612345678). Un numero
+     laisse en 06... est interprete par WhatsApp comme un nom de profil,
+     d'ou le message "@06... n'existe pas sur WhatsApp". */
+  const clean = normaliserTel(num||"");
   if (canal === "sms") {
-    const tel = normaliserTel(num||"");
-    window.location.href = `sms:${tel}${/iPhone|iPad|iPod|Mac/.test(navigator.userAgent)?"&":"?"}body=${encodeURIComponent(msg)}`;
+    window.location.href = `sms:${clean?"+"+clean:""}${/iPhone|iPad|iPod|Mac/.test(navigator.userAgent)?"&":"?"}body=${encodeURIComponent(msg)}`;
     return;
   }
   ouvrirLien(clean?`https://wa.me/${clean}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`);
@@ -1508,7 +1510,8 @@ async function relancerTechnicien(fiche, techTels = {}, onSaveTel = null) {
     const saisie = await dlgPrompt(`Numéro WhatsApp de ${fiche.technicien}\nFormat conseillé : 33612345678. Il sera mémorisé pour les prochaines relances. Laissez vide pour choisir le contact à la main.`, "", {titre:"Numéro du technicien",valider:"Enregistrer"});
     if(saisie&&saisie.trim()){ num = saisie.replace(/[^0-9+]/g,""); onSaveTel(fiche.technicien, num); }
   }
-  ouvrirLien(num?`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+  const numWa = normaliserTel(num);
+  ouvrirLien(numWa?`https://wa.me/${numWa}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
 }
 
 function composerRapportWhatsApp(fiche) {
@@ -2234,7 +2237,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
     const temps = (data && typeof data==="object") ? data.temps : data;
     const majorations = (data && typeof data==="object") ? (data.maj||[]) : [];
     try {
-      const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, majorations, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/\[\]]/g,"_")] || null };
+      const fiche = { ...f, id:f.id||uid(), createdAt:f.createdAt||ts(), tempsInterne:temps||f.tempsInterne, majorations, status: f.status==="annule" ? "annule" : "termine", facturation: f.facturation || "a_facturer", logoSociete: logos[(f.societe||"").replace(/[.#$/[\]]/g,"_")] || null };
       onSave(fiche);
       brouillonIgnoreRef.current = true;
       try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
@@ -2311,7 +2314,7 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
             <option value="__new__">➕ Ajouter une société…</option>
           </select>
           {/* Logo de la société (optionnel) */}
-          {(()=>{ const lk=(f.societe||"").replace(/[.#$/\[\]]/g,"_"); const logo=logos[lk];
+          {(()=>{ const lk=(f.societe||"").replace(/[.#$/[\]]/g,"_"); const logo=logos[lk];
           return (
             <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
               {logo
@@ -4966,7 +4969,13 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
       {isRdv?(
         <button onClick={()=>onDemarrer(fiche)} style={{width:"100%",background:"linear-gradient(135deg,#10B981,#059669)",color:"#fff",border:"none",borderRadius:10,padding:"14px 18px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>Démarrer l'intervention</button>
       ):(
-        <button onClick={()=>setShowPreview(true)} style={{width:"100%",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"14px 18px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>Voir le rapport</button>
+        <>
+          {/* Action principale : le PDF s'ouvre directement, sans passer par l'aperçu. */}
+          <button onClick={()=>telechargerPDF(buildReportHTML(fiche,true),`Rapport-${fiche.id}.pdf`)} style={{width:"100%",background:"linear-gradient(135deg,#0EA5E9,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"14px 18px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>📄 Rapport PDF</button>
+          {/* L'aperçu reste le seul endroit d'où partent WhatsApp et SMS au client,
+              et le seul où l'on bascule en version interne : il doit rester joignable. */}
+          <button onClick={()=>setShowPreview(true)} style={{width:"100%",background:"none",border:`1.5px solid ${T.border}`,color:T.textMuted,borderRadius:10,padding:"11px 18px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>Aperçu — envoyer au client</button>
+        </>
       )}
 
       {/* Actions secondaires */}
