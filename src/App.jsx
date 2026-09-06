@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, remove, push, query, orderByChild, limitToLast, get } from "firebase/database";
+import { getDatabase, ref, set, update, onValue, remove, push, query, orderByChild, limitToLast, get } from "firebase/database";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getMessaging, getToken, onMessage, isSupported as fcmIsSupported } from "firebase/messaging";
 import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "firebase/storage";
@@ -2908,6 +2908,141 @@ Je vais te donner des instructions pour ajuster ce texte (le raccourcir, changer
 /* ═══════════════════════════════════════════
    ADMINISTRATION
 ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   MIGRATION DES PHOTOS VERS STORAGE
+   Écran temporaire, réservé au compte propriétaire.
+   Transfère vers Storage les photos et logos encore stockés en base64
+   dans les fiches, et les remplace par un lien. Ne touche à aucun autre
+   champ : on n'écrit que "photos" et "logoSociete", fiche par fiche.
+   Interruptible et relançable : ce qui est déjà migré est ignoré.
+   Retour arrière : le fichier de sauvegarde de la base.
+═══════════════════════════════════════════ */
+const EST_B64 = (s) => typeof s === "string" && s.startsWith("data:");
+/* Les règles Storage refusent au-delà de 10 Mo. Le base64 pèse ~4/3 du fichier :
+   on écarte donc en amont ce qui dépasserait, plutôt que d'échouer à l'envoi. */
+const TROP_LOURD = (dataUrl) => dataUrl.length * 0.75 > 10 * 1024 * 1024;
+
+function MigrationPhotos({ fiches = [], theme }) {
+  const T = THEMES[theme] || THEMES.dark;
+  const [journal, setJournal] = useState([]);
+  const [enCours, setEnCours] = useState(false);
+  const stopRef = useRef(false);
+  const cacheLogos = useRef({}); // un logo identique n'est envoyé qu'une fois
+
+  const proprio = ((auth.currentUser && auth.currentUser.email) || "").toLowerCase() === "aceda6t@yahoo.fr";
+  const ligne = (txt) => setJournal(j => [...j.slice(-200), txt]);
+
+  const aFaire = fiches.filter(f =>
+    (f.photos || []).some(p => EST_B64(p && p.data)) || EST_B64(f.logoSociete)
+  );
+  const nbPhotos = fiches.reduce((n, f) => n + (f.photos || []).filter(p => EST_B64(p && p.data)).length, 0);
+  const poids = fiches.reduce((n, f) => {
+    let s = (f.photos || []).reduce((t, p) => t + (EST_B64(p && p.data) ? p.data.length : 0), 0);
+    if (EST_B64(f.logoSociete)) s += f.logoSociete.length;
+    return n + s;
+  }, 0);
+  const mo = (o) => (o / 1048576).toFixed(1);
+
+  if (!proprio) {
+    return <div style={{fontSize:12.5,color:T.textMuted,padding:"6px 0"}}>Réservé au compte propriétaire.</div>;
+  }
+
+  const analyser = () => {
+    setJournal([]);
+    ligne(`${fiches.length} fiches au total.`);
+    ligne(`${aFaire.length} fiches à migrer, ${nbPhotos} photos, ${mo(poids)} Mo.`);
+    const lourdes = [];
+    aFaire.forEach(f => {
+      (f.photos || []).forEach(p => { if (EST_B64(p && p.data) && TROP_LOURD(p.data)) lourdes.push(f.id); });
+    });
+    if (lourdes.length) ligne(`⚠ ${lourdes.length} photo(s) au-delà de 10 Mo seront laissées en place : ${[...new Set(lourdes)].join(", ")}`);
+    const logos = aFaire.filter(f => EST_B64(f.logoSociete)).length;
+    if (logos) ligne(`${logos} fiches portent un logo en base64 (envoyé une seule fois par logo identique).`);
+    ligne("Analyse terminée — rien n'a été écrit.");
+  };
+
+  const migrerFiche = async (f) => {
+    const maj = {};
+    let ok = 0, ignorees = 0, echecs = 0;
+    if (f.photos && f.photos.length) {
+      const photos = f.photos.slice();
+      for (let i = 0; i < photos.length; i++) {
+        const p = photos[i];
+        if (!EST_B64(p && p.data)) continue;
+        if (TROP_LOURD(p.data)) { ignorees++; continue; }
+        try {
+          const url = await uploadPhotoToStorage(p.data, "photos-fiches");
+          photos[i] = { ...p, data: url };
+          ok++;
+        } catch { echecs++; }
+      }
+      if (ok) maj.photos = photos;
+    }
+    if (EST_B64(f.logoSociete)) {
+      const cle = f.logoSociete.length + "|" + f.logoSociete.slice(-80);
+      try {
+        if (!cacheLogos.current[cle]) cacheLogos.current[cle] = await uploadPhotoToStorage(f.logoSociete, "photos-fiches");
+        maj.logoSociete = cacheLogos.current[cle];
+      } catch { echecs++; }
+    }
+    /* update() n'écrit que les clés fournies : le reste de la fiche est intact. */
+    if (Object.keys(maj).length) await update(ref(db, `fiches/${f.id}`), maj);
+    return { ok, ignorees, echecs, logo: !!maj.logoSociete };
+  };
+
+  const lancer = async (limite) => {
+    const lot = aFaire.slice(0, limite);
+    if (!lot.length) { ligne("Rien à migrer."); return; }
+    stopRef.current = false;
+    setEnCours(true);
+    setJournal([]);
+    ligne(`Migration de ${lot.length} fiche(s)…`);
+    let totalOk = 0, totalIgn = 0, totalEch = 0;
+    for (let i = 0; i < lot.length; i++) {
+      if (stopRef.current) { ligne("⏹ Arrêté. Ce qui est fait est enregistré."); break; }
+      const f = lot[i];
+      try {
+        const r = await migrerFiche(f);
+        totalOk += r.ok; totalIgn += r.ignorees; totalEch += r.echecs;
+        ligne(`${i + 1}/${lot.length} — ${f.id} : ${r.ok} photo(s)${r.logo ? " + logo" : ""}${r.ignorees ? `, ${r.ignorees} trop lourde(s)` : ""}${r.echecs ? `, ${r.echecs} échec(s)` : ""}`);
+      } catch (e) {
+        totalEch++;
+        ligne(`${i + 1}/${lot.length} — ${f.id} : ÉCHEC (${e && e.code ? e.code : "erreur"})`);
+      }
+    }
+    ligne(`Terminé : ${totalOk} photos transférées, ${totalIgn} laissées, ${totalEch} échec(s).`);
+    setEnCours(false);
+  };
+
+  const btn = (bg, bord) => ({background:bg,border:bord,color:"#fff",borderRadius:9,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:enCours?"not-allowed":"pointer",fontFamily:"inherit",opacity:enCours?0.5:1});
+
+  return (
+    <div>
+      <div style={{fontSize:12.5,color:T.textMuted,marginBottom:10,lineHeight:1.5}}>
+        Transfère vers Storage les photos encore stockées dans la base, et les remplace par un lien.
+        Aucun autre champ n'est modifié. Interruptible : relancer reprend là où ça s'est arrêté.
+      </div>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:12,fontSize:13,color:T.text}}>
+        <span><b>{aFaire.length}</b> fiches à migrer</span>
+        <span><b>{nbPhotos}</b> photos</span>
+        <span><b>{mo(poids)}</b> Mo</span>
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        <button disabled={enCours} onClick={analyser} style={btn(T.surface2,`1px solid ${T.border}`)}>Analyser (n'écrit rien)</button>
+        <button disabled={enCours} onClick={()=>lancer(5)} style={btn("linear-gradient(135deg,#0EA5E9,#6366F1)","none")}>Migrer 5 fiches</button>
+        <button disabled={enCours} onClick={()=>lancer(25)} style={btn("linear-gradient(135deg,#0EA5E9,#6366F1)","none")}>Migrer 25 fiches</button>
+        <button disabled={enCours} onClick={()=>lancer(aFaire.length)} style={btn("linear-gradient(135deg,#F59E0B,#D97706)","none")}>Tout migrer</button>
+        {enCours&&<button onClick={()=>{stopRef.current=true;}} style={{background:"none",border:"1.5px solid rgba(239,68,68,0.5)",color:"#EF4444",borderRadius:9,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Arrêter</button>}
+      </div>
+      {journal.length>0&&(
+        <div style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:9,padding:"10px 12px",maxHeight:260,overflowY:"auto",fontSize:12,fontFamily:"ui-monospace,Consolas,monospace",color:T.textMuted,lineHeight:1.6}}>
+          {journal.map((l,i)=><div key={i}>{l}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminView({ societes, techniciens, techTels, techColors={}, logos, champs, sousTraitants=[], onSaveSousTraitants, onSaveSocietes, onSaveTechniciens, onSaveTechTel, onSaveTechColor, onSaveLogo, onRemoveLogo, onSaveChamps, onGoChamps, onOpenExport, userRoles=[], onSaveUserRole, onDeleteUserRole, theme, activiteLog=[], fiches=[], parametresIA={analysePhotos:true,maxPhotos:0}, onSaveParametresIA, parametresMessages={modeles:MODELES_MESSAGE_DEFAUT}, onSaveParametresMessages, absences=[], onSaveAbsence, onDeleteAbsence }) {
   const T = THEMES[theme] || THEMES.dark;
   const logoRef = useRef();
@@ -2962,6 +3097,9 @@ function AdminView({ societes, techniciens, techTels, techColors={}, logos, cham
       {onSaveAbsence&&<Repliable T={T} icone="🌴" titre="Absences des techniciens" badge={absences.length||null}>
         <AbsencesAdmin T={T} theme={theme} techniciens={techniciens} fiches={fiches} absences={absences} onSaveAbsence={onSaveAbsence} onDeleteAbsence={onDeleteAbsence}/>
       </Repliable>}
+      <Repliable T={T} icone="🗜️" titre="Migration des photos vers Storage" defaultOpen={false}>
+        <MigrationPhotos fiches={fiches} theme={theme}/>
+      </Repliable>
       <Repliable T={T} icone="🤖" titre="Intelligence artificielle" defaultOpen={false}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${T.border}`,marginBottom:12}}>
           <div>
