@@ -4929,6 +4929,12 @@ function DetailFiche({ fiche, onBack, onEdit, onDelete, onDemarrer, onCreateDevi
   const [creationFactureEnCours, setCreationFactureEnCours] = useState(false);
   const [draftPennylane, setDraftPennylane] = useState(null); // aperçu modifiable avant envoi réel
   const [apercuEnvoi, setApercuEnvoi] = useState(null); // aperçu modifiable avant envoi WhatsApp/SMS
+  /* Après validation d'une fiche, on arrivait ici avec la page déjà défilée vers le bas :
+     il fallait remonter à la main pour atteindre "Voir le rapport" et "Envoyer".
+     On repart systématiquement du haut à l'ouverture d'une fiche. */
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, behavior: "auto" }); } catch (e) { window.scrollTo(0, 0); }
+  }, [fiche.id]);
   const lblStyle = {fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:5,textTransform:"uppercase",letterSpacing:".04em"};
   const inpStyle = () => ({width:"100%",padding:"9px 12px",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13,outline:"none",fontFamily:"inherit"});
   const isRdv = fiche.type==="rdv"||(fiche.status==="planifie"&&!fiche.prestations?.length);
